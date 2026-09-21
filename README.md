@@ -9,6 +9,10 @@ npm install
 npm run dev
 ```
 
+The project-level `.npmrc` routes Electron runtime downloads through the
+npmmirror binary mirror. Regular npm packages still use the user's configured
+npm registry.
+
 Build and verify:
 
 ```bash
