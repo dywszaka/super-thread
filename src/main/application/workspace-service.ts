@@ -12,6 +12,7 @@ import type {
   DeviceConnection,
   Project,
   SetupProjectInput,
+  UpdateRemoteDeviceInput,
   WorkThread,
   Workspace
 } from "../../shared/domain";
@@ -76,6 +77,37 @@ export class WorkspaceService extends EventEmitter {
       draft.connections.push({ deviceId, transport: "ssh", config: { host: input.host, user: input.user, port: input.port } });
     });
     await this.pingDevices();
+  }
+
+  async updateDevice(input: UpdateRemoteDeviceInput): Promise<void> {
+    const snapshot = this.snapshot();
+    const device = this.device(snapshot, input.id);
+    if (device.type === "local") throw new Error("The local device is managed by SuperThread");
+    this.connection(snapshot, input.id);
+    await this.store.update((draft) => {
+      const item = draft.devices.find((candidate) => candidate.id === input.id);
+      const connection = draft.connections.find((candidate) => candidate.deviceId === input.id);
+      if (item) Object.assign(item, { name: input.name, status: "unknown" });
+      if (connection) Object.assign(connection, {
+        transport: "ssh",
+        config: { host: input.host, user: input.user, port: input.port }
+      });
+    });
+    this.changed();
+  }
+
+  async deleteDevice(deviceId: string): Promise<void> {
+    const snapshot = this.snapshot();
+    const device = this.device(snapshot, deviceId);
+    if (device.type === "local") throw new Error("The local device cannot be deleted");
+    if (snapshot.checkouts.some((checkout) => checkout.deviceId === deviceId) || snapshot.workspaces.some((workspace) => workspace.deviceId === deviceId)) {
+      throw new Error("Remove this device’s project checkouts and workspaces before deleting it");
+    }
+    await this.store.update((draft) => {
+      draft.connections = draft.connections.filter((connection) => connection.deviceId !== deviceId);
+      draft.devices = draft.devices.filter((item) => item.id !== deviceId);
+    });
+    this.changed();
   }
 
   async pingDevices(): Promise<AppSnapshot> {

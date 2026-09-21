@@ -105,6 +105,10 @@ export interface AddRemoteDeviceInput {
   port?: number;
 }
 
+export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {
+  id: string;
+}
+
 export type AddProjectInput =
   | { mode: "import"; path: string }
   | { mode: "clone"; repositoryUrl: string; deviceId: string; parentDirectory: string };

@@ -827,7 +827,6 @@ MVP 只实现一个主界面。
 
 ```text
 Project Settings Page
-Device Settings Page
 Workspace Detail Page
 Task Page
 Agent Page
@@ -844,6 +843,7 @@ Agent Page
 │               │                                           │
 │ All workspaces│  Improve FP4 / llama.cpp / nvfp4-kernel   │
 │ All threads   │  dev-cuda · work/nvfp4-kernel             │
+│ All devices   │                                           │
 │               │                                           │
 │ Projects      │                                           │
 │ llama.cpp     │                                           │
@@ -871,6 +871,7 @@ Agent Page
 ```text
 All workspaces
 All work threads
+All devices
 
 Projects
 
@@ -888,7 +889,7 @@ Work Threads
 ▸ Benchmarks
 ```
 
-Project 和单个 WorkThread 都是 Workspace filter。All work threads 打开 active/archived 管理页面；归档 WorkThread 及其 Workspace 不出现在其他 active scope。
+Project 和单个 WorkThread 都是 Workspace filter。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：
 
@@ -1109,7 +1110,7 @@ MVP：
 File → Add Device
 ```
 
-Device 不作为左侧栏 scope 展示，但仍参与 Workspace 创建和运行时选择。
+Device 通过左侧栏的 All devices 管理页面集中展示，但单个 Device 不作为 Workspace filter；它仍参与 Workspace 创建和运行时选择。
 
 Local Device 自动存在。
 

@@ -7,13 +7,16 @@ import type {
   CreateWorkThreadInput,
   CreateWorkspaceInput,
   SetupProjectInput,
-  TerminalOutput
+  TerminalOutput,
+  UpdateRemoteDeviceInput
 } from "./domain";
 
 export const channels = {
   snapshot: "app:snapshot",
   selectDirectory: "dialog:select-directory",
   addDevice: "device:add",
+  updateDevice: "device:update",
+  deleteDevice: "device:delete",
   pingDevices: "device:ping-all",
   addProject: "project:add",
   setupProject: "project:setup",
@@ -38,6 +41,10 @@ export const addRemoteDeviceSchema = z.object({
   host: z.string().trim().min(1).max(255),
   user: z.string().trim().min(1).max(80),
   port: z.number().int().min(1).max(65535).optional()
+});
+
+export const updateRemoteDeviceSchema = addRemoteDeviceSchema.extend({
+  id: z.string().min(1)
 });
 
 export const addProjectSchema = z.discriminatedUnion("mode", [
@@ -82,6 +89,8 @@ export interface DesktopBridge {
   snapshot(): Promise<AppSnapshot>;
   selectDirectory(): Promise<string | null>;
   addDevice(input: AddRemoteDeviceInput): Promise<void>;
+  updateDevice(input: UpdateRemoteDeviceInput): Promise<void>;
+  deleteDevice(id: string): Promise<void>;
   pingDevices(): Promise<AppSnapshot>;
   addProject(input: AddProjectInput): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;

@@ -1,4 +1,4 @@
-import { Box, ChevronDown, ChevronRight, FolderGit2, Layers3, MessagesSquare, Plus } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, FolderGit2, Layers3, MessagesSquare, MonitorCog, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppSnapshot } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -10,6 +10,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     activeWorkspaceId,
     showAllWorkspaces,
     showAllWorkThreads,
+    showAllDevices,
     setProjectFilter,
     setWorkThreadFilter,
     setActiveWorkspace,
@@ -37,8 +38,11 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     <aside className="sidebar">
       <div className="sidebar-title drag"><div className="brand no-drag"><span className="brand-mark"><Box size={14} strokeWidth={2.4} /></span><strong>SuperThread</strong></div></div>
       <nav className="sidebar-scroll no-drag">
-        <button className={`scope-row all ${scope.type === "all-workspaces" ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> All workspaces</span><b>{allActiveWorkspaces.length}</b></button>
-        <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> All work threads</span><b>{snapshot.workThreads.length}</b></button>
+        <div className="primary-scopes">
+          <button className={`scope-row all ${scope.type === "all-workspaces" ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> All workspaces</span><b>{allActiveWorkspaces.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> All work threads</span><b>{snapshot.workThreads.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> All devices</span><b>{snapshot.devices.length}</b></button>
+        </div>
 
         <div className="section-heading"><span>Projects</span><button className="mini-action" onClick={() => openDialog("project")} title="Add project"><Plus size={14} /></button></div>
         <div className="scope-list">

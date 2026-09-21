@@ -47,4 +47,5 @@ test("workspace scopes exclude workspaces in archived work threads", () => {
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "work-thread", id: "thread-active" }).map((item) => item.id), ["workspace-a", "workspace-b"]);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "work-thread", id: "thread-archived" }), []);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-work-threads" }), []);
+  assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-devices" }), []);
 });

@@ -6,6 +6,7 @@ import { useWorkbenchStore } from "../../state/workbench-store";
 import { Sidebar } from "./components/Sidebar";
 import { TerminalPane } from "./components/TerminalPane";
 import { WorkspaceDialogs } from "./components/Dialogs";
+import { DeviceList } from "./components/DeviceList";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { WorkThreadList } from "./components/WorkThreadList";
 import { visibleWorkspaces } from "./selection";
@@ -18,7 +19,7 @@ export function WorkspaceApp(): React.ReactNode {
   const active: Workspace | undefined = snapshot?.workspaces.find((item) => item.id === store.activeWorkspaceId && filtered.some((candidate) => candidate.id === item.id)) ?? filtered[0];
 
   useEffect(() => {
-    if (store.scope.type === "all-work-threads") return;
+    if (store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
     if (active && active.id !== store.activeWorkspaceId) store.setActiveWorkspace(active.id);
     if (!active && store.activeWorkspaceId) store.setActiveWorkspace(null);
   }, [active?.id, store.scope.type]);
@@ -42,7 +43,7 @@ export function WorkspaceApp(): React.ReactNode {
     <div className="app-frame">
       <Sidebar snapshot={snapshot} />
       <div className="workbench">
-        {store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : <>
+        {store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
           {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status === "ready" ? <TerminalPane snapshot={snapshot} workspace={active} /> : <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
           <div className="workspace-switcher no-drag">
             <div className="switcher-scroll">{filtered.map((workspace) => {

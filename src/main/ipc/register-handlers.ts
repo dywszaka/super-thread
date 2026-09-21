@@ -7,7 +7,8 @@ import {
   createSessionSchema,
   createWorkThreadSchema,
   createWorkspaceSchema,
-  setupProjectSchema
+  setupProjectSchema,
+  updateRemoteDeviceSchema
 } from "../../shared/contract";
 import type { WorkspaceService } from "../application/workspace-service";
 
@@ -23,6 +24,8 @@ export function registerIpcHandlers(service: WorkspaceService): void {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle(channels.addDevice, (_event, input) => service.addDevice(addRemoteDeviceSchema.parse(input)));
+  ipcMain.handle(channels.updateDevice, (_event, input) => service.updateDevice(updateRemoteDeviceSchema.parse(input)));
+  ipcMain.handle(channels.deleteDevice, (_event, id) => service.deleteDevice(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.pingDevices, () => service.pingDevices());
   ipcMain.handle(channels.addProject, (_event, input) => service.addProject(addProjectSchema.parse(input)));
   ipcMain.handle(channels.setupProject, (_event, input) => service.setupProject(setupProjectSchema.parse(input)));
