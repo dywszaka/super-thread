@@ -16,7 +16,8 @@ export function createApplicationMenu(getWindow: () => BrowserWindow | null): vo
     {
       label: "File",
       submenu: [
-        { label: "New Workspace…", accelerator: "CmdOrCtrl+N", click: () => send("new-workspace") },
+        { label: "New Work Thread…", accelerator: "CmdOrCtrl+N", click: () => send("new-work-thread") },
+        { label: "New Workspace…", accelerator: "CmdOrCtrl+Shift+N", click: () => send("new-workspace") },
         { label: "New Terminal", accelerator: "CmdOrCtrl+T", click: () => send("new-terminal") },
         { type: "separator" },
         { label: "Add Project…", accelerator: "CmdOrCtrl+Shift+P", click: () => send("add-project") },

@@ -4,6 +4,7 @@ import type {
   AddRemoteDeviceInput,
   AppSnapshot,
   CreateSessionInput,
+  CreateWorkThreadInput,
   CreateWorkspaceInput,
   SetupProjectInput,
   TerminalOutput
@@ -16,6 +17,10 @@ export const channels = {
   pingDevices: "device:ping-all",
   addProject: "project:add",
   setupProject: "project:setup",
+  createWorkThread: "work-thread:create",
+  archiveWorkThread: "work-thread:archive",
+  restoreWorkThread: "work-thread:restore",
+  deleteWorkThread: "work-thread:delete",
   createWorkspace: "workspace:create",
   deleteWorkspace: "workspace:delete",
   createSession: "session:create",
@@ -53,7 +58,12 @@ export const setupProjectSchema = z.object({
   parentDirectory: z.string().trim().optional()
 });
 
+export const createWorkThreadSchema = z.object({
+  name: z.string().trim().min(1).max(80)
+});
+
 export const createWorkspaceSchema = z.object({
+  workThreadId: z.string().min(1),
   projectId: z.string().min(1),
   deviceId: z.string().min(1),
   name: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/),
@@ -65,7 +75,7 @@ export const createSessionSchema = z.object({
   name: z.string().trim().min(1).max(80).optional()
 });
 
-export type MenuAction = "new-workspace" | "add-project" | "add-device" | "new-terminal";
+export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
   platform: NodeJS.Platform;
@@ -75,6 +85,10 @@ export interface DesktopBridge {
   pingDevices(): Promise<AppSnapshot>;
   addProject(input: AddProjectInput): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;
+  createWorkThread(input: CreateWorkThreadInput): Promise<void>;
+  archiveWorkThread(id: string): Promise<void>;
+  restoreWorkThread(id: string): Promise<void>;
+  deleteWorkThread(id: string): Promise<void>;
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   createSession(input: CreateSessionInput): Promise<void>;

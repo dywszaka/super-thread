@@ -10,6 +10,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
   const { openDialog, setActiveWorkspace } = useWorkbenchStore();
+  const workThread = snapshot.workThreads.find((item) => item.id === workspace.workThreadId);
   const project = snapshot.projects.find((item) => item.id === workspace.projectId);
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   const remove = async (): Promise<void> => {
@@ -30,12 +31,12 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   return (
     <header className="workspace-header drag">
       <button className="workspace-identity no-drag" onClick={() => setDetails(!details)}>
-        <div><span>{project?.name}</span><i>/</i><strong>{workspace.name}</strong></div>
+        <div><span>{workThread?.name}</span><i>/</i><span>{project?.name}</span><i>/</i><strong>{workspace.name}</strong></div>
         <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}</p>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
       </button>
       <div className="header-actions no-drag"><button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New</button><div className="menu-anchor"><button className="icon-button" onClick={() => setMenu(!menu)} aria-label="Workspace actions"><MoreHorizontal size={17} /></button>{menu && <div className="context-menu"><button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button></div>}</div></div>
-      {details && <div className="workspace-popover no-drag"><dl><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
+      {details && <div className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
     </header>
   );
 }

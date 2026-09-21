@@ -6,20 +6,15 @@
 
 MVP 只解决一个问题：
 
-> 用户可以在不同 Device 上管理 Project，为 Project 创建隔离的 Workspace，并在 Workspace 中创建和恢复持久 Terminal Session。
+> 用户可以用 WorkThread 组织相关工作，在不同 Device 上管理 Project，为 WorkThread 创建隔离的 Workspace，并在 Workspace 中创建和恢复持久 Terminal Session。
 
 核心模型：
 
 ```text
-Project
-   │
-   │ available on
+WorkThread
+   │ groups 1:N
    ▼
-Device
-   │
-   │ creates
-   ▼
-Workspace
+Workspace ─── Project × Device
    │
    │ contains
    ▼
@@ -28,6 +23,7 @@ Terminal Session
 
 其中：
 
+- WorkThread：组织一组相关 Workspace 的顶级对象
 - Project：逻辑 Git 项目
 - Device：实际执行工作的机器
 - Workspace：Project 在某个 Device 上的一份隔离 Working Copy
@@ -164,9 +160,10 @@ Device Runtime
 
 # 3. Domain Model
 
-核心对象只有四个：
+核心对象只有五个：
 
 ```text
+WorkThread
 Project
 Device
 Workspace
@@ -176,6 +173,14 @@ Session
 关系：
 
 ```text
+                 WorkThread
+                      │ 1:N
+                      ▼
+                  Workspace
+                      │ 1:N
+                      ▼
+                   Session
+
                    Project
                       │
                       │ 1:N
@@ -188,10 +193,6 @@ Session
                       │
                       ▼
                   Workspace
-                      │
-                      │ 1:N
-                      ▼
-                   Session
 ```
 
 其中 `ProjectCheckout` 是内部数据结构，不作为主要 UI 对象暴露。
@@ -459,7 +460,32 @@ git -C /data/allen/llama.cpp remote get-url origin
 
 ---
 
-# 9. Workspace
+# 9. WorkThread
+
+WorkThread 是组织 Workspace 的顶级对象，不是 Task、Workflow 或执行状态。
+
+```ts
+interface WorkThread {
+  id: string
+  name: string
+  status: "active" | "archived"
+  createdAt: Date
+  updatedAt: Date
+  archivedAt?: Date
+}
+```
+
+规则：
+
+- 名称在 active 与 archived 范围内忽略大小写唯一。
+- 一个 Workspace 必须且只能属于一个 WorkThread。
+- WorkThread 可以暂时为空，也可以包含多个 Workspace。
+- 归档只隐藏整组内容，不停止 Session 或删除 Git Worktree。
+- 只有空 WorkThread 可以永久删除。
+
+---
+
+# 10. Workspace
 
 Workspace 是整个系统最核心的 runtime abstraction。
 
@@ -475,6 +501,7 @@ interface Workspace {
 
   name: string
 
+  workThreadId: string
   projectId: string
   deviceId: string
   checkoutId: string
@@ -511,12 +538,15 @@ interface Workspace {
 
 ---
 
-# 10. Workspace Creation
+# 11. Workspace Creation
 
 用户：
 
 ```text
 New Workspace
+
+Work Thread:
+Improve NVFP4
 
 Project:
 llama.cpp
@@ -581,7 +611,7 @@ base checkout
 
 ---
 
-# 11. Workspace Lifecycle
+# 12. Workspace Lifecycle
 
 MVP 生命周期保持极简：
 
@@ -617,7 +647,7 @@ Done
 
 ---
 
-# 12. Workspace Delete
+# 13. Workspace Delete
 
 删除 Workspace：
 
@@ -656,7 +686,7 @@ Branch 默认不删除。
 
 ---
 
-# 13. Session
+# 14. Session
 
 Session 表示 Workspace 中一个 Terminal Session。
 
@@ -695,7 +725,7 @@ interface Session {
 
 ---
 
-# 14. Terminal Runtime
+# 15. Terminal Runtime
 
 创建 Session：
 
@@ -750,7 +780,7 @@ PTY
 
 ---
 
-# 15. Session Persistence
+# 16. Session Persistence
 
 MVP 的“持久”定义：
 
@@ -789,7 +819,7 @@ MVP 暂时不要求：
 
 ---
 
-# 16. Main UI
+# 17. Main UI
 
 MVP 只实现一个主界面。
 
@@ -809,22 +839,23 @@ Agent Page
 
 ```text
 ┌───────────────────────────────────────────────────────────┐
-│ Workspace                                      + New      │
+│ WorkThread / Project / Workspace               + New      │
 ├───────────────┬───────────────────────────────────────────┤
 │               │                                           │
-│ Projects      │  llama.cpp / nvfp4-kernel                 │
-│               │  dev-cuda · work/nvfp4-kernel             │
+│ All workspaces│  Improve FP4 / llama.cpp / nvfp4-kernel   │
+│ All threads   │  dev-cuda · work/nvfp4-kernel             │
+│               │                                           │
+│ Projects      │                                           │
 │ llama.cpp     │                                           │
 │ modelopt      ├───────────────────────────────────────────┤
 │ sglang        │                                           │
 │               │                                           │
 │ ───────────   │              Terminal                     │
 │               │                                           │
-│ Devices       │  $ git status                             │
-│               │  On branch work/nvfp4-kernel              │
-│ ● MacBook     │                                           │
-│ ● dev-cuda    │                                           │
-│ ○ dev3-cuda   │                                           │
+│ Work Threads  │  $ git status                             │
+│ ▾ Improve FP4 │  On branch work/nvfp4-kernel              │
+│   nvfp4-kernel│                                           │
+│ ▸ Benchmarks  │                                           │
 │               │                                           │
 ├───────────────┴───────────────────────────────────────────┤
 │ nvfp4-kernel     benchmark      quant-test                │
@@ -833,11 +864,14 @@ Agent Page
 
 ---
 
-# 17. UI Information Architecture
+# 18. UI Information Architecture
 
 左侧栏负责选择 scope：
 
 ```text
+All workspaces
+All work threads
+
 Projects
 
 llama.cpp
@@ -846,14 +880,15 @@ sglang
 
 ────────
 
-Devices
+Work Threads
 
-● MacBook
-● dev-cuda
-○ dev3-cuda
+▾ Improve FP4
+  nvfp4-kernel
+  quant-test
+▸ Benchmarks
 ```
 
-Project 和 Device 都是 Filter，而不是页面。
+Project 和单个 WorkThread 都是 Workspace filter。All work threads 打开 active/archived 管理页面；归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：
 
@@ -871,25 +906,17 @@ benchmark
 loader-fix
 ```
 
-点击：
+点击 WorkThread 显示它包含的 Workspace：
 
 ```text
-Device: dev-cuda
-```
-
-显示：
-
-```text
-dev-cuda
-
-llama.cpp / nvfp4-kernel
-modelopt / fp4-test
-sglang / benchmark
+Improve FP4
+├── nvfp4-kernel
+└── quant-test
 ```
 
 ---
 
-# 18. Workspace Switcher
+# 19. Workspace Switcher
 
 底部或顶部提供 Workspace Tabs：
 
@@ -913,7 +940,7 @@ Terminal 永远属于 Workspace。
 
 ---
 
-# 19. Workspace Header
+# 20. Workspace Header
 
 顶部只显示必要信息：
 
@@ -945,7 +972,7 @@ Path
 
 ---
 
-# 20. Terminal Area
+# 21. Terminal Area
 
 Workspace 默认创建一个 Session：
 
@@ -986,7 +1013,7 @@ cwd = workspace.path
 
 ---
 
-# 21. New Workspace Flow
+# 22. New Workspace Flow
 
 点击：
 
@@ -998,6 +1025,9 @@ cwd = workspace.path
 
 ```text
 New Workspace
+
+Work Thread
+[ Improve FP4 ▼ ]
 
 Project
 [ llama.cpp ▼ ]
@@ -1026,7 +1056,7 @@ llama.cpp isn't available on dev-cuda.
 
 ---
 
-# 22. Add Project Flow
+# 23. Add Project Flow
 
 左侧：
 
@@ -1071,14 +1101,15 @@ ProjectCheckout
 
 ---
 
-# 23. Add Device Flow
+# 24. Add Device Flow
 
 MVP：
 
 ```text
-Devices
-+ Add Device
+File → Add Device
 ```
+
+Device 不作为左侧栏 scope 展示，但仍参与 Workspace 创建和运行时选择。
 
 Local Device 自动存在。
 
@@ -1129,9 +1160,11 @@ SSH → Relay
 
 ---
 
-# 24. Runtime API
+# 25. Runtime API
 
 Control Plane 与 Device Runtime 之间只暴露 primitive operations。
+
+WorkThread 属于 Control Plane metadata，提供 create/archive/restore/delete；归档不向 Device Runtime 发送命令。
 
 ## Device
 
@@ -1180,13 +1213,14 @@ Runtime 不理解这些高层业务概念。
 
 ---
 
-# 25. Local Persistence
+# 26. Local Persistence
 
 Control Plane 保存：
 
 ```text
 projects.json
 devices.json
+work_threads.json
 workspaces.json
 checkouts.json
 ```
@@ -1196,12 +1230,15 @@ checkouts.json
 ```text
 projects
 devices
+work_threads
 project_checkouts
 workspaces
 sessions
 ```
 
 推荐 SQLite。
+
+当前 JSON MVP 快照带有 `schemaVersion`。WorkThread 模型启用时不迁移旧快照；缺少版本或版本不匹配的数据会被清空，并由启动流程重新创建 Local Device。
 
 关系：
 
@@ -1210,14 +1247,14 @@ projects
    │
    └── project_checkouts ─── devices
                 │
-                └── workspaces
+                └── workspaces ─── work_threads
                         │
                         └── sessions
 ```
 
 ---
 
-# 26. Runtime State vs Persistent State
+# 27. Runtime State vs Persistent State
 
 必须严格区分。
 
@@ -1226,6 +1263,7 @@ projects
 ```text
 Project
 Device
+WorkThread
 ProjectCheckout
 Workspace
 Session metadata
@@ -1264,7 +1302,7 @@ Session = exited
 
 ---
 
-# 27. MVP Architecture
+# 28. MVP Architecture
 
 最终架构：
 
@@ -1272,7 +1310,7 @@ Session = exited
 ┌──────────────────────────────────────┐
 │              Mac App                 │
 │                                      │
-│  Project / Device / Workspace UI     │
+│ Project / WorkThread / Workspace UI  │
 │                                      │
 │            Terminal UI               │
 └──────────────────┬───────────────────┘
@@ -1295,6 +1333,14 @@ Session = exited
 领域层：
 
 ```text
+              WorkThread
+                   │
+                   ▼
+               Workspace
+                   │
+                   ▼
+                Session
+
                  Project
                     │
                     ▼
@@ -1308,11 +1354,23 @@ Session = exited
 
 ---
 
-# 28. MVP Scope
+# 29. MVP Scope
 
-第一版完成标准只有四件事。
+第一版完成标准只有五件事。
 
-1. Project
+1. WorkThread
+
+能够：
+
+```text
+create
+list
+archive / restore
+delete when empty
+group workspaces
+```
+
+2. Project
 
 能够：
 
@@ -1322,7 +1380,7 @@ import
 list
 ```
 
-2. Device
+3. Device
 
 能够：
 
@@ -1332,7 +1390,7 @@ add SSH device
 online/offline detection
 ```
 
-3. Workspace
+4. Workspace
 
 能够：
 
@@ -1345,7 +1403,7 @@ delete
 git worktree isolation
 ```
 
-4. Terminal Session
+5. Terminal Session
 
 能够：
 
@@ -1362,6 +1420,11 @@ PTY keeps running when UI disconnects
 
 ```text
 打开 App
+
+        ↓
+
+创建 WorkThread
+Improve FP4
 
         ↓
 
@@ -1396,18 +1459,21 @@ modelopt / fp4-test
 再切回来：
 
 ```text
-llama.cpp / nvfp4-kernel
+Improve FP4 / llama.cpp / nvfp4-kernel
 ```
 
 原来的 Terminal Session 仍然存在。
 
 ---
 
-# 29. MVP 最重要的架构约束
+# 30. MVP 最重要的架构约束
 
 整个实现过程中始终保持：
 
 ```text
+WorkThread
+    = Which effort groups these workspaces?
+
 Project
     = What codebase?
 
@@ -1427,6 +1493,8 @@ Session
 Project ≠ local directory
 
 Device ≠ SSH connection
+
+WorkThread ≠ Task / Workflow
 
 Workspace ≠ Task
 
@@ -1450,7 +1518,7 @@ Review
 
 先验证：
 
-> **Project × Device → Workspace → Persistent Terminal**
+> **WorkThread → Workspace × (Project × Device) → Persistent Terminal**
 
 这条链路本身是否足以成为一个好用的多项目、多机器开发工作台。
 

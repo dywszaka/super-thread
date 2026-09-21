@@ -1,6 +1,18 @@
 export type DeviceStatus = "online" | "offline" | "unknown";
+export type WorkThreadStatus = "active" | "archived";
 export type WorkspaceStatus = "creating" | "ready" | "error";
 export type SessionStatus = "running" | "exited";
+
+export const CURRENT_SCHEMA_VERSION = 2;
+
+export interface WorkThread {
+  id: string;
+  name: string;
+  status: WorkThreadStatus;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
 
 export interface Project {
   id: string;
@@ -36,6 +48,7 @@ export interface ProjectCheckout {
 export interface Workspace {
   id: string;
   name: string;
+  workThreadId: string;
   projectId: string;
   deviceId: string;
   checkoutId: string;
@@ -60,6 +73,8 @@ export interface Session {
 }
 
 export interface AppSnapshot {
+  schemaVersion: number;
+  workThreads: WorkThread[];
   projects: Project[];
   devices: Device[];
   connections: DeviceConnection[];
@@ -69,6 +84,8 @@ export interface AppSnapshot {
 }
 
 export const emptySnapshot = (): AppSnapshot => ({
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  workThreads: [],
   projects: [],
   devices: [],
   connections: [],
@@ -76,6 +93,10 @@ export const emptySnapshot = (): AppSnapshot => ({
   workspaces: [],
   sessions: []
 });
+
+export interface CreateWorkThreadInput {
+  name: string;
+}
 
 export interface AddRemoteDeviceInput {
   name: string;
@@ -97,6 +118,7 @@ export interface SetupProjectInput {
 }
 
 export interface CreateWorkspaceInput {
+  workThreadId: string;
   projectId: string;
   deviceId: string;
   name: string;

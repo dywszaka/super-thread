@@ -6,11 +6,13 @@ import type {
   AddRemoteDeviceInput,
   AppSnapshot,
   CreateSessionInput,
+  CreateWorkThreadInput,
   CreateWorkspaceInput,
   Device,
   DeviceConnection,
   Project,
   SetupProjectInput,
+  WorkThread,
   Workspace
 } from "../../shared/domain";
 import { JsonStore } from "../persistence/json-store";
@@ -21,11 +23,23 @@ import { TerminalRuntime } from "../runtime/terminal-runtime";
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
 const canonicalRemote = (remote: string): string => remote.trim().replace(/\.git$/, "").replace(/^ssh:\/\//, "").toLowerCase();
+const canonicalName = (name: string): string => name.trim().toLowerCase();
+
+export interface WorkspaceGitRuntime {
+  inspect(repositoryPath: string): Promise<RepositoryInfo>;
+  clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo>;
+  createWorktree(checkoutPath: string, name: string, baseBranch: string): Promise<{ path: string; branch: string }>;
+  hasChanges(workspacePath: string): Promise<boolean>;
+  deleteWorktree(checkoutPath: string, workspacePath: string, force: boolean): Promise<void>;
+}
+
+type GitRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceGitRuntime;
 
 export class WorkspaceService extends EventEmitter {
   constructor(
     private readonly store: JsonStore,
-    private readonly terminals = new TerminalRuntime()
+    private readonly terminals = new TerminalRuntime(),
+    private readonly gitRuntimeFactory: GitRuntimeFactory = (device, connection) => new GitRuntime(device, connection)
   ) {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
@@ -117,8 +131,66 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
+  async createWorkThread(input: CreateWorkThreadInput): Promise<void> {
+    const name = input.name.trim();
+    const snapshot = this.snapshot();
+    if (snapshot.workThreads.some((item) => canonicalName(item.name) === canonicalName(name))) {
+      throw new Error(`A work thread named ${name} already exists`);
+    }
+    const timestamp = now();
+    await this.store.update((draft) => {
+      draft.workThreads.push({
+        id: id("thread"),
+        name,
+        status: "active",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      });
+    });
+    this.changed();
+  }
+
+  async archiveWorkThread(workThreadId: string): Promise<void> {
+    const workThread = this.workThread(this.snapshot(), workThreadId);
+    if (workThread.status === "archived") return;
+    const timestamp = now();
+    await this.store.update((draft) => {
+      const item = draft.workThreads.find((candidate) => candidate.id === workThreadId);
+      if (item) Object.assign(item, { status: "archived", archivedAt: timestamp, updatedAt: timestamp });
+    });
+    this.changed();
+  }
+
+  async restoreWorkThread(workThreadId: string): Promise<void> {
+    const workThread = this.workThread(this.snapshot(), workThreadId);
+    if (workThread.status === "active") return;
+    await this.store.update((draft) => {
+      const item = draft.workThreads.find((candidate) => candidate.id === workThreadId);
+      if (item) {
+        item.status = "active";
+        item.updatedAt = now();
+        item.archivedAt = undefined;
+      }
+    });
+    this.changed();
+  }
+
+  async deleteWorkThread(workThreadId: string): Promise<void> {
+    const snapshot = this.snapshot();
+    this.workThread(snapshot, workThreadId);
+    if (snapshot.workspaces.some((workspace) => workspace.workThreadId === workThreadId)) {
+      throw new Error("Remove every workspace from this work thread before deleting it");
+    }
+    await this.store.update((draft) => {
+      draft.workThreads = draft.workThreads.filter((item) => item.id !== workThreadId);
+    });
+    this.changed();
+  }
+
   async createWorkspace(input: CreateWorkspaceInput): Promise<void> {
     const snapshot = this.snapshot();
+    const workThread = this.workThread(snapshot, input.workThreadId);
+    if (workThread.status !== "active") throw new Error("Work thread is archived. Restore it before adding a workspace.");
     const device = this.device(snapshot, input.deviceId);
     const checkout = snapshot.checkouts.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId);
     if (!checkout) throw new Error("Project is not set up on the selected device");
@@ -128,11 +200,15 @@ export class WorkspaceService extends EventEmitter {
     const workspaceId = id("ws");
     const timestamp = now();
     const pending: Workspace = {
-      id: workspaceId, name: input.name, projectId: input.projectId, deviceId: input.deviceId,
+      id: workspaceId, name: input.name, workThreadId: workThread.id, projectId: input.projectId, deviceId: input.deviceId,
       checkoutId: checkout.id, path: "", branch: `work/${input.name}`, baseBranch: input.baseBranch,
       status: "creating", createdAt: timestamp, updatedAt: timestamp
     };
-    await this.store.update((draft) => { draft.workspaces.push(pending); });
+    await this.store.update((draft) => {
+      draft.workspaces.push(pending);
+      const thread = draft.workThreads.find((item) => item.id === workThread.id);
+      if (thread) thread.updatedAt = timestamp;
+    });
     this.changed();
     try {
       const created = await this.git(snapshot, device).createWorktree(checkout.path, input.name, input.baseBranch);
@@ -168,6 +244,8 @@ export class WorkspaceService extends EventEmitter {
     await this.store.update((draft) => {
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
+      const thread = draft.workThreads.find((item) => item.id === workspace.workThreadId);
+      if (thread) thread.updatedAt = now();
     });
     this.changed();
   }
@@ -221,7 +299,7 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  private git(snapshot: AppSnapshot, device: Device): GitRuntime { return new GitRuntime(device, this.connection(snapshot, device.id)); }
+  private git(snapshot: AppSnapshot, device: Device): WorkspaceGitRuntime { return this.gitRuntimeFactory(device, this.connection(snapshot, device.id)); }
   private project(snapshot: AppSnapshot, projectId: string): Project {
     const value = snapshot.projects.find((item) => item.id === projectId);
     if (!value) throw new Error("Project not found");
@@ -235,6 +313,11 @@ export class WorkspaceService extends EventEmitter {
   private connection(snapshot: AppSnapshot, deviceId: string): DeviceConnection {
     const value = snapshot.connections.find((item) => item.deviceId === deviceId);
     if (!value) throw new Error("Device connection is not configured");
+    return value;
+  }
+  private workThread(snapshot: AppSnapshot, workThreadId: string): WorkThread {
+    const value = snapshot.workThreads.find((item) => item.id === workThreadId);
+    if (!value) throw new Error("Work thread not found");
     return value;
   }
   private workspace(snapshot: AppSnapshot, workspaceId: string): Workspace {

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, GitBranch, HardDrive, Link, Network, Plus } from "lucide-react";
+import { FolderOpen, GitBranch, HardDrive, Link, MessagesSquare, Network, Plus } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot } from "@/shared/domain";
@@ -74,15 +74,43 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   );
 }
 
-export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  const { dialog, closeDialog, projectFilter, deviceFilter, setActiveWorkspace } = useWorkbenchStore();
+export function NewWorkThreadDialog(): ReactNode {
+  const { dialog, closeDialog, setWorkThreadFilter } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [projectId, setProjectId] = useState(projectFilter || snapshot.projects[0]?.id || "");
-  const [deviceId, setDeviceId] = useState(deviceFilter || snapshot.devices[0]?.id || "");
   const [name, setName] = useState("");
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault(); setBusy(true);
+    try {
+      await window.desktop.createWorkThread({ name });
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      const fresh = await window.desktop.snapshot();
+      const created = fresh.workThreads.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
+      if (created) setWorkThreadFilter(created.id);
+      toast.success(`${name.trim()} created`); closeDialog(); setName("");
+    } catch (error) { toast.error(message(error)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal open={dialog === "workThread"} title="New work thread" description="Group one or more related workspaces." busy={busy} submitLabel="Create Work Thread" onClose={closeDialog} onSubmit={submit}>
+      <Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Improve terminal workflow" required maxLength={80} autoFocus /></Field>
+      <div className="callout"><MessagesSquare size={16} /><span>You can create the first workspace after the work thread is created.</span></div>
+    </Modal>
+  );
+}
+
+export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
+  const { dialog, closeDialog, projectFilter, workThreadFilter, setActiveWorkspace } = useWorkbenchStore();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const activeWorkThreads = useMemo(() => snapshot.workThreads.filter((thread) => thread.status === "active"), [snapshot.workThreads]);
+  const [workThreadId, setWorkThreadId] = useState(workThreadFilter || activeWorkThreads[0]?.id || "");
+  const [projectId, setProjectId] = useState(projectFilter || snapshot.projects[0]?.id || "");
+  const [deviceId, setDeviceId] = useState(snapshot.devices[0]?.id || "");
+  const [name, setName] = useState("");
+  const resolvedWorkThreadId = resolveSelectionId(workThreadId, workThreadFilter, activeWorkThreads);
   const resolvedProjectId = resolveSelectionId(projectId, projectFilter, snapshot.projects);
-  const resolvedDeviceId = resolveSelectionId(deviceId, deviceFilter, snapshot.devices);
+  const resolvedDeviceId = resolveSelectionId(deviceId, null, snapshot.devices);
   const project = snapshot.projects.find((item) => item.id === resolvedProjectId);
   const device = snapshot.devices.find((item) => item.id === resolvedDeviceId);
   const [baseBranch, setBaseBranch] = useState(project?.defaultBranch || "main");
@@ -93,6 +121,12 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   useEffect(() => {
     setBaseBranch(project?.defaultBranch || "main");
   }, [resolvedProjectId]);
+
+  useEffect(() => {
+    if (dialog !== "workspace") return;
+    setWorkThreadId(workThreadFilter || activeWorkThreads[0]?.id || "");
+    setProjectId(projectFilter || snapshot.projects[0]?.id || "");
+  }, [dialog, workThreadFilter, projectFilter]);
 
   const updateProject = (value: string): void => {
     setProjectId(value);
@@ -107,25 +141,29 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
         toast.success(`${project?.name} is now available on ${device?.name}`);
         return;
       }
-      await window.desktop.createWorkspace({ projectId: resolvedProjectId, deviceId: resolvedDeviceId, name, baseBranch });
+      await window.desktop.createWorkspace({ workThreadId: resolvedWorkThreadId, projectId: resolvedProjectId, deviceId: resolvedDeviceId, name, baseBranch });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       const fresh = await window.desktop.snapshot();
-      const created = fresh.workspaces.find((item) => item.name === name && item.deviceId === resolvedDeviceId);
+      const created = fresh.workspaces.find((item) => item.name === name && item.deviceId === resolvedDeviceId && item.workThreadId === resolvedWorkThreadId);
       if (created) setActiveWorkspace(created.id);
       toast.success(`Workspace ${name} created`); closeDialog(); setName("");
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   const noProjects = snapshot.projects.length === 0;
+  const noWorkThreads = activeWorkThreads.length === 0;
   return (
-    <Modal open={dialog === "workspace"} title="New workspace" description="Create an isolated Git worktree on a device." busy={busy} submitLabel={!checkout ? (setupMode === "clone" ? "Clone Project" : "Import Existing") : "Create Workspace"} onClose={closeDialog} onSubmit={submit}>
+    <Modal open={dialog === "workspace"} title="New workspace" description="Create an isolated Git worktree inside a work thread." busy={busy} submitDisabled={noProjects || noWorkThreads} submitLabel={!checkout ? (setupMode === "clone" ? "Clone Project" : "Import Existing") : "Create Workspace"} onClose={closeDialog} onSubmit={submit}>
       {noProjects ? <div className="empty-dialog"><GitBranch size={24} /><h3>Add a project first</h3><p>Import a repository before creating a workspace.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("project")}><Plus size={14} /> Add Project</button></div> : <>
-        <div className="form-grid two"><Field label="Project"><select value={resolvedProjectId} onChange={(e) => updateProject(e.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={resolvedDeviceId} onChange={(e) => setDeviceId(e.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
-        {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up a base checkout before creating a workspace.</span></div></div><div className="segmented"><button type="button" className={setupMode === "clone" ? "active" : ""} onClick={() => setSetupMode("clone")}>Clone project</button><button type="button" className={setupMode === "import" ? "active" : ""} onClick={() => setSetupMode("import")}>Import existing</button></div><Field label={setupMode === "clone" ? "Parent directory" : "Repository directory"}><DirectoryField value={setupPath} onChange={setSetupPath} remote={device?.type === "remote"} placeholder={device?.type === "remote" ? "/data/allen" : "/Users/you/code"} /></Field></div> : <><Field label="Name" hint={`Creates branch work/${name || "workspace-name"}`}><input value={name} onChange={(e) => setName(e.target.value)} placeholder="nvfp4-kernel" pattern="[a-zA-Z0-9._-]+" required /></Field><Field label="Base branch"><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" required /></Field></>}
+        {noWorkThreads ? <div className="empty-dialog"><MessagesSquare size={24} /><h3>Create a work thread first</h3><p>Every workspace belongs to one active work thread.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("workThread")}><Plus size={14} /> New Work Thread</button></div> : <>
+          <Field label="Work Thread"><select value={resolvedWorkThreadId} onChange={(event) => setWorkThreadId(event.target.value)} required>{activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+          <div className="form-grid two"><Field label="Project"><select value={resolvedProjectId} onChange={(e) => updateProject(e.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={resolvedDeviceId} onChange={(e) => setDeviceId(e.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
+          {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up a base checkout before creating a workspace.</span></div></div><div className="segmented"><button type="button" className={setupMode === "clone" ? "active" : ""} onClick={() => setSetupMode("clone")}>Clone project</button><button type="button" className={setupMode === "import" ? "active" : ""} onClick={() => setSetupMode("import")}>Import existing</button></div><Field label={setupMode === "clone" ? "Parent directory" : "Repository directory"}><DirectoryField value={setupPath} onChange={setSetupPath} remote={device?.type === "remote"} placeholder={device?.type === "remote" ? "/data/allen" : "/Users/you/code"} /></Field></div> : <><Field label="Name" hint={`Creates branch work/${name || "workspace-name"}`}><input value={name} onChange={(e) => setName(e.target.value)} placeholder="nvfp4-kernel" pattern="[a-zA-Z0-9._-]+" required /></Field><Field label="Base branch"><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" required /></Field></>}
+        </>}
       </>}
     </Modal>
   );
 }
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  return <><AddProjectDialog snapshot={snapshot} /><AddDeviceDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
+  return <><AddProjectDialog snapshot={snapshot} /><AddDeviceDialog /><NewWorkThreadDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
 }

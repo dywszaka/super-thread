@@ -7,6 +7,7 @@ interface ModalProps {
   title: string;
   description?: string;
   busy?: boolean;
+  submitDisabled?: boolean;
   submitLabel?: string;
   onClose(): void;
   onSubmit?(event: FormEvent<HTMLFormElement>): void;
@@ -14,7 +15,7 @@ interface ModalProps {
   footer?: ReactNode;
 }
 
-export function Modal({ open, title, description, busy, submitLabel = "Create", onClose, onSubmit, children, footer }: ModalProps): ReactNode {
+export function Modal({ open, title, description, busy, submitDisabled, submitLabel = "Create", onClose, onSubmit, children, footer }: ModalProps): ReactNode {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !busy) onClose(); }}>
       <Dialog.Portal>
@@ -27,7 +28,7 @@ export function Modal({ open, title, description, busy, submitLabel = "Create", 
             </div>
             <div className="dialog-body">{children}</div>
             <div className="dialog-footer">
-              {footer ?? <><button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy}>{busy ? "Working…" : submitLabel}</button></>}
+              {footer ?? <><button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy || submitDisabled}>{busy ? "Working…" : submitLabel}</button></>}
             </div>
           </form>
         </Dialog.Content>

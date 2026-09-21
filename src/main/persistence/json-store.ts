@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AppSnapshot } from "../../shared/domain";
-import { emptySnapshot } from "../../shared/domain";
+import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../../shared/domain";
 
 export class JsonStore {
   private data: AppSnapshot = emptySnapshot();
@@ -10,7 +10,13 @@ export class JsonStore {
 
   async load(): Promise<AppSnapshot> {
     try {
-      this.data = JSON.parse(await readFile(this.filePath, "utf8")) as AppSnapshot;
+      const stored = JSON.parse(await readFile(this.filePath, "utf8")) as Partial<AppSnapshot>;
+      if (stored.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+        this.data = emptySnapshot();
+        await this.save(this.data);
+      } else {
+        this.data = stored as AppSnapshot;
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       await this.save(this.data);
