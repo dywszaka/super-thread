@@ -1,0 +1,56 @@
+{
+  "name": "super-thread",
+  "version": "0.1.0",
+  "private": true,
+  "author": "SuperThread",
+  "description": "A macOS-native workspace and persistent terminal manager",
+  "main": "out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "tsc --noEmit && electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "tsx --test tests/**/*.test.ts",
+    "lint": "tsc --noEmit",
+    "pack": "npm run build && electron-builder --dir"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@tanstack/react-query": "^5.90.2",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "lucide-react": "^0.468.0",
+    "node-pty": "^1.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^2.0.7",
+    "zod": "^3.24.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.3.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  },
+  "build": {
+    "appId": "com.superthread.desktop",
+    "productName": "SuperThread",
+    "files": ["out/**/*", "package.json"],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": "dir"
+    },
+    "asarUnpack": ["node_modules/node-pty/**/*"]
+  }
+}

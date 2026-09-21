@@ -1,0 +1,37 @@
+import { contextBridge, ipcRenderer } from "electron";
+import { channels, type DesktopBridge, type MenuAction } from "../shared/contract";
+import type { TerminalOutput } from "../shared/domain";
+
+const bridge: DesktopBridge = {
+  platform: process.platform,
+  snapshot: () => ipcRenderer.invoke(channels.snapshot),
+  selectDirectory: () => ipcRenderer.invoke(channels.selectDirectory),
+  addDevice: (input) => ipcRenderer.invoke(channels.addDevice, input),
+  pingDevices: () => ipcRenderer.invoke(channels.pingDevices),
+  addProject: (input) => ipcRenderer.invoke(channels.addProject, input),
+  setupProject: (input) => ipcRenderer.invoke(channels.setupProject, input),
+  createWorkspace: (input) => ipcRenderer.invoke(channels.createWorkspace, input),
+  deleteWorkspace: (id, force) => ipcRenderer.invoke(channels.deleteWorkspace, id, force),
+  createSession: (input) => ipcRenderer.invoke(channels.createSession, input),
+  attachSession: (id) => ipcRenderer.invoke(channels.attachSession, id),
+  writeSession: (id, data) => ipcRenderer.send(channels.writeSession, id, data),
+  resizeSession: (id, cols, rows) => ipcRenderer.send(channels.resizeSession, id, cols, rows),
+  killSession: (id) => ipcRenderer.invoke(channels.killSession, id),
+  onTerminalOutput: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, output: TerminalOutput): void => listener(output);
+    ipcRenderer.on(channels.terminalOutput, wrapped);
+    return () => ipcRenderer.removeListener(channels.terminalOutput, wrapped);
+  },
+  onDataChanged: (listener) => {
+    const wrapped = (): void => listener();
+    ipcRenderer.on(channels.dataChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.dataChanged, wrapped);
+  },
+  onMenuAction: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, action: MenuAction): void => listener(action);
+    ipcRenderer.on(channels.menuAction, wrapped);
+    return () => ipcRenderer.removeListener(channels.menuAction, wrapped);
+  }
+};
+
+contextBridge.exposeInMainWorld("desktop", bridge);
