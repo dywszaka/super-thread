@@ -1168,7 +1168,7 @@ interface DeviceConnection {
 }
 ```
 
-每个 Remote Device 可以配置多个 SSH tunnel。`local-to-remote` 在本机 loopback 地址监听，转发到从远程机器可访问的目标；`remote-to-local` 在远程 loopback 地址监听，反向转发到从本机可访问的目标。默认不暴露到局域网或公网。
+每个 Remote Device 可以配置多个 SSH tunnel。方向表示“服务所在位置 → 映射后的监听位置”：`remote-to-local` 使用 SSH `-L`，在本机 loopback 地址监听并访问远程服务；`local-to-remote` 使用 SSH `-R`，在远程 loopback 地址监听并访问本机服务。例如 `Remote 8082 → Local 8082` 会让远程服务可通过本机 `localhost:8082` 访问。默认不暴露到局域网或公网。
 
 Tunnel 配置属于持久连接配置，但 SSH tunnel 进程、PID、重试次数和连接状态都属于 runtime state。Desktop Runtime 使用 `ssh -N`、keepalive 与 `ExitOnForwardFailure` 维护每个 Device 的 tunnel 进程；断网或 SSH 退出后按指数退避自动重连，macOS 从睡眠恢复时立即重建连接，应用退出时终止 tunnel 进程。
 

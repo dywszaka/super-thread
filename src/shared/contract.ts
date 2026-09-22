@@ -55,12 +55,12 @@ export const addRemoteDeviceSchema = z.object({
 }).superRefine((input, context) => {
   const bindings = new Set<string>();
   input.tunnels?.forEach((tunnel, index) => {
-    const binding = `${tunnel.direction}:${tunnel.sourcePort}`;
+    const binding = `${tunnel.direction}:${tunnel.destinationPort}`;
     if (bindings.has(binding)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Tunnel source ports must be unique within each direction",
-        path: ["tunnels", index, "sourcePort"]
+        message: "Tunnel listening ports must be unique within each direction",
+        path: ["tunnels", index, "destinationPort"]
       });
     }
     bindings.add(binding);
