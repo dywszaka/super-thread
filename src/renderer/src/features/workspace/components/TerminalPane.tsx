@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import type { AppSnapshot, Session, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 
-function TerminalView({ session }: { session: Session }): React.ReactNode {
+function TerminalView({ session, resuming, onResume }: { session: Session; resuming: boolean; onResume: () => void }): React.ReactNode {
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!container.current || session.status !== "running") return;
@@ -24,7 +24,7 @@ function TerminalView({ session }: { session: Session }): React.ReactNode {
     void window.desktop.attachSession(session.id);
     return () => { observer.disconnect(); unsubscribe(); input.dispose(); terminal.dispose(); };
   }, [session.id, session.status]);
-  if (session.status === "exited") return <div className="terminal-exited"><TerminalSquare size={28} /><h3>Session exited</h3><p>The workspace is intact. Start another terminal to continue.</p></div>;
+  if (session.status === "exited") return <div className="terminal-exited"><TerminalSquare size={28} /><h3>Session exited</h3><p>The workspace is intact. Resume this session to continue.</p><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button></div>;
   return <div ref={container} className="terminal-host selectable" />;
 }
 
@@ -32,6 +32,7 @@ export function TerminalPane({ snapshot, workspace }: { snapshot: AppSnapshot; w
   const { activeSessionId, setActiveSession } = useWorkbenchStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
+  const [resumingId, setResumingId] = useState<string | null>(null);
   const sessions = useMemo(() => snapshot.sessions.filter((item) => item.workspaceId === workspace.id), [snapshot.sessions, workspace.id]);
   const active = sessions.find((item) => item.id === activeSessionId) ?? sessions.find((item) => item.status === "running") ?? sessions[0];
   useEffect(() => {
@@ -45,6 +46,12 @@ export function TerminalPane({ snapshot, workspace }: { snapshot: AppSnapshot; w
   const close = async (sessionId: string): Promise<void> => {
     try { await window.desktop.killSession(sessionId); }
     catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  };
+  const resume = async (sessionId: string): Promise<void> => {
+    setResumingId(sessionId);
+    try { await window.desktop.resumeSession(sessionId); }
+    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+    finally { setResumingId(null); }
   };
   const beginRename = (session: Session): void => {
     setEditingId(session.id);
@@ -63,8 +70,8 @@ export function TerminalPane({ snapshot, workspace }: { snapshot: AppSnapshot; w
         <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} className={`terminal-tab ${active?.id === session.id ? "active" : ""}`} onClick={() => setActiveSession(session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(session.id); }}><TerminalSquare size={13} />{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}</div>
         <button className="icon-button terminal-add" onClick={() => void create()} title="New terminal"><Plus size={15} /></button>
       </div>
-      <div className="terminal-stage">{active ? <TerminalView key={active.id} session={active} /> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><button className="button primary" onClick={() => void create()}><Plus size={14} /> New Terminal</button></div>}</div>
-      <div className="terminal-status"><span><i className={active?.status === "running" ? "online" : "offline"} /> {active?.status ?? "no session"}</span><span>{active?.shell}</span><button title="Reconnect" onClick={() => active && window.desktop.attachSession(active.id)}><RotateCcw size={11} /></button></div>
+      <div className="terminal-stage">{active ? <TerminalView key={active.id} session={active} resuming={resumingId === active.id} onResume={() => void resume(active.id)} /> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><button className="button primary" onClick={() => void create()}><Plus size={14} /> New Terminal</button></div>}</div>
+      <div className="terminal-status"><span><i className={active?.status === "running" ? "online" : "offline"} /> {active?.status ?? "no session"}</span><span>{active?.shell}</span>{active?.status === "running" && <button title="Replay terminal output" onClick={() => window.desktop.attachSession(active.id)}><RotateCcw size={11} /></button>}</div>
     </section>
   );
 }

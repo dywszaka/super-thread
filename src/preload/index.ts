@@ -20,6 +20,7 @@ const bridge: DesktopBridge = {
   createWorkspace: (input) => ipcRenderer.invoke(channels.createWorkspace, input),
   deleteWorkspace: (id, force) => ipcRenderer.invoke(channels.deleteWorkspace, id, force),
   createSession: (input) => ipcRenderer.invoke(channels.createSession, input),
+  resumeSession: (id) => ipcRenderer.invoke(channels.resumeSession, id),
   attachSession: (id) => ipcRenderer.invoke(channels.attachSession, id),
   writeSession: (id, data) => ipcRenderer.send(channels.writeSession, id, data),
   resizeSession: (id, cols, rows) => ipcRenderer.send(channels.resizeSession, id, cols, rows),

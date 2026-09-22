@@ -405,6 +405,26 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
+  async resumeSession(sessionId: string): Promise<void> {
+    const snapshot = this.snapshot();
+    const session = snapshot.sessions.find((item) => item.id === sessionId);
+    if (!session) throw new Error("Terminal session not found");
+    if (session.status !== "exited") throw new Error("Only an exited terminal session can be resumed");
+    if (this.terminals.has(session.id)) throw new Error("Terminal session is already running");
+    const workspace = this.workspace(snapshot, session.workspaceId);
+    if (workspace.status !== "ready") throw new Error("Workspace is not ready");
+    const device = this.device(snapshot, workspace.deviceId);
+    const connection = this.connection(snapshot, device.id);
+    const pid = this.terminals.create(session, workspace, device, connection);
+    await this.store.update((draft) => {
+      const current = draft.sessions.find((item) => item.id === sessionId);
+      if (!current) throw new Error("Terminal session not found");
+      Object.assign(current, { status: "running", pid });
+      delete current.exitedAt;
+    });
+    this.changed();
+  }
+
   attachSession(id: string): void { this.terminals.attach(id); }
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }

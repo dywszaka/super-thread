@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
+import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
+import type { Session } from "../src/shared/domain";
 
-async function setup(gitRuntime?: WorkspaceGitRuntime): Promise<{ service: WorkspaceService; store: JsonStore }> {
+async function setup(gitRuntime?: WorkspaceGitRuntime, terminals?: TerminalRuntime): Promise<{ service: WorkspaceService; store: JsonStore }> {
   const directory = await mkdtemp(join(tmpdir(), "superthread-work-thread-"));
   const store = new JsonStore(join(directory, "state.json"));
-  const service = new WorkspaceService(store, undefined, gitRuntime ? () => gitRuntime : undefined);
+  const service = new WorkspaceService(store, terminals, gitRuntime ? () => gitRuntime : undefined);
   await service.initialize();
   return { service, store };
 }
@@ -197,4 +200,36 @@ test("terminal close removes the persisted session and rename persists", async (
   await service.killSession("session-3");
 
   assert.deepEqual(service.snapshot().sessions.map((item) => [item.id, item.name]), [["session-2", "logs"]]);
+});
+
+test("resuming an exited session restarts it in place", async () => {
+  const created: Session[] = [];
+  const terminals = new EventEmitter() as TerminalRuntime;
+  Object.assign(terminals, {
+    has: () => false,
+    create: (session: Session) => { created.push(session); return 987; },
+    attach: () => {}, write: () => {}, resize: () => {}, kill: () => {}
+  });
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+    draft.sessions.push({ id: "session-1", workspaceId: "workspace-1", name: "logs", status: "exited", shell: "/bin/zsh", exitedAt: "then", createdAt: "now" });
+  });
+
+  await service.resumeSession("session-1");
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0]?.id, "session-1");
+  assert.equal(created[0]?.name, "logs");
+  assert.deepEqual(service.snapshot().sessions[0], {
+    id: "session-1", workspaceId: "workspace-1", name: "logs", status: "running", shell: "/bin/zsh", pid: 987, createdAt: "now"
+  });
+  await assert.rejects(() => service.resumeSession("session-1"), /Only an exited terminal session/);
 });

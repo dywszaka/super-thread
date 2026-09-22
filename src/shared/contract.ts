@@ -31,6 +31,7 @@ export const channels = {
   createWorkspace: "workspace:create",
   deleteWorkspace: "workspace:delete",
   createSession: "session:create",
+  resumeSession: "session:resume",
   attachSession: "session:attach",
   writeSession: "session:write",
   resizeSession: "session:resize",
@@ -153,6 +154,7 @@ export interface DesktopBridge {
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   createSession(input: CreateSessionInput): Promise<void>;
+  resumeSession(id: string): Promise<void>;
   attachSession(id: string): Promise<void>;
   writeSession(id: string, data: string): void;
   resizeSession(id: string, cols: number, rows: number): void;

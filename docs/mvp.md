@@ -844,6 +844,8 @@ MVP 暂时不要求：
 
 用户主动关闭 Terminal tab 时，Runtime 只关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录；这不主动终止独立运行的 tmux server 或 tmux 中的其他窗口。Terminal 名称可以重命名，窗口重开或数据刷新后保留。
 
+Session 进入 `exited` 状态后，Terminal 页面中央提供 Resume 操作。Resume 保留原 Session 的 id、名称与标签页，在所属 Workspace 路径中重新启动 PTY，并将 Session 状态更新为 `running`；它不承诺恢复已经退出的 shell 进程内存或历史终端缓冲。
+
 ---
 
 # 17. Main UI
