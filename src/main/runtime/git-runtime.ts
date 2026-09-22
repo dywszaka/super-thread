@@ -43,7 +43,6 @@ export class GitRuntime {
   }
 
   async inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk> {
-    await this.git(checkoutPath, ["fetch", "--prune"], 10 * 60_000);
     const [status, count] = await Promise.all([
       this.git(workspacePath, ["status", "--porcelain"]),
       this.git(checkoutPath, ["rev-list", "--count", `${baseBranch}..${branch}`])

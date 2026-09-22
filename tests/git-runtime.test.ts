@@ -58,6 +58,7 @@ test("GitRuntime reports workspace deletion risk and removes worktree plus branc
   await runtime.deleteWorktree("/code/demo", "/work/demo", "work/feature-x", true);
 
   assert.deepEqual(risk, { hasUncommittedChanges: true, hasUntrackedFiles: true, unmergedCommitCount: 2 });
+  assert.equal(runner.calls.some((call) => call.args.includes("fetch")), false);
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("worktree remove --force /work/demo")));
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("branch -D work/feature-x")));
 });

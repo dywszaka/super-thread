@@ -98,6 +98,59 @@ test("deleting the final workspace leaves its WorkThread intact", async () => {
   assert.equal(service.snapshot().workThreads[0]?.id, threadId);
 });
 
+test("failed workspace creation removes the pending workspace record", async () => {
+  const fakeGit: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    createWorktree: async () => { throw new Error("worktree creation failed"); },
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
+    deleteWorktree: async () => {}
+  };
+  const { service, store } = await setup(fakeGit);
+  await service.createWorkThread({ name: "Failed creation" });
+  const threadId = service.snapshot().workThreads[0]?.id;
+  assert.ok(threadId);
+  await store.update((draft) => {
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+  });
+
+  await assert.rejects(
+    () => service.createWorkspace({ workThreadId: threadId, projectId: "project-1", deviceId: "dev_local", name: "broken", baseBranch: "main" }),
+    /worktree creation failed/
+  );
+
+  assert.deepEqual(service.snapshot().workspaces, []);
+  assert.deepEqual(service.snapshot().sessions, []);
+});
+
+test("deleting a legacy failed workspace only removes its metadata", async () => {
+  let gitCalled = false;
+  const fakeGit: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    createWorktree: async () => ({ path: "", branch: "" }),
+    inspectWorkspaceDeleteRisk: async () => { gitCalled = true; throw new Error("Git should not be called"); },
+    deleteWorktree: async () => { gitCalled = true; }
+  };
+  const { service, store } = await setup(fakeGit);
+  await service.createWorkThread({ name: "Legacy failure" });
+  const threadId = service.snapshot().workThreads[0]?.id;
+  assert.ok(threadId);
+  await store.update((draft) => {
+    draft.workspaces.push({
+      id: "workspace-error", name: "broken", workThreadId: threadId, projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "", branch: "work/broken", baseBranch: "main", status: "error",
+      error: "Permission denied (publickey)", createdAt: "now", updatedAt: "now"
+    });
+  });
+
+  await service.deleteWorkspace("workspace-error");
+
+  assert.equal(gitCalled, false);
+  assert.deepEqual(service.snapshot().workspaces, []);
+});
+
 test("deleting a workspace blocks dirty or unmerged work until force is confirmed", async () => {
   const deleted: Array<{ branch: string; force: boolean }> = [];
   const fakeGit: WorkspaceGitRuntime = {

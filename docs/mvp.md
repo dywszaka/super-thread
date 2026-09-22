@@ -649,9 +649,11 @@ creating
 ```text
 creating
    │
-   ▼
- error
+   ▼ rollback metadata
+ not created
 ```
+
+创建 Git worktree 失败时，不保留一个可见的 Workspace 记录。旧版本遗留且没有 worktree path 的 `error` Workspace 可以直接删除 metadata，不执行 Git 命令。
 
 不引入：
 
@@ -670,7 +672,7 @@ Done
 
 删除 Workspace：
 
-1. 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交
+1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）
 2. 停止所有 Session
 3. 删除 Git Worktree
 4. 删除对应 Branch

@@ -312,19 +312,35 @@ export class WorkspaceService extends EventEmitter {
       if (thread) thread.updatedAt = timestamp;
     });
     this.changed();
+    const runtime = this.git(snapshot, device);
+    let created: { path: string; branch: string };
     try {
-      const created = await this.git(snapshot, device).createWorktree(checkout.path, project.name, input.name, input.baseBranch);
+      created = await runtime.createWorktree(checkout.path, project.name, input.name, input.baseBranch);
+    } catch (error) {
+      await this.removeWorkspaceMetadata(workspaceId, workThread.id);
+      throw error;
+    }
+    try {
       await this.store.update((draft) => {
         const workspace = draft.workspaces.find((item) => item.id === workspaceId);
         if (workspace) Object.assign(workspace, created, { status: "ready", updatedAt: now(), error: undefined });
       });
       await this.createSession({ workspaceId, name: "Terminal 1" });
     } catch (error) {
-      await this.store.update((draft) => {
-        const workspace = draft.workspaces.find((item) => item.id === workspaceId);
-        if (workspace) Object.assign(workspace, { status: "error", error: this.message(error), updatedAt: now() });
-      });
-      this.changed();
+      try {
+        await runtime.deleteWorktree(checkout.path, created.path, created.branch, true);
+        await this.removeWorkspaceMetadata(workspaceId, workThread.id);
+      } catch (rollbackError) {
+        await this.store.update((draft) => {
+          const workspace = draft.workspaces.find((item) => item.id === workspaceId);
+          if (workspace) Object.assign(workspace, created, {
+            status: "error",
+            error: `${this.message(error)}. Automatic worktree rollback failed: ${this.message(rollbackError)}`,
+            updatedAt: now()
+          });
+        });
+        this.changed();
+      }
       throw error;
     }
   }
@@ -332,6 +348,13 @@ export class WorkspaceService extends EventEmitter {
   async deleteWorkspace(workspaceId: string, force = false): Promise<void> {
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, workspaceId);
+    if (workspace.status === "error" && !workspace.path) {
+      for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
+        this.terminals.kill(session.id);
+      }
+      await this.removeWorkspaceMetadata(workspaceId, workspace.workThreadId);
+      return;
+    }
     const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
     if (!checkout) throw new Error("Base checkout no longer exists");
     const device = this.device(snapshot, workspace.deviceId);
@@ -351,6 +374,16 @@ export class WorkspaceService extends EventEmitter {
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
       const thread = draft.workThreads.find((item) => item.id === workspace.workThreadId);
+      if (thread) thread.updatedAt = now();
+    });
+    this.changed();
+  }
+
+  private async removeWorkspaceMetadata(workspaceId: string, workThreadId: string): Promise<void> {
+    await this.store.update((draft) => {
+      draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
+      draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
+      const thread = draft.workThreads.find((item) => item.id === workThreadId);
       if (thread) thread.updatedAt = now();
     });
     this.changed();
