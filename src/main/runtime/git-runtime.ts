@@ -38,7 +38,6 @@ export class GitRuntime {
     const workspacePath = this.device.type === "remote" ? posix.join(parent, workspaceName) : join(parent, workspaceName);
     const branch = `work/${workspaceName}`;
     await this.runner.run("mkdir", ["-p", parent]);
-    await this.git(checkoutPath, ["fetch", "--prune"], 10 * 60_000);
     await this.git(checkoutPath, ["worktree", "add", "-b", branch, workspacePath, baseBranch], 10 * 60_000);
     return { path: workspacePath, branch };
   }

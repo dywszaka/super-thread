@@ -595,13 +595,13 @@ Project not setup on dev-cuda
 Runtime 执行：
 
 ```bash
-git -C /data/allen/llama.cpp fetch
-
 git -C /data/allen/llama.cpp worktree add \
   -b work/nvfp4-kernel \
   ~/.superthread/workspaces/llama.cpp/nvfp4-kernel \
   master
 ```
+
+Workspace 必须从 Setup/Import 时记录的 base checkout 及其本地已有 ref 创建。创建流程不隐式执行 `fetch`，也不要求 Device 拥有 origin 的网络访问或 SSH 凭据；如果需要最新远端提交，用户应先在 base checkout 中自行同步。`baseBranch` 在该 checkout 中不存在时，创建应直接报告对应的 Git 错误。
 
 得到：
 
