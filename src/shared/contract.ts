@@ -39,16 +39,38 @@ export const channels = {
   menuAction: "menu:action"
 } as const;
 
+export const sshTunnelSchema = z.object({
+  direction: z.enum(["local-to-remote", "remote-to-local"]),
+  sourcePort: z.number().int().min(1).max(65535),
+  destinationHost: z.string().trim().min(1).max(255),
+  destinationPort: z.number().int().min(1).max(65535)
+}).strict();
+
 export const addRemoteDeviceSchema = z.object({
   name: z.string().trim().min(1).max(80),
   host: z.string().trim().min(1).max(255),
   user: z.string().trim().min(1).max(80),
-  port: z.number().int().min(1).max(65535).optional()
+  port: z.number().int().min(1).max(65535).optional(),
+  tunnels: z.array(sshTunnelSchema).max(32).optional()
+}).superRefine((input, context) => {
+  const bindings = new Set<string>();
+  input.tunnels?.forEach((tunnel, index) => {
+    const binding = `${tunnel.direction}:${tunnel.sourcePort}`;
+    if (bindings.has(binding)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tunnel source ports must be unique within each direction",
+        path: ["tunnels", index, "sourcePort"]
+      });
+    }
+    bindings.add(binding);
+  });
 });
 
-export const updateRemoteDeviceSchema = addRemoteDeviceSchema.extend({
-  id: z.string().min(1)
-});
+export const updateRemoteDeviceSchema = z.intersection(
+  addRemoteDeviceSchema,
+  z.object({ id: z.string().min(1) })
+);
 
 export const addProjectSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1) }).strict(),

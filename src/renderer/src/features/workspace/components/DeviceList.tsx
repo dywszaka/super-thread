@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { FolderGit2, Laptop, Pencil, Plus, RefreshCw, Server, TerminalSquare, Trash2 } from "lucide-react";
+import { ArrowRightLeft, FolderGit2, Laptop, Pencil, Plus, RefreshCw, Server, TerminalSquare, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, Device, DeviceConnection } from "@/shared/domain";
+import type { AppSnapshot, Device, DeviceConnection, SshTunnelConfig } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
+import { SshTunnelFields } from "./SshTunnelFields";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -68,7 +69,7 @@ export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.React
                 <div className="device-card-content">
                   <div className="device-card-title"><strong>{device.name}</strong><span className={`device-status ${device.status}`}><i />{device.status}</span>{device.type === "local" && <span className="device-kind">Local</span>}</div>
                   <code>{address}</code>
-                  <div className="device-usage"><span><FolderGit2 size={12} /> {checkouts.length} {checkouts.length === 1 ? "project checkout" : "project checkouts"}</span><span><TerminalSquare size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span></div>
+                  <div className="device-usage"><span><FolderGit2 size={12} /> {checkouts.length} {checkouts.length === 1 ? "project checkout" : "project checkouts"}</span><span><TerminalSquare size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span>{device.type === "remote" && <span><ArrowRightLeft size={12} /> {connection?.config.tunnels?.length ?? 0} {(connection?.config.tunnels?.length ?? 0) === 1 ? "tunnel" : "tunnels"}</span>}</div>
                 </div>
                 <div className="device-card-actions">
                   {device.type === "remote" && <button className="button" disabled={busy} onClick={() => setEditingId(device.id)}><Pencil size={13} /> Edit</button>}
@@ -91,6 +92,7 @@ function EditDeviceDialog({ device, connection, onClose }: { device?: Device; co
   const [host, setHost] = useState("");
   const [user, setUser] = useState("");
   const [port, setPort] = useState("22");
+  const [tunnels, setTunnels] = useState<SshTunnelConfig[]>([]);
 
   useEffect(() => {
     if (!device) return;
@@ -98,14 +100,15 @@ function EditDeviceDialog({ device, connection, onClose }: { device?: Device; co
     setHost(connection?.config.host || "");
     setUser(connection?.config.user || "");
     setPort(String(connection?.config.port || 22));
-  }, [device?.id, connection?.config.host, connection?.config.user, connection?.config.port]);
+    setTunnels(structuredClone(connection?.config.tunnels ?? []));
+  }, [device?.id, connection?.config.host, connection?.config.user, connection?.config.port, connection?.config.tunnels]);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!device) return;
     setBusy(true);
     try {
-      await window.desktop.updateDevice({ id: device.id, name, host, user, port: Number(port) });
+      await window.desktop.updateDevice({ id: device.id, name, host, user, port: Number(port), tunnels });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       toast.success(`${name.trim()} updated`);
       onClose();
@@ -117,6 +120,7 @@ function EditDeviceDialog({ device, connection, onClose }: { device?: Device; co
     <Modal open={Boolean(device)} title="Edit remote device" description="Update the SSH destination used for future device operations." busy={busy} submitLabel="Save Changes" onClose={onClose} onSubmit={submit}>
       <div className="form-grid two"><Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} /></Field><Field label="Host"><input value={host} onChange={(event) => setHost(event.target.value)} required /></Field></div>
       <div className="form-grid two"><Field label="SSH user"><input value={user} onChange={(event) => setUser(event.target.value)} required /></Field><Field label="Port"><input type="number" value={port} onChange={(event) => setPort(event.target.value)} min="1" max="65535" required /></Field></div>
+      <SshTunnelFields value={tunnels} onChange={setTunnels} />
     </Modal>
   );
 }

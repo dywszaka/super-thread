@@ -2,10 +2,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, MessagesSquare, Network, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, DirectoryListing } from "@/shared/domain";
+import type { AppSnapshot, DirectoryListing, SshTunnelConfig } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { resolveSelectionId } from "../selection";
 import { Field, Modal } from "./Modal";
+import { SshTunnelFields } from "./SshTunnelFields";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -63,18 +64,20 @@ export function AddDeviceDialog(): ReactNode {
   const [host, setHost] = useState("");
   const [user, setUser] = useState("");
   const [port, setPort] = useState("22");
+  const [tunnels, setTunnels] = useState<SshTunnelConfig[]>([]);
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
-      await window.desktop.addDevice({ name, host, user, port: Number(port) });
+      await window.desktop.addDevice({ name, host, user, port: Number(port), tunnels });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
-      toast.success(`${name} added`); closeDialog(); setName(""); setHost("");
+      toast.success(`${name} added`); closeDialog(); setName(""); setHost(""); setTunnels([]);
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   return (
     <Modal open={dialog === "device"} title="Add remote device" description="Connect through SSH. SuperThread never stores your password." busy={busy} submitLabel="Add Device" onClose={closeDialog} onSubmit={submit}>
       <div className="form-grid two"><Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="dev-cuda" required /></Field><Field label="Host"><input value={host} onChange={(e) => setHost(e.target.value)} placeholder="dev-cuda.local" required /></Field></div>
       <div className="form-grid two"><Field label="SSH user"><input value={user} onChange={(e) => setUser(e.target.value)} placeholder="allen" required /></Field><Field label="Port"><input type="number" value={port} onChange={(e) => setPort(e.target.value)} min="1" max="65535" required /></Field></div>
+      <SshTunnelFields value={tunnels} onChange={setTunnels} />
       <div className="callout"><Network size={16} /><span>SSH keys and your existing <code>~/.ssh/config</code> are used for authentication.</span></div>
     </Modal>
   );

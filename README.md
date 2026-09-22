@@ -1,6 +1,6 @@
 # SuperThread
 
-SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, creating isolated worktrees, and working in persistent terminal sessions.
+SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, creating isolated worktrees, and working in persistent terminal sessions. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake.
 
 ## Run
 

@@ -1132,6 +1132,10 @@ dev-cuda
 
 SSH User
 allen
+
+SSH Tunnels (optional)
+Local 3000 → Remote 127.0.0.1:3000
+Remote 5432 → Local 127.0.0.1:15432
 ```
 
 底层 transport：
@@ -1154,9 +1158,19 @@ interface DeviceConnection {
     host?: string
     user?: string
     port?: number
+    tunnels?: Array<{
+      direction: "local-to-remote" | "remote-to-local"
+      sourcePort: number
+      destinationHost: string
+      destinationPort: number
+    }>
   }
 }
 ```
+
+每个 Remote Device 可以配置多个 SSH tunnel。`local-to-remote` 在本机 loopback 地址监听，转发到从远程机器可访问的目标；`remote-to-local` 在远程 loopback 地址监听，反向转发到从本机可访问的目标。默认不暴露到局域网或公网。
+
+Tunnel 配置属于持久连接配置，但 SSH tunnel 进程、PID、重试次数和连接状态都属于 runtime state。Desktop Runtime 使用 `ssh -N`、keepalive 与 `ExitOnForwardFailure` 维护每个 Device 的 tunnel 进程；断网或 SSH 退出后按指数退避自动重连，macOS 从睡眠恢复时立即重建连接，应用退出时终止 tunnel 进程。
 
 这样未来：
 
@@ -1286,6 +1300,7 @@ Session PID
 PTY handle
 WebSocket connection
 terminal client connection
+SSH tunnel process / retry state
 ```
 
 例如：
@@ -1396,6 +1411,8 @@ list
 local device
 add SSH device
 online/offline detection
+local and reverse SSH port forwarding
+automatic tunnel reconnect after network loss or system wake
 ```
 
 4. Workspace

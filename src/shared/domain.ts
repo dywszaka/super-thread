@@ -31,10 +31,19 @@ export interface Device {
   createdAt: string;
 }
 
+export type SshTunnelDirection = "local-to-remote" | "remote-to-local";
+
+export interface SshTunnelConfig {
+  direction: SshTunnelDirection;
+  sourcePort: number;
+  destinationHost: string;
+  destinationPort: number;
+}
+
 export interface DeviceConnection {
   deviceId: string;
   transport: "local" | "ssh";
-  config: { host?: string; user?: string; port?: number };
+  config: { host?: string; user?: string; port?: number; tunnels?: SshTunnelConfig[] };
 }
 
 export interface ProjectCheckout {
@@ -115,6 +124,7 @@ export interface AddRemoteDeviceInput {
   host: string;
   user: string;
   port?: number;
+  tunnels?: SshTunnelConfig[];
 }
 
 export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {

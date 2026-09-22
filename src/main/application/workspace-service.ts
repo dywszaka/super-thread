@@ -22,6 +22,7 @@ import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner } from "../runtime/command-runner";
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
+import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
 import { TerminalRuntime } from "../runtime/terminal-runtime";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
@@ -41,6 +42,12 @@ export interface WorkspaceDirectoryRuntime {
   list(path?: string): Promise<DirectoryListing>;
 }
 
+export interface DeviceTunnelRuntime {
+  sync(connections: DeviceConnection[]): void;
+  reconnectAll(): void;
+  stop(): void;
+}
+
 type GitRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceGitRuntime;
 type DirectoryRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceDirectoryRuntime;
 
@@ -49,7 +56,8 @@ export class WorkspaceService extends EventEmitter {
     private readonly store: JsonStore,
     private readonly terminals = new TerminalRuntime(),
     private readonly gitRuntimeFactory: GitRuntimeFactory = (device, connection) => new GitRuntime(device, connection),
-    private readonly directoryRuntimeFactory: DirectoryRuntimeFactory = (device, connection) => new DirectoryRuntime(device, connection)
+    private readonly directoryRuntimeFactory: DirectoryRuntimeFactory = (device, connection) => new DirectoryRuntime(device, connection),
+    private readonly tunnels: DeviceTunnelRuntime = new SshTunnelSupervisor()
   ) {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
@@ -75,6 +83,7 @@ export class WorkspaceService extends EventEmitter {
         }
       }
     });
+    this.tunnels.sync(this.snapshot().connections);
   }
 
   snapshot(): AppSnapshot { return this.store.snapshot(); }
@@ -83,8 +92,18 @@ export class WorkspaceService extends EventEmitter {
     const deviceId = id("dev");
     await this.store.update((draft) => {
       draft.devices.push({ id: deviceId, name: input.name, type: "remote", status: "unknown", createdAt: now() });
-      draft.connections.push({ deviceId, transport: "ssh", config: { host: input.host, user: input.user, port: input.port } });
+      draft.connections.push({
+        deviceId,
+        transport: "ssh",
+        config: {
+          host: input.host,
+          user: input.user,
+          port: input.port,
+          ...(input.tunnels?.length ? { tunnels: input.tunnels } : {})
+        }
+      });
     });
+    this.tunnels.sync(this.snapshot().connections);
     await this.pingDevices();
   }
 
@@ -92,16 +111,23 @@ export class WorkspaceService extends EventEmitter {
     const snapshot = this.snapshot();
     const device = this.device(snapshot, input.id);
     if (device.type === "local") throw new Error("The local device is managed by SuperThread");
-    this.connection(snapshot, input.id);
+    const currentConnection = this.connection(snapshot, input.id);
+    const tunnelConfig = input.tunnels ?? currentConnection.config.tunnels;
     await this.store.update((draft) => {
       const item = draft.devices.find((candidate) => candidate.id === input.id);
       const connection = draft.connections.find((candidate) => candidate.deviceId === input.id);
       if (item) Object.assign(item, { name: input.name, status: "unknown" });
       if (connection) Object.assign(connection, {
         transport: "ssh",
-        config: { host: input.host, user: input.user, port: input.port }
+        config: {
+          host: input.host,
+          user: input.user,
+          port: input.port,
+          ...(tunnelConfig !== undefined ? { tunnels: tunnelConfig } : {})
+        }
       });
     });
+    this.tunnels.sync(this.snapshot().connections);
     this.changed();
   }
 
@@ -116,6 +142,7 @@ export class WorkspaceService extends EventEmitter {
       draft.connections = draft.connections.filter((connection) => connection.deviceId !== deviceId);
       draft.devices = draft.devices.filter((item) => item.id !== deviceId);
     });
+    this.tunnels.sync(this.snapshot().connections);
     this.changed();
   }
 
@@ -321,6 +348,8 @@ export class WorkspaceService extends EventEmitter {
   attachSession(id: string): void { this.terminals.attach(id); }
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }
+  reconnectTunnels(): void { this.tunnels.reconnectAll(); }
+  shutdown(): void { this.tunnels.stop(); }
   async killSession(id: string): Promise<void> {
     if (this.terminals.has(id)) this.terminals.kill(id);
     else await this.markSessionExited(id);

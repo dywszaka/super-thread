@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, powerMonitor } from "electron";
 import { join } from "node:path";
 import { WorkspaceService } from "./application/workspace-service";
 import { registerIpcHandlers } from "./ipc/register-handlers";
@@ -13,6 +13,8 @@ app.whenReady().then(async () => {
   const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")));
   await service.initialize();
   registerIpcHandlers(service);
+  powerMonitor.on("resume", () => service.reconnectTunnels());
+  app.once("will-quit", () => service.shutdown());
 
   const openWindow = (): BrowserWindow => {
     mainWindow = createMainWindow();

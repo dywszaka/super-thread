@@ -9,7 +9,11 @@ import { JsonStore } from "../src/main/persistence/json-store";
 async function setup(): Promise<{ service: WorkspaceService; store: JsonStore }> {
   const directory = await mkdtemp(join(tmpdir(), "superthread-device-"));
   const store = new JsonStore(join(directory, "state.json"));
-  const service = new WorkspaceService(store);
+  const service = new WorkspaceService(store, undefined, undefined, undefined, {
+    sync: () => undefined,
+    reconnectAll: () => undefined,
+    stop: () => undefined
+  });
   await service.initialize();
   await store.update((draft) => {
     draft.devices.push({ id: "dev_remote", name: "Old host", type: "remote", status: "online", createdAt: "now" });
@@ -30,6 +34,19 @@ test("remote device connection settings can be updated", async () => {
   assert.deepEqual(snapshot.connections.find((connection) => connection.deviceId === "dev_remote")?.config, {
     host: "gpu.example", user: "builder", port: 2202
   });
+});
+
+test("remote device tunnel settings are persisted", async () => {
+  const { service } = await setup();
+  const tunnels = [
+    { direction: "local-to-remote" as const, sourcePort: 3000, destinationHost: "127.0.0.1", destinationPort: 3000 },
+    { direction: "remote-to-local" as const, sourcePort: 5432, destinationHost: "127.0.0.1", destinationPort: 15432 }
+  ];
+
+  await service.updateDevice({ id: "dev_remote", name: "GPU host", host: "gpu.example", user: "builder", port: 2202, tunnels });
+
+  assert.deepEqual(service.snapshot().connections.find((connection) => connection.deviceId === "dev_remote")?.config.tunnels, tunnels);
+  service.shutdown();
 });
 
 test("local devices cannot be edited or deleted", async () => {
