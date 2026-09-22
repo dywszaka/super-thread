@@ -3,9 +3,11 @@ import type {
   AddProjectInput,
   AddRemoteDeviceInput,
   AppSnapshot,
+  BrowseDirectoryInput,
   CreateSessionInput,
   CreateWorkThreadInput,
   CreateWorkspaceInput,
+  DirectoryListing,
   SetupProjectInput,
   TerminalOutput,
   UpdateRemoteDeviceInput
@@ -14,6 +16,7 @@ import type {
 export const channels = {
   snapshot: "app:snapshot",
   selectDirectory: "dialog:select-directory",
+  browseDirectory: "directory:browse",
   addDevice: "device:add",
   updateDevice: "device:update",
   deleteDevice: "device:delete",
@@ -48,22 +51,33 @@ export const updateRemoteDeviceSchema = addRemoteDeviceSchema.extend({
 });
 
 export const addProjectSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("import"), path: z.string().trim().min(1) }),
+  z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1) }).strict(),
   z.object({
     mode: z.literal("clone"),
     repositoryUrl: z.string().trim().min(1),
-    deviceId: z.string().min(1),
     parentDirectory: z.string().trim().min(1)
-  })
+  }).strict()
 ]);
 
-export const setupProjectSchema = z.object({
-  projectId: z.string().min(1),
+export const setupProjectSchema = z.discriminatedUnion("mode", [
+  z.object({
+    projectId: z.string().min(1),
+    deviceId: z.string().min(1),
+    mode: z.literal("import"),
+    path: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    projectId: z.string().min(1),
+    deviceId: z.string().min(1),
+    mode: z.literal("clone"),
+    parentDirectory: z.string().trim().min(1)
+  }).strict()
+]);
+
+export const browseDirectorySchema = z.object({
   deviceId: z.string().min(1),
-  mode: z.enum(["import", "clone"]),
-  path: z.string().trim().optional(),
-  parentDirectory: z.string().trim().optional()
-});
+  path: z.string().trim().optional()
+}).strict();
 
 export const createWorkThreadSchema = z.object({
   name: z.string().trim().min(1).max(80)
@@ -88,6 +102,7 @@ export interface DesktopBridge {
   platform: NodeJS.Platform;
   snapshot(): Promise<AppSnapshot>;
   selectDirectory(): Promise<string | null>;
+  browseDirectory(input: BrowseDirectoryInput): Promise<DirectoryListing>;
   addDevice(input: AddRemoteDeviceInput): Promise<void>;
   updateDevice(input: UpdateRemoteDeviceInput): Promise<void>;
   deleteDevice(id: string): Promise<void>;

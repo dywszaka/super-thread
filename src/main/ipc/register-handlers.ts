@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   addProjectSchema,
   addRemoteDeviceSchema,
+  browseDirectorySchema,
   channels,
   createSessionSchema,
   createWorkThreadSchema,
@@ -23,6 +24,7 @@ export function registerIpcHandlers(service: WorkspaceService): void {
       : await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
+  ipcMain.handle(channels.browseDirectory, (_event, input) => service.browseDirectory(browseDirectorySchema.parse(input)));
   ipcMain.handle(channels.addDevice, (_event, input) => service.addDevice(addRemoteDeviceSchema.parse(input)));
   ipcMain.handle(channels.updateDevice, (_event, input) => service.updateDevice(updateRemoteDeviceSchema.parse(input)));
   ipcMain.handle(channels.deleteDevice, (_event, id) => service.deleteDevice(sessionIdSchema.parse(id)));

@@ -5,11 +5,13 @@ import type {
   AddProjectInput,
   AddRemoteDeviceInput,
   AppSnapshot,
+  BrowseDirectoryInput,
   CreateSessionInput,
   CreateWorkThreadInput,
   CreateWorkspaceInput,
   Device,
   DeviceConnection,
+  DirectoryListing,
   Project,
   SetupProjectInput,
   UpdateRemoteDeviceInput,
@@ -18,6 +20,7 @@ import type {
 } from "../../shared/domain";
 import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner } from "../runtime/command-runner";
+import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { TerminalRuntime } from "../runtime/terminal-runtime";
 
@@ -34,13 +37,19 @@ export interface WorkspaceGitRuntime {
   deleteWorktree(checkoutPath: string, workspacePath: string, force: boolean): Promise<void>;
 }
 
+export interface WorkspaceDirectoryRuntime {
+  list(path?: string): Promise<DirectoryListing>;
+}
+
 type GitRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceGitRuntime;
+type DirectoryRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceDirectoryRuntime;
 
 export class WorkspaceService extends EventEmitter {
   constructor(
     private readonly store: JsonStore,
     private readonly terminals = new TerminalRuntime(),
-    private readonly gitRuntimeFactory: GitRuntimeFactory = (device, connection) => new GitRuntime(device, connection)
+    private readonly gitRuntimeFactory: GitRuntimeFactory = (device, connection) => new GitRuntime(device, connection),
+    private readonly directoryRuntimeFactory: DirectoryRuntimeFactory = (device, connection) => new DirectoryRuntime(device, connection)
   ) {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
@@ -128,17 +137,25 @@ export class WorkspaceService extends EventEmitter {
     return result;
   }
 
+  async browseDirectory(input: BrowseDirectoryInput): Promise<DirectoryListing> {
+    const snapshot = this.snapshot();
+    const device = this.device(snapshot, input.deviceId);
+    try {
+      return await this.directory(snapshot, device).list(input.path);
+    } catch (error) {
+      throw new Error(`Unable to list directories on ${device.name}: ${this.message(error)}`);
+    }
+  }
+
   async addProject(input: AddProjectInput): Promise<void> {
+    const snapshot = this.snapshot();
     if (input.mode === "import") {
-      const snapshot = this.snapshot();
-      const device = snapshot.devices.find((item) => item.type === "local");
-      if (!device) throw new Error("Local device is not available");
+      const device = this.device(snapshot, input.deviceId);
       const info = await this.git(snapshot, device).inspect(input.path);
       await this.recordProjectAndCheckout(info, device.id);
       return;
     }
-    const snapshot = this.snapshot();
-    const device = this.device(snapshot, input.deviceId);
+    const device = this.localDevice(snapshot);
     const info = await this.git(snapshot, device).clone(input.repositoryUrl, input.parentDirectory);
     await this.recordProjectAndCheckout(info, device.id);
   }
@@ -150,10 +167,13 @@ export class WorkspaceService extends EventEmitter {
     if (snapshot.checkouts.some((item) => item.projectId === project.id && item.deviceId === device.id)) {
       throw new Error(`${project.name} is already set up on ${device.name}`);
     }
+    if (input.mode === "clone" && device.type !== "local") {
+      throw new Error("Clone is only available on the local device. Import an existing repository on remote devices.");
+    }
     const runtime = this.git(snapshot, device);
     const info = input.mode === "import"
-      ? await runtime.inspect(input.path || "")
-      : await runtime.clone(project.repositoryUrl, input.parentDirectory || "");
+      ? await runtime.inspect(input.path)
+      : await runtime.clone(project.repositoryUrl, input.parentDirectory);
     if (canonicalRemote(info.remote) !== canonicalRemote(project.repositoryUrl)) {
       throw new Error("The selected repository does not match this project’s origin remote");
     }
@@ -332,6 +352,14 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private git(snapshot: AppSnapshot, device: Device): WorkspaceGitRuntime { return this.gitRuntimeFactory(device, this.connection(snapshot, device.id)); }
+  private directory(snapshot: AppSnapshot, device: Device): WorkspaceDirectoryRuntime {
+    return this.directoryRuntimeFactory(device, this.connection(snapshot, device.id));
+  }
+  private localDevice(snapshot: AppSnapshot): Device {
+    const value = snapshot.devices.find((item) => item.type === "local");
+    if (!value) throw new Error("Local device is not available");
+    return value;
+  }
   private project(snapshot: AppSnapshot, projectId: string): Project {
     const value = snapshot.projects.find((item) => item.id === projectId);
     if (!value) throw new Error("Project not found");

@@ -45,6 +45,18 @@ export interface ProjectCheckout {
   createdAt: string;
 }
 
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+}
+
+export interface DirectoryListing {
+  deviceId: string;
+  path: string;
+  parentPath: string | null;
+  entries: DirectoryEntry[];
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -110,15 +122,16 @@ export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {
 }
 
 export type AddProjectInput =
-  | { mode: "import"; path: string }
-  | { mode: "clone"; repositoryUrl: string; deviceId: string; parentDirectory: string };
+  | { mode: "import"; deviceId: string; path: string }
+  | { mode: "clone"; repositoryUrl: string; parentDirectory: string };
 
-export interface SetupProjectInput {
-  projectId: string;
+export type SetupProjectInput =
+  | { projectId: string; deviceId: string; mode: "import"; path: string }
+  | { projectId: string; deviceId: string; mode: "clone"; parentDirectory: string };
+
+export interface BrowseDirectoryInput {
   deviceId: string;
-  mode: "import" | "clone";
   path?: string;
-  parentDirectory?: string;
 }
 
 export interface CreateWorkspaceInput {

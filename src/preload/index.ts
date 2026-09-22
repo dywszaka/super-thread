@@ -6,6 +6,7 @@ const bridge: DesktopBridge = {
   platform: process.platform,
   snapshot: () => ipcRenderer.invoke(channels.snapshot),
   selectDirectory: () => ipcRenderer.invoke(channels.selectDirectory),
+  browseDirectory: (input) => ipcRenderer.invoke(channels.browseDirectory, input),
   addDevice: (input) => ipcRenderer.invoke(channels.addDevice, input),
   updateDevice: (input) => ipcRenderer.invoke(channels.updateDevice, input),
   deleteDevice: (id) => ipcRenderer.invoke(channels.deleteDevice, id),

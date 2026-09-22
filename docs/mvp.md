@@ -423,17 +423,19 @@ dev3-cuda    Not Setup
 
 ```text
 Setup Project
-→ Device: dev-cuda
-→ Parent Directory: /data/allen
+→ Device: MacBook
+→ Parent Directory: ~/code
 ```
 
 Runtime：
 
 ```bash
-git clone <repository-url> /data/allen/llama.cpp
+git clone <repository-url> ~/code/llama.cpp
 ```
 
 然后创建 ProjectCheckout。
+
+Clone 只允许在 Local Device 执行。Remote Device 不显示 Clone 入口，服务层也必须拒绝远端 clone 请求。
 
 ### Import Existing Repository
 
@@ -447,6 +449,8 @@ git clone <repository-url> /data/allen/llama.cpp
 
 ```text
 Import Existing
+→ Device: dev-cuda
+→ Browse: /data/allen/llama.cpp
 ```
 
 Runtime 验证：
@@ -1050,10 +1054,12 @@ Base Branch
 ```text
 llama.cpp isn't available on dev-cuda.
 
-[Import Existing] [Clone Project]
+[Import Existing]
 ```
 
 完成 Setup 后继续创建 Workspace。
+
+Remote Device 只能 Import Existing。Local Device 可以选择 Import Existing 或 Clone Project。
 
 ---
 
@@ -1069,7 +1075,7 @@ Projects
 MVP 两种方式：
 
 ```text
-Import Local Repository
+Import Existing Repository
 ```
 
 或者：
@@ -1081,6 +1087,7 @@ Git Repository URL
 Import：
 
 ```text
+Device: MacBook or dev-cuda
 /path/to/repo
 ```
 
