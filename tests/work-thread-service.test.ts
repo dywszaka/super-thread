@@ -136,10 +136,12 @@ test("terminal close removes the persisted session and rename persists", async (
   await store.update((draft) => {
     draft.sessions.push({ id: "session-1", workspaceId: "workspace-1", name: "Terminal 1", status: "running", shell: "/bin/zsh", pid: 123, createdAt: "now" });
     draft.sessions.push({ id: "session-2", workspaceId: "workspace-1", name: "Terminal 2", status: "running", shell: "/bin/zsh", pid: 456, createdAt: "now" });
+    draft.sessions.push({ id: "session-3", workspaceId: "workspace-1", name: "Exited", status: "exited", shell: "/bin/zsh", exitedAt: "now", createdAt: "now" });
   });
 
   await service.renameSession({ id: "session-2", name: "logs" });
   await service.killSession("session-1");
+  await service.killSession("session-3");
 
   assert.deepEqual(service.snapshot().sessions.map((item) => [item.id, item.name]), [["session-2", "logs"]]);
 });
