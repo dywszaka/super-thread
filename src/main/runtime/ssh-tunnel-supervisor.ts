@@ -19,10 +19,8 @@ interface TunnelState {
 }
 
 const tunnelArgument = (tunnel: SshTunnelConfig): ["-L" | "-R", string] => {
-  // Direction describes where the service is exposed, not the SSH flag:
-  // remote-to-local exposes a remote service through a local (-L) listener.
-  const flag = tunnel.direction === "remote-to-local" ? "-L" : "-R";
-  return [flag, `127.0.0.1:${tunnel.destinationPort}:${tunnel.destinationHost}:${tunnel.sourcePort}`];
+  const flag = tunnel.direction === "local-to-remote" ? "-L" : "-R";
+  return [flag, `127.0.0.1:${tunnel.sourcePort}:${tunnel.destinationHost}:${tunnel.destinationPort}`];
 };
 
 export function sshTunnelArgs(connection: DeviceConnection): string[] {

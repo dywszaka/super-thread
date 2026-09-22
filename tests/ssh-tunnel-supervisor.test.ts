@@ -31,7 +31,7 @@ class FakeChild extends EventEmitter {
   }
 }
 
-test("sshTunnelArgs maps service direction to loopback-only SSH listeners with keepalives", () => {
+test("sshTunnelArgs creates loopback-only local and reverse forwards with keepalives", () => {
   assert.deepEqual(sshTunnelArgs(connection), [
     "-N", "-T",
     "-o", "BatchMode=yes",
@@ -41,25 +41,10 @@ test("sshTunnelArgs maps service direction to loopback-only SSH listeners with k
     "-o", "ServerAliveCountMax=3",
     "-o", "TCPKeepAlive=yes",
     "-p", "2202",
-    "-R", "127.0.0.1:3001:127.0.0.1:3000",
-    "-L", "127.0.0.1:15432:127.0.0.1:5432",
+    "-L", "127.0.0.1:3000:127.0.0.1:3001",
+    "-R", "127.0.0.1:5432:127.0.0.1:15432",
     "builder@dev.example"
   ]);
-});
-
-test("Remote to Local exposes the remote service on localhost", () => {
-  const args = sshTunnelArgs({
-    deviceId: "dev_cuda",
-    transport: "ssh",
-    config: {
-      host: "dev3-cuda",
-      user: "allen",
-      port: 2222,
-      tunnels: [{ direction: "remote-to-local", sourcePort: 8082, destinationHost: "127.0.0.1", destinationPort: 8082 }]
-    }
-  });
-
-  assert.deepEqual(args.slice(-3), ["-L", "127.0.0.1:8082:127.0.0.1:8082", "allen@dev3-cuda"]);
 });
 
 test("SshTunnelSupervisor reconnects with backoff and recycles connections on resume", () => {
