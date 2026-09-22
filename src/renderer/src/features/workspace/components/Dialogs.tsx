@@ -92,6 +92,8 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   const [url, setUrl] = useState("");
   const [deviceId, setDeviceId] = useState(snapshot.devices[0]?.id || "");
   const [parent, setParent] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [showProjectName, setShowProjectName] = useState(false);
   const device = snapshot.devices.find((item) => item.id === deviceId);
   const localDevice = snapshot.devices.find((item) => item.type === "local");
   useEffect(() => {
@@ -100,11 +102,16 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
-      if (mode === "import") await window.desktop.addProject({ mode, deviceId, path });
-      else await window.desktop.addProject({ mode, repositoryUrl: url, parentDirectory: parent });
+      const name = projectName.trim();
+      if (mode === "import") await window.desktop.addProject({ mode, deviceId, path, ...(name ? { projectName: name } : {}) });
+      else await window.desktop.addProject({ mode, repositoryUrl: url, parentDirectory: parent, ...(name ? { projectName: name } : {}) });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
-      toast.success("Project added"); closeDialog(); setPath(""); setUrl("");
-    } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
+      toast.success("Project added"); closeDialog(); setPath(""); setUrl(""); setParent(""); setProjectName(""); setShowProjectName(false);
+    } catch (error) {
+      const text = message(error);
+      if (text.includes("Project name conflict")) setShowProjectName(true);
+      toast.error(text);
+    } finally { setBusy(false); }
   };
   return (
     <Modal open={dialog === "project"} title="Add project" description="A project is identified by its canonical Git remote, not its local path." busy={busy} submitLabel={mode === "import" ? "Import Project" : "Clone Project"} onClose={closeDialog} onSubmit={submit}>
@@ -117,6 +124,7 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
         <Field label="Device"><select value={localDevice?.id || ""} disabled required>{localDevice && <option value={localDevice.id}>{localDevice.name}</option>}</select></Field>
         <Field label="Parent directory"><DirectoryField value={parent} onChange={setParent} placeholder="/Users/you/code" /></Field>
       </>}
+      {showProjectName && <Field label="Unique project name" hint="Used for display and future workspace paths."><input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="repository-name-2" required maxLength={80} autoFocus /></Field>}
     </Modal>
   );
 }

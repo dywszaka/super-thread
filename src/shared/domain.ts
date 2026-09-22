@@ -132,8 +132,8 @@ export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {
 }
 
 export type AddProjectInput =
-  | { mode: "import"; deviceId: string; path: string }
-  | { mode: "clone"; repositoryUrl: string; parentDirectory: string };
+  | { mode: "import"; deviceId: string; path: string; projectName?: string }
+  | { mode: "clone"; repositoryUrl: string; parentDirectory: string; projectName?: string };
 
 export type SetupProjectInput =
   | { projectId: string; deviceId: string; mode: "import"; path: string }
@@ -155,6 +155,11 @@ export interface CreateWorkspaceInput {
 export interface CreateSessionInput {
   workspaceId: string;
   name?: string;
+}
+
+export interface RenameSessionInput {
+  id: string;
+  name: string;
 }
 
 export interface TerminalOutput {

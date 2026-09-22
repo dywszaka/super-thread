@@ -13,6 +13,7 @@ import type {
   DeviceConnection,
   DirectoryListing,
   Project,
+  RenameSessionInput,
   SetupProjectInput,
   UpdateRemoteDeviceInput,
   WorkThread,
@@ -29,13 +30,27 @@ const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
 const canonicalRemote = (remote: string): string => remote.trim().replace(/\.git$/, "").replace(/^ssh:\/\//, "").toLowerCase();
 const canonicalName = (name: string): string => name.trim().toLowerCase();
+const unsafeProjectName = (name: string): string | null => {
+  const trimmed = name.trim();
+  if (!trimmed) return "Project name is required";
+  if (trimmed.length > 80) return "Project name must be 80 characters or fewer";
+  if (trimmed === "." || trimmed === ".." || /[\\/]/.test(trimmed)) return "Project name cannot contain path separators or reserved directory names";
+  return null;
+};
+const repositoryNameFromUrl = (repositoryUrl: string): string => repositoryUrl.trim().split(/[/:]/).at(-1)?.replace(/\.git$/, "") || "repository";
 
 export interface WorkspaceGitRuntime {
   inspect(repositoryPath: string): Promise<RepositoryInfo>;
   clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo>;
-  createWorktree(checkoutPath: string, name: string, baseBranch: string): Promise<{ path: string; branch: string }>;
-  hasChanges(workspacePath: string): Promise<boolean>;
-  deleteWorktree(checkoutPath: string, workspacePath: string, force: boolean): Promise<void>;
+  createWorktree(checkoutPath: string, projectName: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
+  inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk>;
+  deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void>;
+}
+
+export interface WorkspaceDeleteRisk {
+  hasUncommittedChanges: boolean;
+  hasUntrackedFiles: boolean;
+  unmergedCommitCount: number;
 }
 
 export interface WorkspaceDirectoryRuntime {
@@ -176,15 +191,21 @@ export class WorkspaceService extends EventEmitter {
 
   async addProject(input: AddProjectInput): Promise<void> {
     const snapshot = this.snapshot();
+    const requestedName = input.projectName?.trim();
     if (input.mode === "import") {
       const device = this.device(snapshot, input.deviceId);
       const info = await this.git(snapshot, device).inspect(input.path);
-      await this.recordProjectAndCheckout(info, device.id);
+      await this.recordProjectAndCheckout(info, device.id, requestedName);
       return;
     }
     const device = this.localDevice(snapshot);
+    const existing = snapshot.projects.find((project) => canonicalRemote(project.repositoryUrl) === canonicalRemote(input.repositoryUrl));
+    if (existing && snapshot.checkouts.some((item) => item.projectId === existing.id && item.deviceId === device.id)) {
+      throw new Error(`${existing.name} is already imported on this device`);
+    }
+    if (!existing) this.assertProjectNameAvailable(snapshot, requestedName || repositoryNameFromUrl(input.repositoryUrl));
     const info = await this.git(snapshot, device).clone(input.repositoryUrl, input.parentDirectory);
-    await this.recordProjectAndCheckout(info, device.id);
+    await this.recordProjectAndCheckout(info, device.id, requestedName);
   }
 
   async setupProject(input: SetupProjectInput): Promise<void> {
@@ -271,6 +292,8 @@ export class WorkspaceService extends EventEmitter {
     const workThread = this.workThread(snapshot, input.workThreadId);
     if (workThread.status !== "active") throw new Error("Work thread is archived. Restore it before adding a workspace.");
     const device = this.device(snapshot, input.deviceId);
+    const project = this.project(snapshot, input.projectId);
+    this.assertProjectNameUsableForWorkspace(snapshot, project);
     const checkout = snapshot.checkouts.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId);
     if (!checkout) throw new Error("Project is not set up on the selected device");
     if (snapshot.workspaces.some((item) => item.deviceId === input.deviceId && item.name === input.name)) {
@@ -290,7 +313,7 @@ export class WorkspaceService extends EventEmitter {
     });
     this.changed();
     try {
-      const created = await this.git(snapshot, device).createWorktree(checkout.path, input.name, input.baseBranch);
+      const created = await this.git(snapshot, device).createWorktree(checkout.path, project.name, input.name, input.baseBranch);
       await this.store.update((draft) => {
         const workspace = draft.workspaces.find((item) => item.id === workspaceId);
         if (workspace) Object.assign(workspace, created, { status: "ready", updatedAt: now(), error: undefined });
@@ -313,13 +336,17 @@ export class WorkspaceService extends EventEmitter {
     if (!checkout) throw new Error("Base checkout no longer exists");
     const device = this.device(snapshot, workspace.deviceId);
     const runtime = this.git(snapshot, device);
-    if (!force && await runtime.hasChanges(workspace.path)) {
-      throw new Error("Workspace has uncommitted changes. Force delete to remove it.");
+    const risk = await runtime.inspectWorkspaceDeleteRisk(checkout.path, workspace.path, workspace.branch, workspace.baseBranch);
+    if (!force) {
+      const messages = this.workspaceDeleteRisks(risk);
+      if (messages.length) {
+        throw new Error(`Workspace delete blocked: ${messages.join("; ")}. Confirm force delete to remove the worktree and branch.`);
+      }
     }
     for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
       this.terminals.kill(session.id);
     }
-    await runtime.deleteWorktree(checkout.path, workspace.path, force);
+    await runtime.deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
     await this.store.update((draft) => {
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
@@ -352,24 +379,63 @@ export class WorkspaceService extends EventEmitter {
   shutdown(): void { this.tunnels.stop(); }
   async killSession(id: string): Promise<void> {
     if (this.terminals.has(id)) this.terminals.kill(id);
-    else await this.markSessionExited(id);
+    await this.store.update((draft) => {
+      draft.sessions = draft.sessions.filter((item) => item.id !== id);
+    });
+    this.changed();
   }
 
-  private async recordProjectAndCheckout(info: RepositoryInfo, deviceId: string): Promise<void> {
+  async renameSession(input: RenameSessionInput): Promise<void> {
+    const name = input.name.trim();
+    await this.store.update((draft) => {
+      const session = draft.sessions.find((item) => item.id === input.id);
+      if (!session) throw new Error("Terminal session not found");
+      session.name = name;
+    });
+    this.changed();
+  }
+
+  private async recordProjectAndCheckout(info: RepositoryInfo, deviceId: string, requestedName?: string): Promise<void> {
     const snapshot = this.snapshot();
     const existing = snapshot.projects.find((project) => canonicalRemote(project.repositoryUrl) === canonicalRemote(info.remote));
     if (existing && snapshot.checkouts.some((item) => item.projectId === existing.id && item.deviceId === deviceId)) {
       throw new Error(`${existing.name} is already imported on this device`);
     }
+    const projectName = requestedName?.trim() || info.name;
+    if (!existing) this.assertProjectNameAvailable(snapshot, projectName);
     await this.store.update((draft) => {
       let project: Project | undefined = draft.projects.find((item) => canonicalRemote(item.repositoryUrl) === canonicalRemote(info.remote));
       if (!project) {
-        project = { id: id("proj"), name: info.name, repositoryUrl: info.remote, defaultBranch: info.defaultBranch, createdAt: now(), updatedAt: now() };
+        project = { id: id("proj"), name: projectName, repositoryUrl: info.remote, defaultBranch: info.defaultBranch, createdAt: now(), updatedAt: now() };
         draft.projects.push(project);
       }
       draft.checkouts.push({ id: id("checkout"), projectId: project.id, deviceId, path: info.root, createdAt: now() });
     });
     this.changed();
+  }
+
+  private assertProjectNameAvailable(snapshot: AppSnapshot, name: string): void {
+    const unsafe = unsafeProjectName(name);
+    if (unsafe) throw new Error(unsafe);
+    if (snapshot.projects.some((project) => canonicalName(project.name) === canonicalName(name))) {
+      throw new Error(`Project name conflict: A project named ${name.trim()} already exists. Enter a unique project name and retry.`);
+    }
+  }
+
+  private assertProjectNameUsableForWorkspace(snapshot: AppSnapshot, project: Project): void {
+    const unsafe = unsafeProjectName(project.name);
+    if (unsafe) throw new Error(`Cannot create a workspace until project ${project.name} has a safe unique name: ${unsafe}`);
+    if (snapshot.projects.some((item) => item.id !== project.id && canonicalName(item.name) === canonicalName(project.name))) {
+      throw new Error(`Cannot create a workspace because multiple projects are named ${project.name}. Use a unique project name before creating new workspaces.`);
+    }
+  }
+
+  private workspaceDeleteRisks(risk: WorkspaceDeleteRisk): string[] {
+    const risks: string[] = [];
+    if (risk.hasUncommittedChanges) risks.push("uncommitted changes");
+    if (risk.hasUntrackedFiles) risks.push("untracked files");
+    if (risk.unmergedCommitCount > 0) risks.push(`${risk.unmergedCommitCount} commit${risk.unmergedCommitCount === 1 ? "" : "s"} not merged into the base branch`);
+    return risks;
   }
 
   private async markSessionExited(sessionId: string): Promise<void> {

@@ -241,6 +241,13 @@ device
 
 这些都不是 Project identity。
 
+规则：
+
+- Project identity 仍然是 canonical git remote。
+- Project name 用于展示和 Workspace 路径目录段，必须在全局范围内忽略大小写唯一。
+- 不同 remote 如果检测出相同默认名称，Add Project 不创建 Project，也不执行不必要的 clone；用户需要输入一个安全且唯一的 Project name 后重试。
+- Project name 不能是 `.`、`..`，也不能包含路径分隔符。
+
 ---
 
 # 5. Device
@@ -533,7 +540,7 @@ interface Workspace {
   "name": "nvfp4-kernel",
   "projectId": "proj_llamacpp",
   "deviceId": "dev_cuda",
-  "path": "/data/workspaces/nvfp4-kernel",
+  "path": "~/.superthread/workspaces/llama.cpp/nvfp4-kernel",
   "branch": "work/nvfp4-kernel",
   "baseBranch": "master",
   "status": "ready"
@@ -592,7 +599,7 @@ git -C /data/allen/llama.cpp fetch
 
 git -C /data/allen/llama.cpp worktree add \
   -b work/nvfp4-kernel \
-  /data/workspaces/nvfp4-kernel \
+  ~/.superthread/workspaces/llama.cpp/nvfp4-kernel \
   master
 ```
 
@@ -607,11 +614,19 @@ base checkout
 
         │
         ├── Workspace A
-        │   /data/workspaces/nvfp4-kernel
+        │   ~/.superthread/workspaces/llama.cpp/nvfp4-kernel
         │
         └── Workspace B
-            /data/workspaces/benchmark
+            ~/.superthread/workspaces/llama.cpp/benchmark
 ```
+
+本机和远程 Device 都使用所属 Device 用户的 home 目录：
+
+```text
+~/.superthread/workspaces/{project-name}/{workspace-name}
+```
+
+Runtime 必须在对应 Device 上解析 home 目录，不能把带引号的字面 `~` 当作路径传给远程命令。
 
 ---
 
@@ -655,21 +670,23 @@ Done
 
 删除 Workspace：
 
-1. 停止所有 Session
-2. 删除 Git Worktree
-3. 可选删除 Branch
-4. 删除 Workspace metadata
+1. 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交
+2. 停止所有 Session
+3. 删除 Git Worktree
+4. 删除对应 Branch
+5. 删除 Workspace 和 Session metadata
 
 Runtime：
 
 ```bash
 git worktree remove <workspace-path>
+git branch -D <workspace-branch>
 ```
 
-如果存在未提交修改：
+如果存在未提交修改、未跟踪文件或未合并提交：
 
 ```text
-Workspace has uncommitted changes.
+Workspace delete blocked.
 ```
 
 默认禁止删除。
@@ -684,9 +701,10 @@ Force Delete
 
 ```bash
 git worktree remove --force
+git branch -D <workspace-branch>
 ```
 
-Branch 默认不删除。
+只有在 PTY/连接、Git worktree 和 branch 删除成功后，才删除持久化 Workspace 与 Session 记录。失败时必须保留 metadata，避免 UI 状态与实际 Git 状态失配。
 
 ---
 
@@ -767,6 +785,7 @@ stdout
 stderr
 resize
 exit
+rename
 ```
 
 UI 和 Runtime 之间：
@@ -821,6 +840,8 @@ MVP 暂时不要求：
 
 这需要 tmux / screen / process supervisor 等额外机制，可以放到 V2。
 
+用户主动关闭 Terminal tab 时，Runtime 只关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录；这不主动终止独立运行的 tmux server 或 tmux 中的其他窗口。Terminal 名称可以重命名，窗口重开或数据刷新后保留。
+
 ---
 
 # 17. Main UI
@@ -859,6 +880,7 @@ Agent Page
 │ Work Threads  │  $ git status                             │
 │ ▾ Improve FP4 │  On branch work/nvfp4-kernel              │
 │   nvfp4-kernel│                                           │
+│   llama.cpp   │                                           │
 │ ▸ Benchmarks  │                                           │
 │               │                                           │
 ├───────────────┴───────────────────────────────────────────┤
@@ -889,7 +911,9 @@ Work Threads
 
 ▾ Improve FP4
   nvfp4-kernel
+  llama.cpp
   quant-test
+  modelopt
 ▸ Benchmarks
 ```
 
@@ -916,7 +940,9 @@ loader-fix
 ```text
 Improve FP4
 ├── nvfp4-kernel
+│   llama.cpp
 └── quant-test
+    modelopt
 ```
 
 ---
@@ -972,7 +998,7 @@ Base
 master
 
 Path
-/data/workspaces/nvfp4-kernel
+~/.superthread/workspaces/llama.cpp/nvfp4-kernel
 ```
 
 ---
@@ -989,6 +1015,7 @@ Terminal 1
 
 ```text
 + New Terminal
+Double-click Terminal name to rename
 ```
 
 例如：
@@ -1107,6 +1134,8 @@ Project
 ProjectCheckout
 ```
 
+如果检测到不同 remote 的默认 name 与现有 Project name 大小写等价，表单保留当前输入并显示 Unique Project Name 字段。用户输入唯一名称后可以重试；没有名称冲突时保持原流程。
+
 ---
 
 # 24. Add Device Flow
@@ -1221,6 +1250,7 @@ session.attach()
 session.write()
 session.resize()
 session.kill()
+session.rename()
 ```
 
 不要提供：

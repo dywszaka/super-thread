@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveSelectionId, visibleWorkspaces } from "../src/renderer/src/features/workspace/selection";
+import { resolveSelectionId, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
 import { emptySnapshot, type Workspace } from "../src/shared/domain";
 
 test("workspace selection adopts the first project added after the dialog mounts", () => {
@@ -48,4 +48,13 @@ test("workspace scopes exclude workspaces in archived work threads", () => {
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "work-thread", id: "thread-archived" }), []);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-work-threads" }), []);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-devices" }), []);
+});
+
+test("workspace sidebar labels include the owning project name", () => {
+  const snapshot = emptySnapshot();
+  snapshot.projects.push({ id: "project-a", name: "Runtime", repositoryUrl: "git@example.com:runtime.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+  const item = workspace("workspace-a", "thread-active", "project-a");
+
+  assert.equal(workspaceProjectName(snapshot, item), "Runtime");
+  assert.equal(workspaceProjectName(snapshot, workspace("workspace-b", "thread-active", "missing")), "Unknown project");
 });

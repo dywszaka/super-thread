@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Session, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -30,17 +30,37 @@ function TerminalView({ session }: { session: Session }): React.ReactNode {
 
 export function TerminalPane({ snapshot, workspace }: { snapshot: AppSnapshot; workspace: Workspace }): React.ReactNode {
   const { activeSessionId, setActiveSession } = useWorkbenchStore();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
   const sessions = useMemo(() => snapshot.sessions.filter((item) => item.workspaceId === workspace.id), [snapshot.sessions, workspace.id]);
   const active = sessions.find((item) => item.id === activeSessionId) ?? sessions.find((item) => item.status === "running") ?? sessions[0];
-  useEffect(() => { if (active && active.id !== activeSessionId) setActiveSession(active.id); }, [active?.id]);
+  useEffect(() => {
+    if (active && active.id !== activeSessionId) setActiveSession(active.id);
+    if (!active && activeSessionId) setActiveSession(null);
+  }, [active?.id, activeSessionId]);
   const create = async (): Promise<void> => {
     try { await window.desktop.createSession({ workspaceId: workspace.id }); }
+    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  };
+  const close = async (sessionId: string): Promise<void> => {
+    try { await window.desktop.killSession(sessionId); }
+    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+  };
+  const beginRename = (session: Session): void => {
+    setEditingId(session.id);
+    setDraftName(session.name);
+  };
+  const saveRename = async (): Promise<void> => {
+    if (!editingId) return;
+    const name = draftName.trim();
+    setEditingId(null);
+    try { await window.desktop.renameSession({ id: editingId, name }); }
     catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
   };
   return (
     <section className="terminal-pane">
       <div className="terminal-tabs no-drag">
-        <div className="terminal-tab-scroll">{sessions.map((session) => <button key={session.id} className={`terminal-tab ${active?.id === session.id ? "active" : ""}`} onClick={() => setActiveSession(session.id)}><TerminalSquare size={13} /><span>{session.name}</span><i className={session.status} />{active?.id === session.id && session.status === "running" && <X size={12} className="tab-close" onClick={(event) => { event.stopPropagation(); void window.desktop.killSession(session.id); }} />}</button>)}</div>
+        <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} className={`terminal-tab ${active?.id === session.id ? "active" : ""}`} onClick={() => setActiveSession(session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(session.id); }}><TerminalSquare size={13} />{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status} />{active?.id === session.id && session.status === "running" && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}</div>
         <button className="icon-button terminal-add" onClick={() => void create()} title="New terminal"><Plus size={15} /></button>
       </div>
       <div className="terminal-stage">{active ? <TerminalView key={active.id} session={active} /> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><button className="button primary" onClick={() => void create()}><Plus size={14} /> New Terminal</button></div>}</div>

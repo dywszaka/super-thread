@@ -8,6 +8,7 @@ import {
   createSessionSchema,
   createWorkThreadSchema,
   createWorkspaceSchema,
+  renameSessionSchema,
   setupProjectSchema,
   updateRemoteDeviceSchema
 } from "../../shared/contract";
@@ -42,4 +43,5 @@ export function registerIpcHandlers(service: WorkspaceService): void {
   ipcMain.on(channels.writeSession, (_event, id, data) => service.writeSession(sessionIdSchema.parse(id), z.string().parse(data)));
   ipcMain.on(channels.resizeSession, (_event, id, cols, rows) => service.resizeSession(sessionIdSchema.parse(id), z.number().int().min(2).parse(cols), z.number().int().min(1).parse(rows)));
   ipcMain.handle(channels.killSession, (_event, id) => service.killSession(sessionIdSchema.parse(id)));
+  ipcMain.handle(channels.renameSession, (_event, input) => service.renameSession(renameSessionSchema.parse(input)));
 }

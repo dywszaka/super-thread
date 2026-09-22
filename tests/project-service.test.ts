@@ -32,7 +32,7 @@ function fakeGit(overrides: Partial<WorkspaceGitRuntime> = {}): WorkspaceGitRunt
     inspect: async (path) => ({ root: path, name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" }),
     clone: async (_repositoryUrl, parentDirectory) => ({ root: join(parentDirectory, "demo"), name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" }),
     createWorktree: async () => ({ path: "", branch: "" }),
-    hasChanges: async () => false,
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
     deleteWorktree: async () => {},
     ...overrides
   };
@@ -68,6 +68,38 @@ test("AddProject clone always runs against the local device", async () => {
 
   assert.deepEqual(clonedOn, ["dev_local"]);
   assert.equal(service.snapshot().checkouts[0]?.deviceId, "dev_local");
+});
+
+test("AddProject rejects same-name different remotes before cloning", async () => {
+  let cloneCalled = false;
+  const { service, store } = await setup(() => fakeGit({
+    clone: async () => {
+      cloneCalled = true;
+      return { root: "", name: "demo", remote: "git@example.com:team/other.git", defaultBranch: "main" };
+    }
+  }));
+  await store.update((draft) => {
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+  });
+
+  await assert.rejects(() => service.addProject({ mode: "clone", repositoryUrl: "git@example.com:other/demo.git", parentDirectory: "/Users/me/code" }), /Project name conflict/);
+
+  assert.equal(cloneCalled, false);
+  assert.equal(service.snapshot().projects.length, 1);
+});
+
+test("AddProject accepts a unique custom name after a project name conflict", async () => {
+  const { service, store } = await setup(() => fakeGit({
+    inspect: async () => ({ root: "/srv/other", name: "demo", remote: "git@example.com:team/other.git", defaultBranch: "main" })
+  }));
+  await store.update((draft) => {
+    draft.projects.push({ id: "project-1", name: "Demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+  });
+
+  await assert.rejects(() => service.addProject({ mode: "import", deviceId: "dev_remote", path: "/srv/other" }), /Project name conflict/);
+  await service.addProject({ mode: "import", deviceId: "dev_remote", path: "/srv/other", projectName: "demo-gpu" });
+
+  assert.equal(service.snapshot().projects.at(-1)?.name, "demo-gpu");
 });
 
 test("SetupProject rejects remote clone before invoking Git", async () => {

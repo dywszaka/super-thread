@@ -2,7 +2,7 @@ import { Box, ChevronDown, ChevronRight, FolderGit2, Layers3, MessagesSquare, Mo
 import { useEffect, useMemo, useState } from "react";
 import type { AppSnapshot } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
-import { visibleWorkspaces } from "../selection";
+import { visibleWorkspaces, workspaceProjectName } from "../selection";
 
 export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const {
@@ -72,7 +72,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
-                  {workspaces.map((workspace) => <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><FolderGit2 size={13} /><span>{workspace.name}</span></button>)}
+                  {workspaces.map((workspace) => <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><FolderGit2 size={13} /><span><strong>{workspace.name}</strong><small>{workspaceProjectName(snapshot, workspace)}</small></span></button>)}
                 </div>}
               </div>
             );

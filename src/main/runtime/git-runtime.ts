@@ -1,8 +1,10 @@
-import { basename, dirname, join, posix } from "node:path";
+import os from "node:os";
+import { basename, join, posix } from "node:path";
 import type { Device, DeviceConnection } from "../../shared/domain";
 import { DeviceCommandRunner, type CommandRunner } from "./command-runner";
 
 export interface RepositoryInfo { root: string; name: string; remote: string; defaultBranch: string; }
+export interface WorkspaceDeleteRisk { hasUncommittedChanges: boolean; hasUntrackedFiles: boolean; unmergedCommitCount: number; }
 
 export class GitRuntime {
   private readonly runner: CommandRunner;
@@ -28,27 +30,46 @@ export class GitRuntime {
     return this.inspect(target);
   }
 
-  async createWorktree(checkoutPath: string, name: string, baseBranch: string): Promise<{ path: string; branch: string }> {
+  async createWorktree(checkoutPath: string, projectName: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }> {
+    const home = await this.homeDirectory();
     const parent = this.device.type === "remote"
-      ? posix.join(posix.dirname(checkoutPath), ".superthread-workspaces")
-      : join(dirname(checkoutPath), ".superthread-workspaces");
-    const workspacePath = this.device.type === "remote" ? posix.join(parent, name) : join(parent, name);
-    const branch = `work/${name}`;
+      ? posix.join(home, ".superthread", "workspaces", projectName)
+      : join(home, ".superthread", "workspaces", projectName);
+    const workspacePath = this.device.type === "remote" ? posix.join(parent, workspaceName) : join(parent, workspaceName);
+    const branch = `work/${workspaceName}`;
     await this.runner.run("mkdir", ["-p", parent]);
     await this.git(checkoutPath, ["fetch", "--prune"], 10 * 60_000);
     await this.git(checkoutPath, ["worktree", "add", "-b", branch, workspacePath, baseBranch], 10 * 60_000);
     return { path: workspacePath, branch };
   }
 
-  async hasChanges(workspacePath: string): Promise<boolean> {
-    return (await this.git(workspacePath, ["status", "--porcelain"])).length > 0;
+  async inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk> {
+    await this.git(checkoutPath, ["fetch", "--prune"], 10 * 60_000);
+    const [status, count] = await Promise.all([
+      this.git(workspacePath, ["status", "--porcelain"]),
+      this.git(checkoutPath, ["rev-list", "--count", `${baseBranch}..${branch}`])
+    ]);
+    const lines = status.split("\n").filter(Boolean);
+    return {
+      hasUncommittedChanges: lines.some((line) => !line.startsWith("??")),
+      hasUntrackedFiles: lines.some((line) => line.startsWith("??")),
+      unmergedCommitCount: Number.parseInt(count, 10) || 0
+    };
   }
 
-  async deleteWorktree(checkoutPath: string, workspacePath: string, force: boolean): Promise<void> {
+  async deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void> {
     await this.git(checkoutPath, ["worktree", "remove", ...(force ? ["--force"] : []), workspacePath]);
+    await this.git(checkoutPath, ["branch", "-D", branch]);
   }
 
   private git(cwd: string, args: string[], timeoutMs?: number): Promise<string> {
     return this.runner.run("git", ["-C", cwd, ...args], { timeoutMs }).then((result) => result.stdout);
+  }
+
+  private async homeDirectory(): Promise<string> {
+    if (this.device.type === "local") return os.homedir();
+    const home = await this.runner.run("sh", ["-lc", "printf %s \"$HOME\""]);
+    if (!home.stdout) throw new Error("Unable to resolve the remote home directory");
+    return home.stdout;
   }
 }

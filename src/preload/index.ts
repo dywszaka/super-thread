@@ -24,6 +24,7 @@ const bridge: DesktopBridge = {
   writeSession: (id, data) => ipcRenderer.send(channels.writeSession, id, data),
   resizeSession: (id, cols, rows) => ipcRenderer.send(channels.resizeSession, id, cols, rows),
   killSession: (id) => ipcRenderer.invoke(channels.killSession, id),
+  renameSession: (input) => ipcRenderer.invoke(channels.renameSession, input),
   onTerminalOutput: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, output: TerminalOutput): void => listener(output);
     ipcRenderer.on(channels.terminalOutput, wrapped);

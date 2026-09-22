@@ -15,14 +15,14 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   const remove = async (): Promise<void> => {
     setMenu(false);
-    if (!confirm(`Delete workspace “${workspace.name}”?\n\nThe Git branch will be kept.`)) return;
+    if (!confirm(`Delete workspace “${workspace.name}”?\n\nThis will delete the Git worktree and branch “${workspace.branch}”.`)) return;
     try {
       await window.desktop.deleteWorkspace(workspace.id);
       setActiveWorkspace(null);
       toast.success("Workspace deleted");
     } catch (error) {
       const text = cleanError(error);
-      if (text.includes("uncommitted changes") && confirm(`${text}\n\nForce delete this worktree?`)) {
+      if (text.includes("Workspace delete blocked") && confirm(`${text}\n\nForce delete this worktree and branch?`)) {
         try { await window.desktop.deleteWorkspace(workspace.id, true); setActiveWorkspace(null); toast.success("Workspace force deleted"); }
         catch (forceError) { toast.error(cleanError(forceError)); }
       } else toast.error(text);

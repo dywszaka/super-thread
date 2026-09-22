@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, setupProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
+import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, renameSessionSchema, setupProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
   assert.equal(addProjectSchema.safeParse({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
   assert.equal(addProjectSchema.safeParse({ mode: "import", path: "/srv/demo" }).success, false);
   assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "demo-gpu" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "../demo" }).success, false);
   assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", deviceId: "dev_remote", parentDirectory: "/srv" }).success, false);
 });
 
@@ -19,6 +21,12 @@ test("SetupProject requires the path that matches the selected setup mode", () =
 test("BrowseDirectory accepts a selected device and optional path", () => {
   assert.deepEqual(browseDirectorySchema.parse({ deviceId: "dev_remote", path: "  /srv  " }), { deviceId: "dev_remote", path: "/srv" });
   assert.equal(browseDirectorySchema.safeParse({ path: "/srv" }).success, false);
+});
+
+test("RenameSession requires a bounded non-empty name", () => {
+  assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "logs" }).success, true);
+  assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "" }).success, false);
+  assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "x".repeat(81) }).success, false);
 });
 
 test("remote device tunnels validate both forwarding directions and reject duplicate bindings", () => {

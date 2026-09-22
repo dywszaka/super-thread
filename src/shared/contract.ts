@@ -8,6 +8,7 @@ import type {
   CreateWorkThreadInput,
   CreateWorkspaceInput,
   DirectoryListing,
+  RenameSessionInput,
   SetupProjectInput,
   TerminalOutput,
   UpdateRemoteDeviceInput
@@ -34,6 +35,7 @@ export const channels = {
   writeSession: "session:write",
   resizeSession: "session:resize",
   killSession: "session:kill",
+  renameSession: "session:rename",
   terminalOutput: "session:output",
   dataChanged: "app:data-changed",
   menuAction: "menu:action"
@@ -72,12 +74,20 @@ export const updateRemoteDeviceSchema = z.intersection(
   z.object({ id: z.string().min(1) })
 );
 
+export const projectNameSchema = z.string()
+  .trim()
+  .min(1)
+  .max(80)
+  .refine((value) => value !== "." && value !== "..", "Project name cannot be . or ..")
+  .refine((value) => !/[\\/]/.test(value), "Project name cannot contain path separators");
+
 export const addProjectSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1) }).strict(),
+  z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1), projectName: projectNameSchema.optional() }).strict(),
   z.object({
     mode: z.literal("clone"),
     repositoryUrl: z.string().trim().min(1),
-    parentDirectory: z.string().trim().min(1)
+    parentDirectory: z.string().trim().min(1),
+    projectName: projectNameSchema.optional()
   }).strict()
 ]);
 
@@ -118,6 +128,11 @@ export const createSessionSchema = z.object({
   name: z.string().trim().min(1).max(80).optional()
 });
 
+export const renameSessionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(80)
+}).strict();
+
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
@@ -142,6 +157,7 @@ export interface DesktopBridge {
   writeSession(id: string, data: string): void;
   resizeSession(id: string, cols: number, rows: number): void;
   killSession(id: string): Promise<void>;
+  renameSession(input: RenameSessionInput): Promise<void>;
   onTerminalOutput(listener: (event: TerminalOutput) => void): () => void;
   onDataChanged(listener: () => void): () => void;
   onMenuAction(listener: (action: MenuAction) => void): () => void;

@@ -33,3 +33,7 @@ export function resolveSelectionId(
   if (preferredId && items.some((item) => item.id === preferredId)) return preferredId;
   return items[0]?.id ?? "";
 }
+
+export function workspaceProjectName(snapshot: AppSnapshot, workspace: Workspace): string {
+  return snapshot.projects.find((project) => project.id === workspace.projectId)?.name ?? "Unknown project";
+}
