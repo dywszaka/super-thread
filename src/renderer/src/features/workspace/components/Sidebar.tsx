@@ -38,9 +38,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     };
   }, [setSidebarWidth]);
 
-  if (sidebarCollapsed) {
-    return <button className="sidebar-reopen no-drag" onClick={() => setSidebarCollapsed(false)} title="Show sidebar"><ChevronRight size={16} /></button>;
-  }
+  if (sidebarCollapsed) return null;
 
   return (
     <aside className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
@@ -82,4 +80,11 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
       <div className="sidebar-resize no-drag" onPointerDown={(event) => { resizing.current = true; event.currentTarget.setPointerCapture(event.pointerId); }} />
     </aside>
   );
+}
+
+export function SidebarReopenButton(): React.ReactNode {
+  const { sidebarCollapsed, setSidebarCollapsed } = useWorkbenchStore();
+  if (!sidebarCollapsed) return null;
+
+  return <button className="sidebar-reopen no-drag" onClick={() => setSidebarCollapsed(false)} aria-label="Show sidebar" title="Show sidebar"><ChevronRight size={16} /></button>;
 }

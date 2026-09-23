@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import type { Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../state/workbench-store";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar, SidebarReopenButton } from "./components/Sidebar";
 import { TerminalPane } from "./components/TerminalPane";
 import { WorkspaceDialogs } from "./components/Dialogs";
 import { DeviceList } from "./components/DeviceList";
@@ -70,7 +70,7 @@ function EmptyWorkspace({ title, hasProjects, hasWorkThreads }: { title: string;
   const action = !hasProjects ? "Add Project" : !hasWorkThreads ? "New Work Thread" : "New Workspace";
   return (
     <main className="empty-workspace">
-      <div className="empty-titlebar drag"><span className="no-drag">{title}</span><button className="button primary no-drag" onClick={() => openDialog(dialog)}><Plus size={14} /> {action}</button></div>
+      <div className="empty-titlebar drag"><SidebarReopenButton /><span className="no-drag">{title}</span><button className="button primary no-drag" onClick={() => openDialog(dialog)}><Plus size={14} /> {action}</button></div>
       <section><div className="empty-art"><Server size={28} /><span /><FolderGit2 size={28} /></div><h1>{!hasProjects ? "Bring in a Git project" : !hasWorkThreads ? "Create your first work thread" : "Create your first workspace"}</h1><p>{!hasProjects ? "Import a local repository or clone one onto a connected device." : !hasWorkThreads ? "Use a work thread to group the workspaces that belong to the same effort." : "Choose a work thread, project, and device. SuperThread will create an isolated Git worktree and open a terminal there."}</p><button className="button primary large" onClick={() => openDialog(dialog)}><Plus size={15} /> {action}</button></section>
     </main>
   );

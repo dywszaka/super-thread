@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
+import { SidebarReopenButton } from "./Sidebar";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -60,6 +61,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   };
   return (
     <header className="workspace-header drag">
+      <SidebarReopenButton />
       <button ref={detailsButton} className="workspace-identity no-drag" onClick={() => { setDetails((open) => !open); setMenu(false); }}>
         <div><span>{workThread?.name}</span><i>/</i><span>{project?.name}</span><i>/</i><strong>{workspace.name}</strong></div>
         <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}</p>

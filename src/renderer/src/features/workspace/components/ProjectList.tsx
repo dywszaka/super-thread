@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { AppSnapshot, Project } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
+import { SidebarReopenButton } from "./Sidebar";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -32,6 +33,7 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
   return (
     <main className="project-page">
       <header className="project-page-header drag">
+        <SidebarReopenButton />
         <div><h1>Projects</h1><p>Manage logical Git repositories and the devices where they are available.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button>
       </header>

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
+import { SidebarReopenButton } from "./Sidebar";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -45,6 +46,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   return (
     <main className="work-thread-page">
       <header className="work-thread-page-header drag">
+        <SidebarReopenButton />
         <div><h1>Work Threads</h1><p>Organize related workspaces without changing their runtime state.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("workThread")}><Plus size={14} /> New Work Thread</button>
       </header>

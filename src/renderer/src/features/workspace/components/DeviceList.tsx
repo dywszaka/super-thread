@@ -6,6 +6,7 @@ import type { AppSnapshot, Device, DeviceConnection, SshTunnelConfig } from "@/s
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
 import { SshTunnelFields } from "./SshTunnelFields";
+import { SidebarReopenButton } from "./Sidebar";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -42,6 +43,7 @@ export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.React
   return (
     <main className="device-page">
       <header className="device-page-header drag">
+        <SidebarReopenButton />
         <div><h1>Devices</h1><p>Manage the machines that own project checkouts, workspaces, and terminal runtimes.</p></div>
         <div className="device-header-actions no-drag">
           <button className="button" disabled={checking} onClick={() => void checkConnections()}><RefreshCw className={checking ? "spinning" : ""} size={14} /> {checking ? "Checking…" : "Check connections"}</button>
