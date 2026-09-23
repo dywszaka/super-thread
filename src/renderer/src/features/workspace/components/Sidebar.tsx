@@ -1,6 +1,7 @@
-import { Box, ChevronDown, ChevronRight, FolderGit2, Layers3, MessagesSquare, MonitorCog, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderGit2, Layers3, MessagesSquare, MonitorCog, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppSnapshot } from "@/shared/domain";
+import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { visibleWorkspaces, workspaceProjectName } from "../selection";
 
@@ -36,7 +37,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-title drag"><div className="brand no-drag"><span className="brand-mark"><Box size={14} strokeWidth={2.4} /></span><strong>SuperThread</strong></div></div>
+      <div className="sidebar-title drag"><div className="brand no-drag"><img className="brand-mark" src={appIcon} alt="" /><strong>SuperThread</strong></div></div>
       <nav className="sidebar-scroll no-drag">
         <div className="primary-scopes">
           <button className={`scope-row all ${scope.type === "all-workspaces" ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> All workspaces</span><b>{allActiveWorkspaces.length}</b></button>
