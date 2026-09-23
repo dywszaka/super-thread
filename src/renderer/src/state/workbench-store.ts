@@ -8,7 +8,7 @@ interface WorkbenchState {
   projectFilter: string | null;
   workThreadFilter: string | null;
   activeWorkspaceId: string | null;
-  activeSessionId: string | null;
+  activeSessionIds: Record<string, string>;
   dialog: DialogName;
   showAllWorkspaces(): void;
   showAllWorkThreads(): void;
@@ -16,7 +16,7 @@ interface WorkbenchState {
   setProjectFilter(id: string | null): void;
   setWorkThreadFilter(id: string): void;
   setActiveWorkspace(id: string | null): void;
-  setActiveSession(id: string | null): void;
+  setActiveSession(workspaceId: string, id: string | null): void;
   openDialog(name: Exclude<DialogName, null>): void;
   closeDialog(): void;
 }
@@ -26,11 +26,11 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   projectFilter: null,
   workThreadFilter: null,
   activeWorkspaceId: null,
-  activeSessionId: null,
+  activeSessionIds: {},
   dialog: null,
   showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null }),
-  showAllWorkThreads: () => set({ scope: { type: "all-work-threads" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null, activeSessionId: null }),
-  showAllDevices: () => set({ scope: { type: "all-devices" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null, activeSessionId: null }),
+  showAllWorkThreads: () => set({ scope: { type: "all-work-threads" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
+  showAllDevices: () => set({ scope: { type: "all-devices" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
   setProjectFilter: (projectFilter) => set({
     scope: projectFilter ? { type: "project", id: projectFilter } : { type: "all-workspaces" },
     projectFilter,
@@ -41,8 +41,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
     projectFilter: null,
     workThreadFilter
   }),
-  setActiveWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId, activeSessionId: null }),
-  setActiveSession: (activeSessionId) => set({ activeSessionId }),
+  setActiveWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId }),
+  setActiveSession: (workspaceId, id) => set((state) => {
+    const activeSessionIds = { ...state.activeSessionIds };
+    if (id) activeSessionIds[workspaceId] = id;
+    else delete activeSessionIds[workspaceId];
+    return { activeSessionIds };
+  }),
   openDialog: (dialog) => set({ dialog }),
   closeDialog: () => set({ dialog: null })
 }));

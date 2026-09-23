@@ -11,6 +11,7 @@ import type {
   RenameSessionInput,
   SetupProjectInput,
   TerminalOutput,
+  TerminalReplay,
   UpdateRemoteDeviceInput
 } from "./domain";
 
@@ -155,7 +156,7 @@ export interface DesktopBridge {
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   createSession(input: CreateSessionInput): Promise<void>;
   resumeSession(id: string): Promise<void>;
-  attachSession(id: string): Promise<void>;
+  attachSession(id: string): Promise<TerminalReplay>;
   writeSession(id: string, data: string): void;
   resizeSession(id: string, cols: number, rows: number): void;
   killSession(id: string): Promise<void>;

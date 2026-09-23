@@ -15,6 +15,7 @@ import type {
   Project,
   RenameSessionInput,
   SetupProjectInput,
+  TerminalReplay,
   UpdateRemoteDeviceInput,
   WorkThread,
   Workspace
@@ -425,7 +426,7 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  attachSession(id: string): void { this.terminals.attach(id); }
+  attachSession(id: string): TerminalReplay { return this.terminals.attach(id); }
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }
   reconnectTunnels(): void { this.tunnels.reconnectAll(); }

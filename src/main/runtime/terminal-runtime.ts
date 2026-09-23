@@ -2,9 +2,9 @@ import { EventEmitter } from "node:events";
 import os from "node:os";
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
-import type { Device, DeviceConnection, Session, TerminalOutput, Workspace } from "../../shared/domain";
+import type { Device, DeviceConnection, Session, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
 
-interface LiveSession { pty: IPty; buffer: string; }
+interface LiveSession { pty: IPty; buffer: string; sequence: number; }
 
 export class TerminalRuntime extends EventEmitter {
   private readonly sessions = new Map<string, LiveSession>();
@@ -28,11 +28,12 @@ export class TerminalRuntime extends EventEmitter {
       cwd: device.type === "local" ? workspace.path : os.homedir(),
       env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>
     });
-    const live: LiveSession = { pty: instance, buffer: "" };
+    const live: LiveSession = { pty: instance, buffer: "", sequence: 0 };
     this.sessions.set(session.id, live);
     instance.onData((data) => {
       live.buffer = (live.buffer + data).slice(-64_000);
-      this.emit("output", { sessionId: session.id, data } satisfies TerminalOutput);
+      live.sequence += 1;
+      this.emit("output", { sessionId: session.id, data, sequence: live.sequence } satisfies TerminalOutput);
     });
     instance.onExit(({ exitCode }) => {
       this.sessions.delete(session.id);
@@ -41,9 +42,9 @@ export class TerminalRuntime extends EventEmitter {
     return instance.pid;
   }
 
-  attach(id: string): void {
-    const data = this.sessions.get(id)?.buffer;
-    if (data) this.emit("output", { sessionId: id, data } satisfies TerminalOutput);
+  attach(id: string): TerminalReplay {
+    const live = this.sessions.get(id);
+    return { data: live?.buffer ?? "", sequence: live?.sequence ?? 0 };
   }
 
   has(id: string): boolean { return this.sessions.has(id); }

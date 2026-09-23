@@ -836,6 +836,8 @@ Session
 Reconnect PTY
 ```
 
+重新连接时，Runtime 返回带单调序号的终端历史快照；UI 必须先完成历史解析，再接通输入转发，并只追加快照序号之后的实时输出。历史回放不得把终端能力查询产生的响应再次写入 PTY。
+
 MVP 暂时不要求：
 
 > Device Runtime 重启以后恢复同一个 PTY。
@@ -972,6 +974,8 @@ Terminal Sessions B
 ```
 
 Terminal 永远属于 Workspace。
+
+每个 Workspace 分别记住最后访问的 Session。切换到其他 Workspace 再返回时，恢复该 Workspace 上次选中的 Session；只有记录的 Session 已不存在时才回退到第一个可用 Session。
 
 ---
 

@@ -165,6 +165,12 @@ export interface RenameSessionInput {
 export interface TerminalOutput {
   sessionId: string;
   data: string;
+  sequence: number;
+}
+
+export interface TerminalReplay {
+  data: string;
+  sequence: number;
 }
 
 export interface CommandResult {
