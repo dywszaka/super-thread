@@ -18,19 +18,37 @@ function TerminalView({ session, active, resuming, onResume }: { session: Sessio
       allowProposedApi: false, scrollback: 10_000
     });
     const fit = new FitAddon();
-    terminal.loadAddon(fit); terminal.open(container.current); fit.fit();
+    // Let IME Process keys reach the textarea/input path so macOS punctuation mode is preserved.
+    terminal.attachCustomKeyEventHandler((event) => event.key !== "Process" && event.keyCode !== 229);
+    terminal.loadAddon(fit); terminal.open(container.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
     let disposed = false;
     let replayComplete = false;
     let input: { dispose(): void } | undefined;
+    let resizeFrame = 0;
     const pending: TerminalOutput[] = [];
+    const syncSize = (): void => {
+      try {
+        fit.fit();
+        terminal.refresh(0, terminal.rows - 1);
+        window.desktop.resizeSession(session.id, terminal.cols, terminal.rows);
+      } catch { /* hidden during resize */ }
+    };
+    const scheduleResize = (): void => {
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (!disposed) syncSize();
+      });
+    };
+    syncSize();
     const unsubscribe = window.desktop.onTerminalOutput((event) => {
       if (event.sessionId !== session.id) return;
       if (!replayComplete) pending.push(event);
       else terminal.write(event.data);
     });
-    const observer = new ResizeObserver(() => { try { fit.fit(); window.desktop.resizeSession(session.id, terminal.cols, terminal.rows); } catch { /* hidden during resize */ } });
+    const observer = new ResizeObserver(scheduleResize);
     observer.observe(container.current);
     void window.desktop.attachSession(session.id).then((replay) => {
       if (disposed) return;
@@ -52,6 +70,7 @@ function TerminalView({ session, active, resuming, onResume }: { session: Sessio
     });
     return () => {
       disposed = true;
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
       observer.disconnect();
       unsubscribe();
       input?.dispose();

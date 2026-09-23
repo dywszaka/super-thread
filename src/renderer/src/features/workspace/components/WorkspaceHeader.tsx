@@ -1,5 +1,5 @@
 import { ChevronDown, Code2, GitBranch, MoreHorizontal, Plus, Server, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -10,6 +10,9 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
   const [openingInVSCode, setOpeningInVSCode] = useState(false);
+  const detailsButton = useRef<HTMLButtonElement>(null);
+  const detailsPopover = useRef<HTMLDivElement>(null);
+  const menuAnchor = useRef<HTMLDivElement>(null);
   const { openDialog, setActiveWorkspace } = useWorkbenchStore();
   const workThread = snapshot.workThreads.find((item) => item.id === workspace.workThreadId);
   const project = snapshot.projects.find((item) => item.id === workspace.projectId);
@@ -19,6 +22,17 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const waitingCodexCount = sessions.filter((session) => session.kind === "codex" && session.activityStatus === "waiting-input").length;
   const unreadCodexCount = sessions.filter((session) => session.codexResultUnread).length;
   const failedRestoreCount = sessions.filter((session) => session.status === "restore-failed").length;
+  useEffect(() => {
+    if (!details && !menu) return;
+    const closeFloatingPanels = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (details && !detailsButton.current?.contains(target) && !detailsPopover.current?.contains(target)) setDetails(false);
+      if (menu && !menuAnchor.current?.contains(target)) setMenu(false);
+    };
+    window.addEventListener("pointerdown", closeFloatingPanels);
+    return () => window.removeEventListener("pointerdown", closeFloatingPanels);
+  }, [details, menu]);
   const openInVSCode = async (): Promise<void> => {
     setOpeningInVSCode(true);
     try {
@@ -46,7 +60,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   };
   return (
     <header className="workspace-header drag">
-      <button className="workspace-identity no-drag" onClick={() => setDetails(!details)}>
+      <button ref={detailsButton} className="workspace-identity no-drag" onClick={() => { setDetails((open) => !open); setMenu(false); }}>
         <div><span>{workThread?.name}</span><i>/</i><span>{project?.name}</span><i>/</i><strong>{workspace.name}</strong></div>
         <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}</p>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
@@ -57,8 +71,8 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
         {unreadCodexCount > 0 && <span><i className="unread" /> {unreadCodexCount} unread</span>}
         {failedRestoreCount > 0 && <span><i className="failed" /> {failedRestoreCount} failed</span>}
       </div>}
-      <div className="header-actions no-drag"><button className="button" disabled={workspace.status !== "ready" || openingInVSCode} title="Open this workspace in Visual Studio Code" onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button><button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New</button><div className="menu-anchor"><button className="icon-button" onClick={() => setMenu(!menu)} aria-label="Workspace actions"><MoreHorizontal size={17} /></button>{menu && <div className="context-menu"><button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button></div>}</div></div>
-      {details && <div className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
+      <div className="header-actions no-drag"><button className="button" disabled={workspace.status !== "ready" || openingInVSCode} title="Open this workspace in Visual Studio Code" onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button><button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New</button><div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions"><MoreHorizontal size={17} /></button>{menu && <div className="context-menu"><button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button></div>}</div></div>
+      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
     </header>
   );
 }

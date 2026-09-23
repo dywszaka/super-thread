@@ -44,7 +44,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
 
   return (
     <aside className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
-      <div className="sidebar-title drag"><div className="brand no-drag"><img className="brand-mark" src={appIcon} alt="" /><strong>Super Thread</strong></div><button className="sidebar-collapse no-drag" onClick={() => setSidebarCollapsed(true)} title="Hide sidebar"><ChevronLeft size={15} /></button></div>
+      <div className="sidebar-title drag"><div className="brand no-drag"><img className="brand-mark" src={appIcon} alt="Super Thread" /></div><button className="sidebar-collapse no-drag" onClick={() => setSidebarCollapsed(true)} title="Hide sidebar"><ChevronLeft size={15} /></button></div>
       <nav className="sidebar-scroll no-drag">
         <div className="primary-scopes">
           <button className={`scope-row all ${scope.type === "all-workspaces" ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> All workspaces</span><b>{allActiveWorkspaces.length}</b></button>

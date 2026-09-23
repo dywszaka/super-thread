@@ -46,7 +46,7 @@ export function WorkspaceApp(): React.ReactNode {
       : "All workspaces";
   const hasActiveThreads = snapshot.workThreads.some((thread) => thread.status === "active");
   return (
-    <div className="app-frame">
+    <div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
       <Sidebar snapshot={snapshot} />
       <div className="workbench">
         {store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
@@ -58,16 +58,6 @@ export function WorkspaceApp(): React.ReactNode {
             return <div key={workspace.id} className={`workspace-terminal-view ${visible ? "active" : ""}`} aria-hidden={!visible}><TerminalPane snapshot={snapshot} workspace={workspace} visible={visible} /></div>;
           })}
         </div>
-        {showingWorkspace && <>
-          <div className="workspace-switcher no-drag">
-            <div className="switcher-scroll">{filtered.map((workspace) => {
-              const project = snapshot.projects.find((item) => item.id === workspace.projectId);
-              const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
-              return <button key={workspace.id} className={`workspace-tab ${active?.id === workspace.id ? "active" : ""}`} onClick={() => store.setActiveWorkspace(workspace.id)}><span className={`workspace-icon ${workspace.status}`}><FolderGit2 size={14} /></span><span><strong>{workspace.name}</strong><small>{project?.name} · {device?.name}</small></span></button>;
-            })}</div>
-            <button className="switcher-add" onClick={() => store.openDialog("workspace")}><Plus size={15} /><span>New workspace</span></button>
-          </div>
-        </>}
       </div>
       <WorkspaceDialogs snapshot={snapshot} />
     </div>
