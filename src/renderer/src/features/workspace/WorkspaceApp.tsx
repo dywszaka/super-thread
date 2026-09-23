@@ -17,6 +17,8 @@ export function WorkspaceApp(): React.ReactNode {
   const scope = store.scope;
   const filtered = useMemo(() => snapshot ? visibleWorkspaces(snapshot, scope) : [], [snapshot, scope]);
   const active: Workspace | undefined = snapshot?.workspaces.find((item) => item.id === store.activeWorkspaceId && filtered.some((candidate) => candidate.id === item.id)) ?? filtered[0];
+  const showingWorkspace = scope.type !== "all-work-threads" && scope.type !== "all-devices";
+  const showingTerminal = showingWorkspace && active?.status === "ready";
 
   useEffect(() => {
     if (store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
@@ -44,7 +46,15 @@ export function WorkspaceApp(): React.ReactNode {
       <Sidebar snapshot={snapshot} />
       <div className="workbench">
         {store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
-          {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status === "ready" ? <TerminalPane snapshot={snapshot} workspace={active} /> : <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
+          {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
+        </>}
+        <div className={`workspace-terminal-stack ${showingTerminal ? "active" : ""}`}>
+          {snapshot.workspaces.filter((workspace) => workspace.status === "ready").map((workspace) => {
+            const visible = showingTerminal && active?.id === workspace.id;
+            return <div key={workspace.id} className={`workspace-terminal-view ${visible ? "active" : ""}`} aria-hidden={!visible}><TerminalPane snapshot={snapshot} workspace={workspace} visible={visible} /></div>;
+          })}
+        </div>
+        {showingWorkspace && <>
           <div className="workspace-switcher no-drag">
             <div className="switcher-scroll">{filtered.map((workspace) => {
               const project = snapshot.projects.find((item) => item.id === workspace.projectId);
