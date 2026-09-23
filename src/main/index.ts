@@ -1,4 +1,4 @@
-import { app, BrowserWindow, powerMonitor } from "electron";
+import { app, BrowserWindow, dialog, powerMonitor, type MessageBoxOptions } from "electron";
 import { join } from "node:path";
 import { WorkspaceService } from "./application/workspace-service";
 import { registerIpcHandlers } from "./ipc/register-handlers";
@@ -23,6 +23,28 @@ app.whenReady().then(async () => {
   registerIpcHandlers(service);
   powerMonitor.on("resume", () => service.reconnectTunnels());
   app.once("will-quit", () => service.shutdown());
+  let quitConfirmed = false;
+  app.on("before-quit", (event) => {
+    if (quitConfirmed) return;
+    const running = service.runningSessionSummaries();
+    if (running.length === 0) return;
+    event.preventDefault();
+    const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    const options: MessageBoxOptions = {
+      type: "warning",
+      buttons: ["Quit Super Thread", "Cancel"],
+      cancelId: 1,
+      defaultId: 1,
+      message: "Terminal sessions are still running",
+      detail: running.slice(0, 8).join("\n") + (running.length > 8 ? `\n…and ${running.length - 8} more` : "")
+    };
+    const prompt = owner ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options);
+    void prompt.then((result) => {
+      if (result.response !== 0) return;
+      quitConfirmed = true;
+      app.quit();
+    });
+  });
 
   const openWindow = (): BrowserWindow => {
     mainWindow = createMainWindow();

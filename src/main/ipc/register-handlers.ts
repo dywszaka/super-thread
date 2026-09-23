@@ -8,8 +8,10 @@ import {
   createSessionSchema,
   createWorkThreadSchema,
   createWorkspaceSchema,
+  reorderSessionsSchema,
   renameSessionSchema,
   setupProjectSchema,
+  updateProjectSchema,
   updateRemoteDeviceSchema
 } from "../../shared/contract";
 import type { WorkspaceService } from "../application/workspace-service";
@@ -32,6 +34,8 @@ export function registerIpcHandlers(service: WorkspaceService): void {
   ipcMain.handle(channels.deleteDevice, (_event, id) => service.deleteDevice(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.pingDevices, () => service.pingDevices());
   ipcMain.handle(channels.addProject, (_event, input) => service.addProject(addProjectSchema.parse(input)));
+  ipcMain.handle(channels.updateProject, (_event, input) => service.updateProject(updateProjectSchema.parse(input)));
+  ipcMain.handle(channels.deleteProject, (_event, id) => service.deleteProject(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.setupProject, (_event, input) => service.setupProject(setupProjectSchema.parse(input)));
   ipcMain.handle(channels.createWorkThread, (_event, input) => service.createWorkThread(createWorkThreadSchema.parse(input)));
   ipcMain.handle(channels.archiveWorkThread, (_event, id) => service.archiveWorkThread(sessionIdSchema.parse(id)));
@@ -45,6 +49,8 @@ export function registerIpcHandlers(service: WorkspaceService): void {
   });
   ipcMain.handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
   ipcMain.handle(channels.resumeSession, (_event, id) => service.resumeSession(sessionIdSchema.parse(id)));
+  ipcMain.handle(channels.reorderSessions, (_event, input) => service.reorderSessions(reorderSessionsSchema.parse(input)));
+  ipcMain.handle(channels.markSessionViewed, (_event, id) => service.markSessionViewed(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.attachSession, (_event, id) => service.attachSession(sessionIdSchema.parse(id)));
   ipcMain.on(channels.writeSession, (_event, id, data) => service.writeSession(sessionIdSchema.parse(id), z.string().parse(data)));
   ipcMain.on(channels.resizeSession, (_event, id, cols, rows) => service.resizeSession(sessionIdSchema.parse(id), z.number().int().min(2).parse(cols), z.number().int().min(1).parse(rows)));

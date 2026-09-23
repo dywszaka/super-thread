@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Box, FolderGit2, Plus, Server } from "lucide-react";
 import { useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import type { Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../state/workbench-store";
 import { Sidebar } from "./components/Sidebar";
@@ -9,6 +10,7 @@ import { WorkspaceDialogs } from "./components/Dialogs";
 import { DeviceList } from "./components/DeviceList";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { WorkThreadList } from "./components/WorkThreadList";
+import { ProjectList } from "./components/ProjectList";
 import { visibleWorkspaces } from "./selection";
 
 export function WorkspaceApp(): React.ReactNode {
@@ -17,11 +19,11 @@ export function WorkspaceApp(): React.ReactNode {
   const scope = store.scope;
   const filtered = useMemo(() => snapshot ? visibleWorkspaces(snapshot, scope) : [], [snapshot, scope]);
   const active: Workspace | undefined = snapshot?.workspaces.find((item) => item.id === store.activeWorkspaceId && filtered.some((candidate) => candidate.id === item.id)) ?? filtered[0];
-  const showingWorkspace = scope.type !== "all-work-threads" && scope.type !== "all-devices";
+  const showingWorkspace = scope.type !== "all-projects" && scope.type !== "all-work-threads" && scope.type !== "all-devices";
   const showingTerminal = showingWorkspace && active?.status === "ready";
 
   useEffect(() => {
-    if (store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
+    if (store.scope.type === "all-projects" || store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
     if (active && active.id !== store.activeWorkspaceId) store.setActiveWorkspace(active.id);
     if (!active && store.activeWorkspaceId) store.setActiveWorkspace(null);
   }, [active?.id, store.scope.type]);
@@ -30,7 +32,9 @@ export function WorkspaceApp(): React.ReactNode {
     if (action === "new-workspace") store.openDialog("workspace");
     if (action === "add-project") store.openDialog("project");
     if (action === "add-device") store.openDialog("device");
-    if (action === "new-terminal" && active) void window.desktop.createSession({ workspaceId: active.id });
+    if (action === "new-terminal" && active) void window.desktop.createSession({ workspaceId: active.id }).then((result) => {
+      if (result.warning) toast.warning(result.warning);
+    }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)));
   }), [active?.id]);
 
   if (isLoading || !snapshot) return <div className="boot-screen drag"><div className="boot-logo"><Box size={22} /><span /></div></div>;
@@ -45,7 +49,7 @@ export function WorkspaceApp(): React.ReactNode {
     <div className="app-frame">
       <Sidebar snapshot={snapshot} />
       <div className="workbench">
-        {store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
+        {store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
           {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
         </>}
         <div className={`workspace-terminal-stack ${showingTerminal ? "active" : ""}`}>

@@ -5,13 +5,16 @@ import type {
   AppSnapshot,
   BrowseDirectoryInput,
   CreateSessionInput,
+  CreateSessionResult,
   CreateWorkThreadInput,
   CreateWorkspaceInput,
   DirectoryListing,
+  ReorderSessionsInput,
   RenameSessionInput,
   SetupProjectInput,
   TerminalOutput,
   TerminalReplay,
+  UpdateProjectInput,
   UpdateRemoteDeviceInput
 } from "./domain";
 
@@ -24,6 +27,8 @@ export const channels = {
   deleteDevice: "device:delete",
   pingDevices: "device:ping-all",
   addProject: "project:add",
+  updateProject: "project:update",
+  deleteProject: "project:delete",
   setupProject: "project:setup",
   createWorkThread: "work-thread:create",
   archiveWorkThread: "work-thread:archive",
@@ -34,6 +39,8 @@ export const channels = {
   openWorkspaceInVSCode: "workspace:open-in-vscode",
   createSession: "session:create",
   resumeSession: "session:resume",
+  reorderSessions: "session:reorder",
+  markSessionViewed: "session:mark-viewed",
   attachSession: "session:attach",
   writeSession: "session:write",
   resizeSession: "session:resize",
@@ -109,6 +116,11 @@ export const setupProjectSchema = z.discriminatedUnion("mode", [
   }).strict()
 ]);
 
+export const updateProjectSchema = z.object({
+  id: z.string().min(1),
+  name: projectNameSchema
+}).strict();
+
 export const browseDirectorySchema = z.object({
   deviceId: z.string().min(1),
   path: z.string().trim().optional()
@@ -128,12 +140,18 @@ export const createWorkspaceSchema = z.object({
 
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),
-  name: z.string().trim().min(1).max(80).optional()
-});
+  name: z.string().trim().min(1).max(80).optional(),
+  kind: z.enum(["shell", "codex", "tmux"]).optional()
+}).strict();
 
 export const renameSessionSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1).max(80)
+}).strict();
+
+export const reorderSessionsSchema = z.object({
+  workspaceId: z.string().min(1),
+  sessionIds: z.array(z.string().min(1)).min(1)
 }).strict();
 
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
@@ -148,6 +166,8 @@ export interface DesktopBridge {
   deleteDevice(id: string): Promise<void>;
   pingDevices(): Promise<AppSnapshot>;
   addProject(input: AddProjectInput): Promise<void>;
+  updateProject(input: UpdateProjectInput): Promise<void>;
+  deleteProject(id: string): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;
   createWorkThread(input: CreateWorkThreadInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;
@@ -156,8 +176,10 @@ export interface DesktopBridge {
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   openWorkspaceInVSCode(id: string): Promise<void>;
-  createSession(input: CreateSessionInput): Promise<void>;
+  createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
   resumeSession(id: string): Promise<void>;
+  reorderSessions(input: ReorderSessionsInput): Promise<void>;
+  markSessionViewed(id: string): Promise<void>;
   attachSession(id: string): Promise<TerminalReplay>;
   writeSession(id: string, data: string): void;
   resizeSession(id: string, cols: number, rows: number): void;

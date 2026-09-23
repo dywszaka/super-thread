@@ -6,6 +6,7 @@ import type {
   AddRemoteDeviceInput,
   AppSnapshot,
   BrowseDirectoryInput,
+  CreateSessionResult,
   CreateSessionInput,
   CreateWorkThreadInput,
   CreateWorkspaceInput,
@@ -13,19 +14,24 @@ import type {
   DeviceConnection,
   DirectoryListing,
   Project,
+  ReorderSessionsInput,
   RenameSessionInput,
+  Session,
+  SessionActivityStatus,
+  SessionKind,
   SetupProjectInput,
   TerminalReplay,
+  UpdateProjectInput,
   UpdateRemoteDeviceInput,
   WorkThread,
   Workspace
 } from "../../shared/domain";
 import { JsonStore } from "../persistence/json-store";
-import { DeviceCommandRunner } from "../runtime/command-runner";
+import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runner";
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
-import { TerminalRuntime } from "../runtime/terminal-runtime";
+import { TerminalRuntime, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
@@ -66,6 +72,7 @@ export interface DeviceTunnelRuntime {
 
 type GitRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceGitRuntime;
 type DirectoryRuntimeFactory = (device: Device, connection: DeviceConnection) => WorkspaceDirectoryRuntime;
+type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
   constructor(
@@ -73,11 +80,13 @@ export class WorkspaceService extends EventEmitter {
     private readonly terminals = new TerminalRuntime(),
     private readonly gitRuntimeFactory: GitRuntimeFactory = (device, connection) => new GitRuntime(device, connection),
     private readonly directoryRuntimeFactory: DirectoryRuntimeFactory = (device, connection) => new DirectoryRuntime(device, connection),
-    private readonly tunnels: DeviceTunnelRuntime = new SshTunnelSupervisor()
+    private readonly tunnels: DeviceTunnelRuntime = new SshTunnelSupervisor(),
+    private readonly commandRunnerFactory: CommandRunnerFactory = (connection) => new DeviceCommandRunner(connection)
   ) {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
-    terminals.on("exit", (sessionId: string) => void this.markSessionExited(sessionId));
+    terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event.sessionId, event.activityStatus));
+    terminals.on("exit", (event: TerminalExitEvent) => void this.markSessionExited(event.sessionId, event.exitCode));
   }
 
   async initialize(): Promise<void> {
@@ -92,14 +101,17 @@ export class WorkspaceService extends EventEmitter {
         local.status = "online";
       }
       for (const session of draft.sessions) {
+        session.kind ??= "shell";
+        session.order ??= draft.sessions.filter((item) => item.workspaceId === session.workspaceId).indexOf(session);
+        if (session.status === "running") session.activityStatus ??= "idle";
         if (session.status === "running" && !this.terminals.has(session.id)) {
-          session.status = "exited";
           session.pid = undefined;
-          session.exitedAt = now();
+          session.exitReason = "runtime-stopped";
         }
       }
     });
     this.tunnels.sync(this.snapshot().connections);
+    await this.restoreInterruptedSessions();
   }
 
   snapshot(): AppSnapshot { return this.store.snapshot(); }
@@ -207,6 +219,35 @@ export class WorkspaceService extends EventEmitter {
     if (!existing) this.assertProjectNameAvailable(snapshot, requestedName || repositoryNameFromUrl(input.repositoryUrl));
     const info = await this.git(snapshot, device).clone(input.repositoryUrl, input.parentDirectory);
     await this.recordProjectAndCheckout(info, device.id, requestedName);
+  }
+
+  async updateProject(input: UpdateProjectInput): Promise<void> {
+    const snapshot = this.snapshot();
+    const project = this.project(snapshot, input.id);
+    const name = input.name.trim();
+    const unsafe = unsafeProjectName(name);
+    if (unsafe) throw new Error(unsafe);
+    if (snapshot.projects.some((item) => item.id !== project.id && canonicalName(item.name) === canonicalName(name))) {
+      throw new Error(`A project named ${name} already exists`);
+    }
+    await this.store.update((draft) => {
+      const item = draft.projects.find((candidate) => candidate.id === project.id);
+      if (item) Object.assign(item, { name, updatedAt: now() });
+    });
+    this.changed();
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    const snapshot = this.snapshot();
+    this.project(snapshot, projectId);
+    if (snapshot.workspaces.some((workspace) => workspace.projectId === projectId)) {
+      throw new Error("Remove this project’s workspaces before deleting it");
+    }
+    await this.store.update((draft) => {
+      draft.checkouts = draft.checkouts.filter((checkout) => checkout.projectId !== projectId);
+      draft.projects = draft.projects.filter((project) => project.id !== projectId);
+    });
+    this.changed();
   }
 
   async setupProject(input: SetupProjectInput): Promise<void> {
@@ -390,37 +431,87 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  async createSession(input: CreateSessionInput): Promise<void> {
+  async createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, input.workspaceId);
     if (workspace.status !== "ready") throw new Error("Workspace is not ready");
     const device = this.device(snapshot, workspace.deviceId);
     const connection = this.connection(snapshot, device.id);
     const count = snapshot.sessions.filter((item) => item.workspaceId === workspace.id).length;
-    const session = {
-      id: id("session"), workspaceId: workspace.id, name: input.name || `Terminal ${count + 1}`,
-      status: "running" as const, shell: device.type === "remote" ? "ssh" : process.env.SHELL || "/bin/zsh", createdAt: now()
+    const requestedKind = input.kind ?? "shell";
+    const { kind, warning } = await this.resolveSessionKind(snapshot, workspace, device, requestedKind);
+    const timestamp = now();
+    const session: Session = {
+      id: id("session"),
+      workspaceId: workspace.id,
+      name: input.name || this.defaultSessionName(kind, count + 1),
+      status: "running",
+      kind,
+      order: this.nextSessionOrder(snapshot, workspace.id),
+      shell: this.sessionShellLabel(kind, device),
+      cwd: workspace.path,
+      activityStatus: kind === "codex" ? "busy" : "idle",
+      ...(kind === "tmux" ? { tmuxSessionName: `superthread-${workspace.id}-${count + 1}` } : {}),
+      ...(warning ? { fallbackMessage: warning } : {}),
+      createdAt: timestamp
     };
     const pid = this.terminals.create(session, workspace, device, connection);
-    await this.store.update((draft) => { draft.sessions.push({ ...session, pid }); });
+    let created: Session | undefined;
+    await this.store.update((draft) => {
+      created = { ...session, pid };
+      draft.sessions.push(created);
+    });
     this.changed();
+    return { session: created ?? { ...session, pid }, warning };
   }
 
   async resumeSession(sessionId: string): Promise<void> {
     const snapshot = this.snapshot();
     const session = snapshot.sessions.find((item) => item.id === sessionId);
     if (!session) throw new Error("Terminal session not found");
-    if (session.status !== "exited") throw new Error("Only an exited terminal session can be resumed");
+    if (session.status !== "exited" && session.status !== "restore-failed") throw new Error("Only an exited or failed terminal session can be resumed");
     if (this.terminals.has(session.id)) throw new Error("Terminal session is already running");
     const workspace = this.workspace(snapshot, session.workspaceId);
     if (workspace.status !== "ready") throw new Error("Workspace is not ready");
     const device = this.device(snapshot, workspace.deviceId);
     const connection = this.connection(snapshot, device.id);
-    const pid = this.terminals.create(session, workspace, device, connection);
+    const restored = {
+      ...session,
+      cwd: session.cwd || workspace.path,
+      activityStatus: ((session.kind ?? "shell") === "codex" ? "busy" : "idle") as SessionActivityStatus
+    };
+    let pid: number;
+    try {
+      pid = this.terminals.create(restored, workspace, device, connection);
+    } catch (error) {
+      await this.store.update((draft) => {
+        const current = draft.sessions.find((item) => item.id === sessionId);
+        if (!current) throw new Error("Terminal session not found");
+        Object.assign(current, {
+          status: "restore-failed",
+          pid: undefined,
+          activityStatus: undefined,
+          exitReason: "restore-failed",
+          restoreError: this.message(error),
+          exitedAt: now()
+        });
+      });
+      this.changed();
+      throw error;
+    }
     await this.store.update((draft) => {
       const current = draft.sessions.find((item) => item.id === sessionId);
       if (!current) throw new Error("Terminal session not found");
-      Object.assign(current, { status: "running", pid });
+      Object.assign(current, {
+        status: "running",
+        pid,
+        cwd: restored.cwd,
+        activityStatus: restored.activityStatus,
+        restoredAt: now(),
+        restoreError: undefined,
+        exitReason: undefined,
+        exitCode: undefined
+      });
       delete current.exitedAt;
     });
     this.changed();
@@ -430,11 +521,43 @@ export class WorkspaceService extends EventEmitter {
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }
   reconnectTunnels(): void { this.tunnels.reconnectAll(); }
+  runningSessionSummaries(): string[] {
+    const snapshot = this.snapshot();
+    return snapshot.sessions
+      .filter((session) => session.status === "running" && session.activityStatus !== "waiting-input")
+      .map((session) => {
+        const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
+        return `${workspace?.name ?? "Unknown workspace"} / ${session.name} (${session.kind ?? "shell"})`;
+      });
+  }
   shutdown(): void { this.tunnels.stop(); }
   async killSession(id: string): Promise<void> {
     if (this.terminals.has(id)) this.terminals.kill(id);
     await this.store.update((draft) => {
       draft.sessions = draft.sessions.filter((item) => item.id !== id);
+    });
+    this.changed();
+  }
+
+  async reorderSessions(input: ReorderSessionsInput): Promise<void> {
+    const snapshot = this.snapshot();
+    this.workspace(snapshot, input.workspaceId);
+    const expected = new Set(snapshot.sessions.filter((item) => item.workspaceId === input.workspaceId).map((item) => item.id));
+    if (input.sessionIds.some((sessionId) => !expected.has(sessionId))) throw new Error("Session order contains a terminal outside this workspace");
+    await this.store.update((draft) => {
+      const order = new Map(input.sessionIds.map((sessionId, index) => [sessionId, index]));
+      const remaining = draft.sessions.filter((item) => item.workspaceId === input.workspaceId && !order.has(item.id)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      for (const session of draft.sessions.filter((item) => item.workspaceId === input.workspaceId)) {
+        session.order = order.get(session.id) ?? input.sessionIds.length + remaining.findIndex((item) => item.id === session.id);
+      }
+    });
+    this.changed();
+  }
+
+  async markSessionViewed(sessionId: string): Promise<void> {
+    await this.store.update((draft) => {
+      const session = draft.sessions.find((item) => item.id === sessionId);
+      if (session) session.codexResultUnread = false;
     });
     this.changed();
   }
@@ -492,10 +615,116 @@ export class WorkspaceService extends EventEmitter {
     return risks;
   }
 
-  private async markSessionExited(sessionId: string): Promise<void> {
+  private async restoreInterruptedSessions(): Promise<void> {
+    const snapshot = this.snapshot();
+    for (const session of snapshot.sessions.filter((item) => item.status === "running" && !this.terminals.has(item.id) && item.exitReason === "runtime-stopped")) {
+      await this.restoreInterruptedSession(session.id);
+    }
+  }
+
+  private async restoreInterruptedSession(sessionId: string): Promise<void> {
+    const snapshot = this.snapshot();
+    const session = snapshot.sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+    try {
+      const workspace = this.workspace(snapshot, session.workspaceId);
+      if (workspace.status !== "ready") throw new Error("Workspace is not ready");
+      const device = this.device(snapshot, workspace.deviceId);
+      const connection = this.connection(snapshot, device.id);
+      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: (session.kind ?? "shell") === "codex" ? "busy" as const : "idle" as const };
+      const pid = this.terminals.create(restored, workspace, device, connection);
+      await this.store.update((draft) => {
+        const current = draft.sessions.find((item) => item.id === sessionId);
+        if (!current) return;
+        Object.assign(current, {
+          status: "running",
+          pid,
+          cwd: restored.cwd,
+          activityStatus: restored.activityStatus,
+          restoredAt: now(),
+          restoreError: undefined,
+          exitReason: undefined,
+          exitCode: undefined
+        });
+        delete current.exitedAt;
+      });
+    } catch (error) {
+      await this.store.update((draft) => {
+        const current = draft.sessions.find((item) => item.id === sessionId);
+        if (!current) return;
+        Object.assign(current, {
+          status: "restore-failed",
+          pid: undefined,
+          activityStatus: undefined,
+          exitReason: "restore-failed",
+          restoreError: this.message(error),
+          exitedAt: now()
+        });
+      });
+    }
+    this.changed();
+  }
+
+  private async resolveSessionKind(snapshot: AppSnapshot, workspace: Workspace, device: Device, requestedKind: SessionKind): Promise<{ kind: SessionKind; warning?: string }> {
+    if (requestedKind === "shell") return { kind: "shell" };
+    const program = requestedKind === "codex" ? "codex" : "tmux";
+    try {
+      await this.commandRunnerFactory(this.connection(snapshot, device.id)).run("sh", ["-lc", `command -v ${program}`], { cwd: workspace.path, timeoutMs: 8_000 });
+      return { kind: requestedKind };
+    } catch {
+      const warning = this.missingToolWarning(workspace.id, device, requestedKind);
+      return { kind: "shell", warning };
+    }
+  }
+
+  private readonly tmuxMissingWarnings = new Set<string>();
+
+  private missingToolWarning(workspaceId: string, device: Device, kind: Exclude<SessionKind, "shell">): string | undefined {
+    if (kind === "tmux" && device.type === "remote") {
+      if (this.tmuxMissingWarnings.has(workspaceId)) return undefined;
+      this.tmuxMissingWarnings.add(workspaceId);
+    }
+    const tool = kind === "codex" ? "Codex CLI" : "tmux";
+    return `${tool} is not available on ${device.name}; opened a normal terminal instead.`;
+  }
+
+  private defaultSessionName(kind: SessionKind, index: number): string {
+    if (kind === "codex") return `Codex ${index}`;
+    if (kind === "tmux") return `tmux ${index}`;
+    return `Terminal ${index}`;
+  }
+
+  private sessionShellLabel(kind: SessionKind, device: Device): string {
+    if (kind === "codex") return "codex";
+    if (kind === "tmux") return "tmux";
+    return device.type === "remote" ? "ssh" : process.env.SHELL || "/bin/zsh";
+  }
+
+  private nextSessionOrder(snapshot: AppSnapshot, workspaceId: string): number {
+    const orders = snapshot.sessions.filter((item) => item.workspaceId === workspaceId).map((item) => item.order ?? 0);
+    return orders.length ? Math.max(...orders) + 1 : 0;
+  }
+
+  private async markSessionActivity(sessionId: string, activityStatus: SessionActivityStatus): Promise<void> {
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
-      if (session) Object.assign(session, { status: "exited", exitedAt: now(), pid: undefined });
+      if (session?.status === "running") session.activityStatus = activityStatus;
+    });
+    this.changed();
+  }
+
+  private async markSessionExited(sessionId: string, exitCode?: number): Promise<void> {
+    await this.store.update((draft) => {
+      const session = draft.sessions.find((item) => item.id === sessionId);
+      if (session) Object.assign(session, {
+        status: "exited",
+        exitedAt: now(),
+        pid: undefined,
+        activityStatus: undefined,
+        exitReason: "process-exit",
+        exitCode,
+        codexResultUnread: (session.kind ?? "shell") === "codex" && exitCode === 0
+      });
     });
     this.changed();
   }

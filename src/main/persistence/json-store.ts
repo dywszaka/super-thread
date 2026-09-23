@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AppSnapshot } from "../../shared/domain";
+import type { AppSnapshot, Session } from "../../shared/domain";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../../shared/domain";
 
 export class JsonStore {
@@ -11,12 +11,8 @@ export class JsonStore {
   async load(): Promise<AppSnapshot> {
     try {
       const stored = JSON.parse(await readFile(this.filePath, "utf8")) as Partial<AppSnapshot>;
-      if (stored.schemaVersion !== CURRENT_SCHEMA_VERSION) {
-        this.data = emptySnapshot();
-        await this.save(this.data);
-      } else {
-        this.data = stored as AppSnapshot;
-      }
+      this.data = migrateSnapshot(stored);
+      if (stored.schemaVersion !== CURRENT_SCHEMA_VERSION) await this.save(this.data);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       await this.save(this.data);
@@ -42,4 +38,31 @@ export class JsonStore {
     await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, "utf8");
     await rename(temporary, this.filePath);
   }
+}
+
+function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
+  const base = emptySnapshot();
+  const data: AppSnapshot = {
+    ...base,
+    ...stored,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    workThreads: stored.workThreads ?? base.workThreads,
+    projects: stored.projects ?? base.projects,
+    devices: stored.devices ?? base.devices,
+    connections: stored.connections ?? base.connections,
+    checkouts: stored.checkouts ?? base.checkouts,
+    workspaces: stored.workspaces ?? base.workspaces,
+    sessions: (stored.sessions ?? base.sessions).map(normalizeSession)
+  };
+  return data;
+}
+
+function normalizeSession(session: Session): Session {
+  return {
+    kind: "shell",
+    order: 0,
+    cwd: undefined,
+    activityStatus: session.status === "running" ? "idle" : undefined,
+    ...session
+  };
 }

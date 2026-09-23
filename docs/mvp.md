@@ -247,6 +247,8 @@ device
 - Project name 用于展示和 Workspace 路径目录段，必须在全局范围内忽略大小写唯一。
 - 不同 remote 如果检测出相同默认名称，Add Project 不创建 Project，也不执行不必要的 clone；用户需要输入一个安全且唯一的 Project name 后重试。
 - Project name 不能是 `.`、`..`，也不能包含路径分隔符。
+- All projects 页面用于新增、重命名和删除 Project，并展示其 checkout、workspace 与 device 关联。
+- 删除 Project 前必须先删除其全部 Workspace；删除只清理 SuperThread 中的 Project 与 checkout 记录，不删除设备上的仓库目录。
 
 ---
 
@@ -725,10 +727,26 @@ interface Session {
   status:
     | "running"
     | "exited"
+    | "restore-failed"
+
+  kind:
+    | "shell"
+    | "codex"
+    | "tmux"
+
+  order: number
 
   shell: string
 
   pid?: number
+  cwd?: string
+  activityStatus?: "idle" | "busy" | "waiting-input"
+  exitReason?: "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed"
+  exitCode?: number
+  restoreError?: string
+  tmuxSessionName?: string
+  codexConversationId?: string
+  codexResultUnread?: boolean
 
   createdAt: Date
   exitedAt?: Date
@@ -743,6 +761,10 @@ interface Session {
   "workspaceId": "ws_nvfp4",
   "name": "Terminal 1",
   "status": "running",
+  "kind": "shell",
+  "order": 0,
+  "cwd": "/data/workspaces/nvfp4-kernel",
+  "activityStatus": "idle",
   "shell": "/bin/zsh"
 }
 ```
@@ -751,7 +773,13 @@ interface Session {
 
 # 15. Terminal Runtime
 
-创建 Session：
+创建 Session 可以选择三种 managed Terminal 类型：
+
+- `shell`：普通 Terminal，在 Workspace 当前目录启动 shell。
+- `codex`：在 Workspace 当前目录启动 Codex CLI；缺少 Codex CLI 时回退为 `shell` 并提示。
+- `tmux`：优先连接或创建原 tmux session；缺少 tmux 时回退为 `shell` 并提示，Remote Workspace 同一 Workspace 内只提示一次。
+
+创建普通 Session：
 
 ```text
 Workspace
@@ -788,6 +816,8 @@ stderr
 resize
 exit
 rename
+reorder
+mark viewed
 ```
 
 UI 和 Runtime 之间：
@@ -838,15 +868,15 @@ Reconnect PTY
 
 重新连接时，Runtime 返回带单调序号的终端历史快照；UI 必须先完成历史解析，再接通输入转发，并只追加快照序号之后的实时输出。历史回放不得把终端能力查询产生的响应再次写入 PTY。
 
-MVP 暂时不要求：
+Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态，不能信任旧 PID。上次退出或连接中断时仍标记为 `running` 的 Session 会按 Workspace 批量恢复；恢复时使用各自记录的 `cwd`，`tmux` Session 优先重连原 tmux session，`codex` Session 优先用记录的 Codex conversation 恢复。直接运行的 Codex 不承诺从被中断的执行中途继续。
 
-> Device Runtime 重启以后恢复同一个 PTY。
+单个 Session 恢复失败时只影响自身：状态变为 `restore-failed`，保留 `restoreError`，UI 提供 Resume 重试和新建普通 Terminal 入口。其他 Session 的恢复继续执行。
 
-这需要 tmux / screen / process supervisor 等额外机制，可以放到 V2。
+用户主动关闭 Terminal tab 时，Runtime 只关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录；这不主动终止独立运行的 tmux server 或 tmux 中的其他窗口。主动关闭的 Terminal 不会在下次打开 Workspace 时自动恢复。Terminal 名称、顺序、类型、工作目录和恢复标识需要持久化。
 
-用户主动关闭 Terminal tab 时，Runtime 只关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录；这不主动终止独立运行的 tmux server 或 tmux 中的其他窗口。Terminal 名称可以重命名，窗口重开或数据刷新后保留。
+Session 进入 `exited` 或 `restore-failed` 状态后，Terminal 页面中央提供 Resume 操作。Resume 保留原 Session 的 id、名称与标签页，在记录的 cwd 或 Workspace 路径中重新启动 PTY，并将 Session 状态更新为 `running`；它不承诺恢复已经退出的 shell 进程内存或历史终端缓冲。
 
-Session 进入 `exited` 状态后，Terminal 页面中央提供 Resume 操作。Resume 保留原 Session 的 id、名称与标签页，在所属 Workspace 路径中重新启动 PTY，并将 Session 状态更新为 `running`；它不承诺恢复已经退出的 shell 进程内存或历史终端缓冲。
+退出整个应用时，如果存在 `running` 且不是 Codex `waiting-input` 的 Session，主进程必须展示确认提醒并列出仍在执行的 Session。macOS 上只关闭窗口不触发该提醒，窗口关闭期间 PTY 继续存活并可重新附着。
 
 ---
 
@@ -902,14 +932,9 @@ Agent Page
 
 ```text
 All workspaces
+All projects
 All work threads
 All devices
-
-Projects
-
-llama.cpp
-modelopt
-sglang
 
 ────────
 
@@ -923,7 +948,7 @@ Work Threads
 ▸ Benchmarks
 ```
 
-Project 和单个 WorkThread 都是 Workspace filter。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
+Project 和单个 WorkThread 都是 Workspace filter。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：
 
@@ -977,6 +1002,8 @@ Terminal 永远属于 Workspace。
 
 每个 Workspace 分别记住最后访问的 Session。切换到其他 Workspace 再返回时，恢复该 Workspace 上次选中的 Session；只有记录的 Session 已不存在时才回退到第一个可用 Session。
 
+左侧栏可以整栏隐藏。隐藏时主界面只保留左上角展开按钮，按钮必须避开 macOS 交通灯。侧栏展开/隐藏状态、原宽度以及每个 WorkThread 的展开状态是本地 workbench 偏好，重开应用后保持。
+
 ---
 
 # 20. Workspace Header
@@ -1011,6 +1038,8 @@ Path
 
 右上角提供 `Open in VS Code`：本地 Workspace 通过 VS Code 的本地文件 URI 打开；Remote Device 上的 Workspace 通过 VS Code Remote-SSH URI 打开，并使用该 Device 已保存的 SSH user、host 和非默认 port。Workspace 尚未 ready 时禁用此操作。
 
+Header 在有状态需要注意时显示紧凑 Session 汇总：正在执行、Codex 等待输入、Codex 已完成但未读、恢复失败。切换到带未读 Codex 结果的 Terminal 后清除未读标记。
+
 ---
 
 # 21. Terminal Area
@@ -1025,7 +1054,10 @@ Terminal 1
 
 ```text
 + New Terminal
++ New Codex
++ New tmux
 Double-click Terminal name to rename
+Drag Terminal tabs to reorder
 ```
 
 例如：
@@ -1050,7 +1082,7 @@ $ ./llama-bench
 全部：
 
 ```text
-cwd = workspace.path
+cwd = session.cwd || workspace.path
 ```
 
 ---

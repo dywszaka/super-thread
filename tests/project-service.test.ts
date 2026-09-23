@@ -135,6 +135,40 @@ test("SetupProject import can add an existing remote checkout for a known projec
   assert.equal(service.snapshot().checkouts[0]?.path, "/srv/demo");
 });
 
+test("projects can be renamed while preserving unique safe names", async () => {
+  const { service, store } = await setup(() => fakeGit());
+  await store.update((draft) => {
+    draft.projects.push(
+      { id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" },
+      { id: "project-2", name: "runtime", repositoryUrl: "git@example.com:team/runtime.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" }
+    );
+  });
+
+  await service.updateProject({ id: "project-1", name: "Demo Core" });
+  assert.equal(service.snapshot().projects.find((project) => project.id === "project-1")?.name, "Demo Core");
+  await assert.rejects(() => service.updateProject({ id: "project-1", name: "RUNTIME" }), /already exists/);
+});
+
+test("projects can only be deleted after their workspaces are removed", async () => {
+  const { service, store } = await setup(() => fakeGit());
+  await store.update((draft) => {
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/code/demo", createdAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "feature", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/code/demo-feature", branch: "work/feature", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+  });
+
+  await assert.rejects(() => service.deleteProject("project-1"), /workspaces before deleting/);
+  await store.update((draft) => { draft.workspaces = []; });
+  await service.deleteProject("project-1");
+
+  assert.equal(service.snapshot().projects.some((project) => project.id === "project-1"), false);
+  assert.equal(service.snapshot().checkouts.some((checkout) => checkout.projectId === "project-1"), false);
+});
+
 test("WorkspaceService browses directories through the selected device runtime", async () => {
   const expected: DirectoryListing = {
     deviceId: "dev_remote",

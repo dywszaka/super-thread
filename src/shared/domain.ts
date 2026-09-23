@@ -1,9 +1,12 @@
 export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
 export type WorkspaceStatus = "creating" | "ready" | "error";
-export type SessionStatus = "running" | "exited";
+export type SessionStatus = "running" | "exited" | "restore-failed";
+export type SessionKind = "shell" | "codex" | "tmux";
+export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
+export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 export interface WorkThread {
   id: string;
@@ -87,8 +90,20 @@ export interface Session {
   workspaceId: string;
   name: string;
   status: SessionStatus;
+  kind?: SessionKind;
+  order?: number;
   shell: string;
   pid?: number;
+  cwd?: string;
+  activityStatus?: SessionActivityStatus;
+  exitReason?: SessionExitReason;
+  exitCode?: number;
+  restoreError?: string;
+  tmuxSessionName?: string;
+  codexConversationId?: string;
+  codexResultUnread?: boolean;
+  fallbackMessage?: string;
+  restoredAt?: string;
   createdAt: string;
   exitedAt?: string;
 }
@@ -139,6 +154,11 @@ export type SetupProjectInput =
   | { projectId: string; deviceId: string; mode: "import"; path: string }
   | { projectId: string; deviceId: string; mode: "clone"; parentDirectory: string };
 
+export interface UpdateProjectInput {
+  id: string;
+  name: string;
+}
+
 export interface BrowseDirectoryInput {
   deviceId: string;
   path?: string;
@@ -155,11 +175,22 @@ export interface CreateWorkspaceInput {
 export interface CreateSessionInput {
   workspaceId: string;
   name?: string;
+  kind?: SessionKind;
 }
 
 export interface RenameSessionInput {
   id: string;
   name: string;
+}
+
+export interface ReorderSessionsInput {
+  workspaceId: string;
+  sessionIds: string[];
+}
+
+export interface CreateSessionResult {
+  session: Session;
+  warning?: string;
 }
 
 export interface TerminalOutput {

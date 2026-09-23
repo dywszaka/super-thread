@@ -1,20 +1,53 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
+import type { CommandRunner } from "../src/main/runtime/command-runner";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
-import type { Session } from "../src/shared/domain";
+import { CURRENT_SCHEMA_VERSION, emptySnapshot, type Session } from "../src/shared/domain";
 
-async function setup(gitRuntime?: WorkspaceGitRuntime, terminals?: TerminalRuntime): Promise<{ service: WorkspaceService; store: JsonStore }> {
+async function setup(gitRuntime?: WorkspaceGitRuntime, terminals?: TerminalRuntime, commandRunner?: CommandRunner): Promise<{ service: WorkspaceService; store: JsonStore }> {
   const directory = await mkdtemp(join(tmpdir(), "superthread-work-thread-"));
   const store = new JsonStore(join(directory, "state.json"));
-  const service = new WorkspaceService(store, terminals, gitRuntime ? () => gitRuntime : undefined);
+  const service = new WorkspaceService(store, terminals, gitRuntime ? () => gitRuntime : undefined, undefined, undefined, commandRunner ? () => commandRunner : undefined);
   await service.initialize();
   return { service, store };
+}
+
+function fakeTerminals(created: Session[] = [], failIds = new Set<string>()): TerminalRuntime {
+  const terminals = new EventEmitter() as TerminalRuntime;
+  Object.assign(terminals, {
+    has: () => false,
+    create: (session: Session) => {
+      created.push(session);
+      if (failIds.has(session.id)) throw new Error(`cannot restore ${session.name}`);
+      return 900 + created.length;
+    },
+    attach: () => ({ data: "", sequence: 0 }),
+    write: () => {},
+    resize: () => {},
+    kill: () => {}
+  });
+  return terminals;
+}
+
+function workspaceFixture(deviceId = "dev_local"): { threadId: string; projectId: string; checkoutId: string; workspaceId: string } {
+  return { threadId: "thread-1", projectId: "project-1", checkoutId: "checkout-1", workspaceId: `workspace-${deviceId}` };
+}
+
+function addReadyWorkspace(snapshot: ReturnType<typeof emptySnapshot>, ids = workspaceFixture()): void {
+  snapshot.workThreads.push({ id: ids.threadId, name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+  snapshot.projects.push({ id: ids.projectId, name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+  snapshot.checkouts.push({ id: ids.checkoutId, projectId: ids.projectId, deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+  snapshot.workspaces.push({
+    id: ids.workspaceId, name: "demo", workThreadId: ids.threadId, projectId: ids.projectId, deviceId: "dev_local",
+    checkoutId: ids.checkoutId, path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
+    status: "ready", createdAt: "now", updatedAt: "now"
+  });
 }
 
 test("WorkThread names are globally unique ignoring case and whitespace", async () => {
@@ -202,15 +235,102 @@ test("terminal close removes the persisted session and rename persists", async (
   assert.deepEqual(service.snapshot().sessions.map((item) => [item.id, item.name]), [["session-2", "logs"]]);
 });
 
+test("managed terminal creation records kind metadata and falls back when a tool is missing", async () => {
+  const created: Session[] = [];
+  const commandRunner: CommandRunner = {
+    run: async (_program, args) => {
+      if (args.join(" ").includes("codex")) throw new Error("missing codex");
+      return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
+    }
+  };
+  const { service, store } = await setup(undefined, fakeTerminals(created), commandRunner);
+  await store.update((draft) => addReadyWorkspace(draft));
+
+  const codex = await service.createSession({ workspaceId: "workspace-dev_local", kind: "codex" });
+  const tmux = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+
+  assert.match(codex.warning ?? "", /Codex CLI.*normal terminal/);
+  assert.equal(codex.session.kind, "shell");
+  assert.equal(tmux.session.kind, "tmux");
+  assert.equal(tmux.session.tmuxSessionName?.startsWith("superthread-"), true);
+  assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux"]);
+});
+
+test("remote tmux fallback warning is shown once per workspace", async () => {
+  const commandRunner: CommandRunner = { run: async () => { throw new Error("missing tmux"); } };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
+  await store.update((draft) => {
+    draft.devices.push({ id: "dev_remote", name: "GPU host", type: "remote", status: "online", createdAt: "now" });
+    draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_remote", path: "/srv/demo", createdAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_remote",
+      checkoutId: "checkout-1", path: "/srv/demo-worktree", branch: "work/demo", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+  });
+
+  const first = await service.createSession({ workspaceId: "workspace-1", kind: "tmux" });
+  const second = await service.createSession({ workspaceId: "workspace-1", kind: "tmux" });
+
+  assert.match(first.warning ?? "", /tmux.*normal terminal/);
+  assert.equal(second.warning, undefined);
+  assert.deepEqual(service.snapshot().sessions.map((session) => session.kind), ["shell", "shell"]);
+});
+
+test("terminal order persists when sessions are reordered", async () => {
+  const { service, store } = await setup();
+  await store.update((draft) => {
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+    draft.sessions.push(
+      { id: "session-1", workspaceId: "workspace-1", name: "one", status: "running", shell: "/bin/zsh", order: 0, createdAt: "now" },
+      { id: "session-2", workspaceId: "workspace-1", name: "two", status: "running", shell: "/bin/zsh", order: 1, createdAt: "now" }
+    );
+  });
+
+  await service.reorderSessions({ workspaceId: "workspace-1", sessionIds: ["session-2", "session-1"] });
+
+  assert.deepEqual(
+    service.snapshot().sessions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((session) => session.id),
+    ["session-2", "session-1"]
+  );
+});
+
+test("startup restores interrupted sessions and isolates restore failures", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-restore-"));
+  const path = join(directory, "state.json");
+  const snapshot = emptySnapshot();
+  snapshot.devices.push({ id: "dev_local", name: "Local", type: "local", status: "online", createdAt: "now" });
+  snapshot.connections.push({ deviceId: "dev_local", transport: "local", config: {} });
+  addReadyWorkspace(snapshot);
+  snapshot.sessions.push(
+    { id: "session-ok", workspaceId: "workspace-dev_local", name: "ok", status: "running", kind: "shell", shell: "/bin/zsh", pid: 111, cwd: "/tmp/demo-worktree/subdir", createdAt: "now" },
+    { id: "session-fail", workspaceId: "workspace-dev_local", name: "bad", status: "running", kind: "tmux", shell: "tmux", pid: 222, createdAt: "now" }
+  );
+  snapshot.schemaVersion = CURRENT_SCHEMA_VERSION;
+  await writeFile(path, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  const created: Session[] = [];
+  const service = new WorkspaceService(new JsonStore(path), fakeTerminals(created, new Set(["session-fail"])));
+
+  await service.initialize();
+
+  const restored = service.snapshot().sessions;
+  assert.equal(restored.find((session) => session.id === "session-ok")?.pid, 901);
+  assert.equal(restored.find((session) => session.id === "session-ok")?.cwd, "/tmp/demo-worktree/subdir");
+  assert.equal(restored.find((session) => session.id === "session-fail")?.status, "restore-failed");
+  assert.match(restored.find((session) => session.id === "session-fail")?.restoreError ?? "", /cannot restore/);
+});
+
 test("resuming an exited session restarts it in place", async () => {
   const created: Session[] = [];
-  const terminals = new EventEmitter() as TerminalRuntime;
-  Object.assign(terminals, {
-    has: () => false,
-    create: (session: Session) => { created.push(session); return 987; },
-    attach: () => {}, write: () => {}, resize: () => {}, kill: () => {}
-  });
-  const { service, store } = await setup(undefined, terminals);
+  const { service, store } = await setup(undefined, fakeTerminals(created));
   await store.update((draft) => {
     draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
@@ -228,8 +348,10 @@ test("resuming an exited session restarts it in place", async () => {
   assert.equal(created.length, 1);
   assert.equal(created[0]?.id, "session-1");
   assert.equal(created[0]?.name, "logs");
-  assert.deepEqual(service.snapshot().sessions[0], {
-    id: "session-1", workspaceId: "workspace-1", name: "logs", status: "running", shell: "/bin/zsh", pid: 987, createdAt: "now"
-  });
-  await assert.rejects(() => service.resumeSession("session-1"), /Only an exited terminal session/);
+  const resumed = service.snapshot().sessions[0];
+  assert.equal(resumed?.status, "running");
+  assert.equal(resumed?.pid, 901);
+  assert.equal(resumed?.cwd, "/tmp/demo-worktree");
+  assert.equal(resumed?.name, "logs");
+  await assert.rejects(() => service.resumeSession("session-1"), /Only an exited or failed terminal session/);
 });
