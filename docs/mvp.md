@@ -1009,6 +1009,8 @@ Path
 ~/.superthread/workspaces/llama.cpp/nvfp4-kernel
 ```
 
+右上角提供 `Open in VS Code`：本地 Workspace 通过 VS Code 的本地文件 URI 打开；Remote Device 上的 Workspace 通过 VS Code Remote-SSH URI 打开，并使用该 Device 已保存的 SSH user、host 和非默认 port。Workspace 尚未 ready 时禁用此操作。
+
 ---
 
 # 21. Terminal Area
@@ -1462,6 +1464,7 @@ create
 list
 switch
 delete
+open in VS Code (local and Remote-SSH)
 
 git worktree isolation
 ```

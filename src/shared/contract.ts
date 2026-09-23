@@ -31,6 +31,7 @@ export const channels = {
   deleteWorkThread: "work-thread:delete",
   createWorkspace: "workspace:create",
   deleteWorkspace: "workspace:delete",
+  openWorkspaceInVSCode: "workspace:open-in-vscode",
   createSession: "session:create",
   resumeSession: "session:resume",
   attachSession: "session:attach",
@@ -154,6 +155,7 @@ export interface DesktopBridge {
   deleteWorkThread(id: string): Promise<void>;
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
+  openWorkspaceInVSCode(id: string): Promise<void>;
   createSession(input: CreateSessionInput): Promise<void>;
   resumeSession(id: string): Promise<void>;
   attachSession(id: string): Promise<TerminalReplay>;

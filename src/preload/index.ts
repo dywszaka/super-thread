@@ -19,6 +19,7 @@ const bridge: DesktopBridge = {
   deleteWorkThread: (id) => ipcRenderer.invoke(channels.deleteWorkThread, id),
   createWorkspace: (input) => ipcRenderer.invoke(channels.createWorkspace, input),
   deleteWorkspace: (id, force) => ipcRenderer.invoke(channels.deleteWorkspace, id, force),
+  openWorkspaceInVSCode: (id) => ipcRenderer.invoke(channels.openWorkspaceInVSCode, id),
   createSession: (input) => ipcRenderer.invoke(channels.createSession, input),
   resumeSession: (id) => ipcRenderer.invoke(channels.resumeSession, id),
   attachSession: (id) => ipcRenderer.invoke(channels.attachSession, id),

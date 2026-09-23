@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
 import {
   addProjectSchema,
@@ -13,6 +13,7 @@ import {
   updateRemoteDeviceSchema
 } from "../../shared/contract";
 import type { WorkspaceService } from "../application/workspace-service";
+import { vscodeWorkspaceUrl } from "../runtime/vscode-workspace";
 
 const sessionIdSchema = z.string().min(1);
 
@@ -38,6 +39,10 @@ export function registerIpcHandlers(service: WorkspaceService): void {
   ipcMain.handle(channels.deleteWorkThread, (_event, id) => service.deleteWorkThread(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.createWorkspace, (_event, input) => service.createWorkspace(createWorkspaceSchema.parse(input)));
   ipcMain.handle(channels.deleteWorkspace, (_event, workspaceId, force) => service.deleteWorkspace(sessionIdSchema.parse(workspaceId), Boolean(force)));
+  ipcMain.handle(channels.openWorkspaceInVSCode, async (_event, workspaceId) => {
+    const url = vscodeWorkspaceUrl(service.snapshot(), sessionIdSchema.parse(workspaceId));
+    await shell.openExternal(url);
+  });
   ipcMain.handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
   ipcMain.handle(channels.resumeSession, (_event, id) => service.resumeSession(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.attachSession, (_event, id) => service.attachSession(sessionIdSchema.parse(id)));
