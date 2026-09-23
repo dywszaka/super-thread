@@ -7,7 +7,7 @@
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev.mjs",
     "postinstall": "electron-builder install-app-deps",
     "build": "tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",
@@ -45,8 +45,9 @@
   },
   "build": {
     "appId": "com.superthread.desktop",
-    "productName": "SuperThread",
+    "productName": "Super Thread",
     "files": ["out/**/*", "package.json"],
+    "extraResources": [{ "from": "src/renderer/src/assets/icon.png", "to": "icon.png" }],
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",

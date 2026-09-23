@@ -9,7 +9,15 @@ import { channels } from "../shared/contract";
 
 let mainWindow: BrowserWindow | null = null;
 
+// Keep existing project data when the displayed app name changes.
+app.setPath("userData", join(app.getPath("appData"), process.env.ELECTRON_RENDERER_URL ? "super-thread" : "SuperThread"));
+app.setName("Super Thread");
+
 app.whenReady().then(async () => {
+  if (process.platform === "darwin") {
+    app.dock.setIcon(join(process.resourcesPath, "icon.png"));
+  }
+
   const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")));
   await service.initialize();
   registerIpcHandlers(service);
