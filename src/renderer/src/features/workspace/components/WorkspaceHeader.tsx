@@ -19,7 +19,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const project = snapshot.projects.find((item) => item.id === workspace.projectId);
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   const sessions = snapshot.sessions.filter((session) => session.workspaceId === workspace.id);
-  const activeCount = sessions.filter((session) => session.status === "running" && session.activityStatus !== "waiting-input").length;
+  const activeCount = sessions.filter((session) => session.status === "running" && session.activityStatus === "busy").length;
   const waitingCodexCount = sessions.filter((session) => session.kind === "codex" && session.activityStatus === "waiting-input").length;
   const unreadCodexCount = sessions.filter((session) => session.codexResultUnread).length;
   const failedRestoreCount = sessions.filter((session) => session.status === "restore-failed").length;

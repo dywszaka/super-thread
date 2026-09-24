@@ -1,14 +1,63 @@
 import { EventEmitter } from "node:events";
+import { spawn } from "node:child_process";
 import os from "node:os";
+import { basename } from "node:path";
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
-import type { Device, DeviceConnection, Session, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
+import type { Device, DeviceConnection, Session, SessionActivityStatus, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
 
-interface LiveSession { pty: IPty; buffer: string; sequence: number; }
+interface LiveSession {
+  pty: IPty;
+  buffer: string;
+  sequence: number;
+  activityStatus: SessionActivityStatus;
+  activityTimer?: NodeJS.Timeout;
+  probing: boolean;
+  remotePid?: number;
+  markerBuffer: string;
+}
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
-export interface TerminalActivityEvent { sessionId: string; activityStatus: "busy" | "waiting-input"; }
+export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; }
 
 const quote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
+const remotePidMarker = /\x1b]777;superthread-pid=(\d+)\x07/;
+const idleShells = new Set(["bash", "dash", "fish", "ksh", "nu", "sh", "tcsh", "zsh"]);
+
+export function foregroundProcessIsBusy(output: string): boolean {
+  const [processGroup, terminalProcessGroup] = output.trim().split(/\s+/).map(Number);
+  return processGroup !== undefined && terminalProcessGroup !== undefined
+    && Number.isInteger(processGroup) && Number.isInteger(terminalProcessGroup)
+    && terminalProcessGroup > 0 && terminalProcessGroup !== processGroup;
+}
+
+export function tmuxPaneIsBusy(command: string): boolean {
+  const executable = basename(command.trim()).replace(/^-/, "");
+  return executable.length > 0 && !idleShells.has(executable);
+}
+
+export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {
+  const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+  return /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|(?:^|\n)\s*[›>]\s/im.test(plain)
+    ? "waiting-input"
+    : "busy";
+}
+
+function run(program: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => child.kill("SIGTERM"), 1_500);
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr.trim() || `${program} exited with ${code ?? "unknown"}`));
+    });
+  });
+}
 
 export class TerminalRuntime extends EventEmitter {
   private readonly sessions = new Map<string, LiveSession>();
@@ -41,21 +90,42 @@ export class TerminalRuntime extends EventEmitter {
       cwd: device.type === "local" ? cwd : os.homedir(),
       env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>
     });
-    const live: LiveSession = { pty: instance, buffer: "", sequence: 0 };
+    const live: LiveSession = {
+      pty: instance,
+      buffer: "",
+      sequence: 0,
+      activityStatus: session.activityStatus ?? "idle",
+      probing: false,
+      markerBuffer: ""
+    };
     this.sessions.set(session.id, live);
     instance.onData((data) => {
+      if (device.type === "remote" && kind === "shell" && live.remotePid === undefined) {
+        live.markerBuffer += data;
+        const marker = live.markerBuffer.match(remotePidMarker);
+        if (!marker && live.markerBuffer.length < 4_096) return;
+        if (marker) live.remotePid = Number(marker[1]);
+        data = live.markerBuffer.replace(remotePidMarker, "");
+        live.markerBuffer = "";
+      }
       live.buffer = (live.buffer + data).slice(-64_000);
       live.sequence += 1;
-      if ((session.kind ?? "shell") === "codex") {
-        const activityStatus = /\b(waiting|approve|confirm|input|permission)\b/i.test(data) ? "waiting-input" : "busy";
-        this.emit("activity", { sessionId: session.id, activityStatus } satisfies TerminalActivityEvent);
+      if (kind === "codex") {
+        this.setActivity(session.id, live, codexActivityFromOutput(data));
       }
       this.emit("output", { sessionId: session.id, data, sequence: live.sequence } satisfies TerminalOutput);
     });
     instance.onExit(({ exitCode }) => {
+      if (live.activityTimer) clearInterval(live.activityTimer);
       this.sessions.delete(session.id);
       this.emit("exit", { sessionId: session.id, exitCode } satisfies TerminalExitEvent);
     });
+    if (kind !== "codex") {
+      const probe = (): void => { void this.probeActivity(session, live, device, connection); };
+      live.activityTimer = setInterval(probe, 1_000);
+      live.activityTimer.unref();
+      probe();
+    }
     return instance.pid;
   }
 
@@ -66,7 +136,49 @@ export class TerminalRuntime extends EventEmitter {
       return `${prefix}codex${args}`;
     }
     if (kind === "tmux") return `${prefix}tmux new-session -A -s ${quote(session.tmuxSessionName || session.id)}`;
-    return `${prefix}"\${SHELL:-/bin/sh}" -l`;
+    return `cd ${quote(cwd)} && printf '\\033]777;superthread-pid=%s\\007' "$$" && exec "\${SHELL:-/bin/sh}" -l`;
+  }
+
+  private async probeActivity(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
+    if (live.probing || !this.sessions.has(session.id)) return;
+    live.probing = true;
+    try {
+      const kind = session.kind ?? "shell";
+      let command: string;
+      let interpret: (output: string) => boolean;
+      if (kind === "tmux") {
+        command = `tmux display-message -p -t ${quote(session.tmuxSessionName || session.id)} '#{pane_current_command}'`;
+        interpret = tmuxPaneIsBusy;
+      } else {
+        const pid = device.type === "remote" ? live.remotePid : live.pty.pid;
+        if (!pid) return;
+        command = `ps -o pgid= -o tpgid= -p ${pid}`;
+        interpret = foregroundProcessIsBusy;
+      }
+      const output = device.type === "remote"
+        ? await run("ssh", this.sshArgs(connection, command))
+        : await run("sh", ["-lc", command]);
+      this.setActivity(session.id, live, interpret(output) ? "busy" : "idle");
+    } catch {
+      // A transient probe failure must not turn an idle terminal into a false running warning.
+    } finally {
+      live.probing = false;
+    }
+  }
+
+  private sshArgs(connection: DeviceConnection, command: string): string[] {
+    const config = connection.config;
+    const target = config.user ? `${config.user}@${config.host}` : String(config.host);
+    const args = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=2"];
+    if (config.port) args.push("-p", String(config.port));
+    args.push(target, command);
+    return args;
+  }
+
+  private setActivity(sessionId: string, live: LiveSession, activityStatus: SessionActivityStatus): void {
+    if (live.activityStatus === activityStatus) return;
+    live.activityStatus = activityStatus;
+    this.emit("activity", { sessionId, activityStatus } satisfies TerminalActivityEvent);
   }
 
   attach(id: string): TerminalReplay {

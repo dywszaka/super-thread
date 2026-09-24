@@ -235,6 +235,19 @@ test("terminal close removes the persisted session and rename persists", async (
   assert.deepEqual(service.snapshot().sessions.map((item) => [item.id, item.name]), [["session-2", "logs"]]);
 });
 
+test("running session summaries include only terminals actively doing work", async () => {
+  const { service, store } = await setup();
+  await store.update((draft) => {
+    draft.sessions.push(
+      { id: "busy-shell", workspaceId: "workspace-1", name: "build", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "busy", createdAt: "now" },
+      { id: "idle-shell", workspaceId: "workspace-1", name: "prompt", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "idle", createdAt: "now" },
+      { id: "waiting-codex", workspaceId: "workspace-1", name: "agent", status: "running", kind: "codex", shell: "codex", activityStatus: "waiting-input", createdAt: "now" }
+    );
+  });
+
+  assert.deepEqual(service.runningSessionSummaries(), ["Unknown workspace / build (shell)"]);
+});
+
 test("managed terminal creation records kind metadata and falls back when a tool is missing", async () => {
   const created: Session[] = [];
   const commandRunner: CommandRunner = {

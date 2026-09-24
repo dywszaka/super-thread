@@ -769,6 +769,11 @@ interface Session {
 }
 ```
 
+`status` 描述 PTY 生命周期；产品界面中的 `running` 描述终端是否正在执行工作，两者不可混用。只有
+`status === "running" && activityStatus === "busy"` 才计为 running：Codex 正在工作时为 `busy`，
+等待用户输入时为 `waiting-input`；普通 shell 或 tmux 只有前台 command 占用 Terminal、需要等待完成或
+通过 Ctrl+C 中断时才为 `busy`，停留在交互式 shell prompt 时为 `idle`。
+
 ---
 
 # 15. Terminal Runtime
@@ -876,7 +881,7 @@ Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态�
 
 Session 进入 `exited` 或 `restore-failed` 状态后，Terminal 页面中央提供 Resume 操作。Resume 保留原 Session 的 id、名称与标签页，在记录的 cwd 或 Workspace 路径中重新启动 PTY，并将 Session 状态更新为 `running`；它不承诺恢复已经退出的 shell 进程内存或历史终端缓冲。
 
-退出整个应用时，如果存在 `running` 且不是 Codex `waiting-input` 的 Session，主进程必须展示确认提醒并列出仍在执行的 Session。macOS 上只关闭窗口不触发该提醒，窗口关闭期间 PTY 继续存活并可重新附着。
+退出整个应用时，如果存在 `status === "running" && activityStatus === "busy"` 的 Session，主进程必须展示确认提醒并列出仍在执行的 Session。Codex 等待输入和停留在 shell prompt 的空闲 Session 不触发提醒。macOS 上只关闭窗口不触发该提醒，窗口关闭期间 PTY 继续存活并可重新附着。
 
 ---
 

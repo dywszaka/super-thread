@@ -524,7 +524,7 @@ export class WorkspaceService extends EventEmitter {
   runningSessionSummaries(): string[] {
     const snapshot = this.snapshot();
     return snapshot.sessions
-      .filter((session) => session.status === "running" && session.activityStatus !== "waiting-input")
+      .filter((session) => session.status === "running" && session.activityStatus === "busy")
       .map((session) => {
         const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
         return `${workspace?.name ?? "Unknown workspace"} / ${session.name} (${session.kind ?? "shell"})`;
