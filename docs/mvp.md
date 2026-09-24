@@ -777,7 +777,8 @@ interface Session {
 `status === "running" && activityStatus === "busy"` 才计为 running：Codex 正在工作时为 `busy`，
 等待用户输入时为 `waiting-input`；普通 shell 或 tmux 只有前台 command 占用 Terminal、需要等待完成或
 通过 Ctrl+C 中断时才为 `busy`，停留在交互式 shell prompt 时为 `idle`。Codex 运行在 tmux pane 内时
-仍按 Codex 的当前屏幕状态判断，不能仅因 pane 进程显示为 `node` 或 `codex` 就计为 running。
+仍按 Codex 的当前屏幕状态判断，不能仅因 pane 进程显示为 `node` 或 `codex` 就计为 running。直接运行的
+Codex 必须基于最近的累计终端输出判断，不能让输入框之后的 footer/status 重绘把等待状态覆盖为 `busy`。
 
 ---
 

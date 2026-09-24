@@ -99,4 +99,8 @@ test("Codex output distinguishes working from waiting for input", () => {
   assert.equal(codexActivityFromOutput("Permission required: allow this command?"), "waiting-input");
   assert.equal(codexActivityFromOutput("› old request\nWorking (12s • esc to interrupt)"), "busy");
   assert.equal(codexActivityFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything"), "waiting-input");
+  assert.equal(
+    codexActivityFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything\nGPT-5.6-Sol medium · 191K used · 340K in · 2.89K out · 1 warning"),
+    "waiting-input"
+  );
 });

@@ -161,7 +161,7 @@ export class TerminalRuntime extends EventEmitter {
       live.buffer = (live.buffer + data).slice(-64_000);
       live.sequence += 1;
       if (kind === "codex") {
-        this.setActivity(session.id, live, codexActivityFromOutput(data));
+        this.setActivity(session.id, live, codexActivityFromOutput(live.buffer));
       }
       this.emit("output", { sessionId: session.id, data, sequence: live.sequence } satisfies TerminalOutput);
     });
