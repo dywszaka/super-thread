@@ -13,7 +13,8 @@
     "preview": "electron-vite preview",
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "tsc --noEmit",
-    "pack": "npm run build && electron-builder --dir"
+    "pack": "npm run build && electron-builder --dir",
+    "release": "npm run build && electron-builder --mac dmg zip --publish never"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

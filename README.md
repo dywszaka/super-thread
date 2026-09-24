@@ -20,6 +20,12 @@ npm test
 npm run build
 ```
 
+Build macOS release artifacts (`.dmg` and `.zip`) in `dist/`:
+
+```bash
+npm run release
+```
+
 ## Architecture
 
 - `src/main`: Electron native shell, persistence, device runtimes, Git and PTY ownership.
