@@ -51,7 +51,7 @@ export function tmuxTarget(session: Session): string {
   return session.tmuxWindowName ? `${sessionName}:${session.tmuxWindowName}` : sessionName;
 }
 
-export function tmuxClientSessionName(session: Session): string {
+export function legacyTmuxClientSessionName(session: Session): string {
   return `superthread-client-${session.id}`;
 }
 
@@ -62,11 +62,16 @@ export function tmuxAttachCommand(session: Session, cwd: string): string {
   }
   const quotedSession = quoteShellArgument(sessionName);
   const quotedWindow = quoteShellArgument(session.tmuxWindowName);
-  const clientSessionName = tmuxClientSessionName(session);
-  const clientSession = quoteShellArgument(clientSessionName);
-  const clientTarget = quoteShellArgument(`${clientSessionName}:${session.tmuxWindowName}`);
+  const quotedTarget = quoteShellArgument(tmuxTarget(session));
   const quotedCwd = quoteShellArgument(cwd);
-  return `if tmux has-session -t ${quotedSession} 2>/dev/null; then if ! tmux list-windows -t ${quotedSession} -F '#{window_name}' | grep -Fqx -- ${quotedWindow}; then tmux new-window -d -t ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; else tmux new-session -d -s ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; if ! tmux has-session -t ${clientSession} 2>/dev/null; then tmux new-session -d -t ${quotedSession} -s ${clientSession}; fi; tmux select-window -t ${clientTarget}; exec tmux attach-session -t ${clientSession}`;
+  const ensureWindow = `if tmux has-session -t ${quotedSession} 2>/dev/null; then if ! tmux list-windows -t ${quotedSession} -F '#{window_name}' | grep -Fqx -- ${quotedWindow}; then tmux new-window -d -t ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; else tmux new-session -d -s ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi`;
+  if (!session.tmuxClientSessionName) {
+    const legacyClient = quoteShellArgument(legacyTmuxClientSessionName(session));
+    return `${ensureWindow}; tmux kill-session -t ${legacyClient} 2>/dev/null || true; tmux select-window -t ${quotedTarget}; exec tmux attach-session -t ${quotedSession}`;
+  }
+  const clientSession = quoteShellArgument(session.tmuxClientSessionName);
+  const clientTarget = quoteShellArgument(`${session.tmuxClientSessionName}:${session.tmuxWindowName}`);
+  return `${ensureWindow}; if ! tmux has-session -t ${clientSession} 2>/dev/null; then tmux new-session -d -t ${quotedSession} -s ${clientSession}; fi; tmux select-window -t ${clientTarget}; exec tmux attach-session -t ${clientSession}`;
 }
 
 export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {

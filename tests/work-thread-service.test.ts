@@ -347,10 +347,12 @@ test("managed terminal creation records kind metadata and falls back when a tool
   assert.equal(tmux.session.kind, "tmux");
   assert.equal(tmux.session.tmuxSessionName, "demo");
   assert.equal(secondTmux.session.tmuxSessionName, tmux.session.tmuxSessionName);
+  assert.equal(tmux.session.tmuxClientSessionName, undefined);
+  assert.equal(secondTmux.session.tmuxClientSessionName, "demo-2");
   assert.notEqual(secondTmux.session.tmuxWindowName, tmux.session.tmuxWindowName);
   assert.equal(service.snapshot().workspaces.find((workspace) => workspace.id === "workspace-dev_local")?.tmuxSessionName, "demo");
   assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux", "tmux"]);
-  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh", "sh"]);
+  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh", "sh", "sh"]);
   assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
 });
 
@@ -375,8 +377,10 @@ test("tmux session names use the workspace name and increment around collisions"
 
   assert.equal(first.session.tmuxSessionName, "demo-3");
   assert.equal(second.session.tmuxSessionName, "demo-3");
+  assert.equal(first.session.tmuxClientSessionName, undefined);
+  assert.equal(second.session.tmuxClientSessionName, "demo-4");
   assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo-3");
-  assert.equal(listCount, 1);
+  assert.equal(listCount, 2);
 });
 
 test("concurrent duplicate terminal creation requests share one result", async () => {

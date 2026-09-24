@@ -31,7 +31,7 @@ import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runn
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
-import { TerminalRuntime, tmuxClientSessionName, tmuxTarget, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
+import { legacyTmuxClientSessionName, TerminalRuntime, tmuxTarget, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
@@ -471,6 +471,9 @@ export class WorkspaceService extends EventEmitter {
     const tmuxSessionName = kind === "tmux"
       ? await this.resolveTmuxSessionName(snapshot, workspace, device)
       : undefined;
+    const tmuxClientSessionName = kind === "tmux" && tmuxSessionName
+      ? await this.resolveTmuxClientSessionName(snapshot, workspace, device, tmuxSessionName)
+      : undefined;
     const timestamp = now();
     const sessionId = id("session");
     const session: Session = {
@@ -485,6 +488,7 @@ export class WorkspaceService extends EventEmitter {
       activityStatus: kind === "codex" ? "busy" : "idle",
       ...(kind === "tmux" ? {
         tmuxSessionName,
+        ...(tmuxClientSessionName ? { tmuxClientSessionName } : {}),
         tmuxWindowName: sessionId
       } : {}),
       ...(warning ? { fallbackMessage: warning } : {}),
@@ -602,8 +606,12 @@ export class WorkspaceService extends EventEmitter {
     const runner = this.commandRunnerFactory(this.connection(snapshot, device.id));
     const target = quoteShellArgument(tmuxTarget(session));
     const workspaceSession = quoteShellArgument(session.tmuxSessionName || session.id);
+    const clientSessions = [session.tmuxClientSessionName, legacyTmuxClientSessionName(session)]
+      .filter((name): name is string => Boolean(name))
+      .map((name) => `tmux kill-session -t ${quoteShellArgument(name)} 2>/dev/null || true`)
+      .join("; ");
     const command = session.tmuxWindowName
-      ? `tmux kill-session -t ${quoteShellArgument(tmuxClientSessionName(session))} 2>/dev/null || true; ${deleteWorkspaceSession ? `tmux kill-session -t ${workspaceSession}` : `tmux kill-window -t ${target}`} 2>/dev/null || true`
+      ? `${clientSessions}; ${deleteWorkspaceSession ? `tmux kill-session -t ${workspaceSession}` : `tmux kill-window -t ${target}`} 2>/dev/null || true`
       : `tmux kill-session -t ${workspaceSession} 2>/dev/null || true`;
     await runner.run("sh", ["-lc", interactiveLoginShellCommand(command)], { cwd: workspace.path, timeoutMs: 8_000 });
   }
@@ -772,6 +780,26 @@ export class WorkspaceService extends EventEmitter {
       // persisted workspace reservations still prevent app-owned collisions.
     }
     return nextTmuxSessionName(tmuxSessionBaseName(workspace.name), reserved);
+  }
+
+  private async resolveTmuxClientSessionName(snapshot: AppSnapshot, workspace: Workspace, device: Device, tmuxSessionName: string): Promise<string | undefined> {
+    const existing = snapshot.sessions.filter((session) => session.workspaceId === workspace.id && session.kind === "tmux");
+    if (existing.length === 0) return undefined;
+    const occupied = [
+      tmuxSessionName,
+      ...existing.flatMap((session) => session.tmuxClientSessionName ? [session.tmuxClientSessionName] : [])
+    ];
+    try {
+      const result = await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
+        "sh",
+        ["-lc", interactiveLoginShellCommand("tmux list-sessions -F '#{session_name}' 2>/dev/null || true")],
+        { cwd: workspace.path, timeoutMs: 8_000 }
+      );
+      occupied.push(...result.stdout.split("\n").map((name) => name.trim()).filter(Boolean));
+    } catch {
+      // Persisted names still prevent collisions between app-owned client sessions.
+    }
+    return nextTmuxSessionName(tmuxSessionBaseName(workspace.name), occupied);
   }
 
   private readonly tmuxMissingWarnings = new Set<string>();
