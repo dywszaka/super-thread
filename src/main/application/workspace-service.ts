@@ -47,6 +47,19 @@ const unsafeProjectName = (name: string): string | null => {
 };
 const repositoryNameFromUrl = (repositoryUrl: string): string => repositoryUrl.trim().split(/[/:]/).at(-1)?.replace(/\.git$/, "") || "repository";
 
+export function tmuxSessionBaseName(workspaceName: string): string {
+  return workspaceName.trim().replace(/[.:]/g, "-") || "workspace";
+}
+
+export function nextTmuxSessionName(baseName: string, occupied: Iterable<string>): string {
+  const names = new Set(occupied);
+  if (!names.has(baseName)) return baseName;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${baseName}-${suffix}`;
+    if (!names.has(candidate)) return candidate;
+  }
+}
+
 export interface WorkspaceGitRuntime {
   inspect(repositoryPath: string): Promise<RepositoryInfo>;
   clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo>;
@@ -454,6 +467,9 @@ export class WorkspaceService extends EventEmitter {
     const count = snapshot.sessions.filter((item) => item.workspaceId === workspace.id).length;
     const requestedKind = input.kind ?? "shell";
     const { kind, warning } = await this.resolveSessionKind(snapshot, workspace, device, requestedKind);
+    const tmuxSessionName = kind === "tmux"
+      ? await this.resolveTmuxSessionName(snapshot, workspace, device)
+      : undefined;
     const timestamp = now();
     const sessionId = id("session");
     const session: Session = {
@@ -467,7 +483,7 @@ export class WorkspaceService extends EventEmitter {
       cwd: workspace.path,
       activityStatus: kind === "codex" ? "busy" : "idle",
       ...(kind === "tmux" ? {
-        tmuxSessionName: `superthread-${workspace.id}`,
+        tmuxSessionName,
         tmuxWindowName: sessionId
       } : {}),
       ...(warning ? { fallbackMessage: warning } : {}),
@@ -478,6 +494,10 @@ export class WorkspaceService extends EventEmitter {
     await this.store.update((draft) => {
       created = { ...session, pid };
       draft.sessions.push(created);
+      if (tmuxSessionName) {
+        const currentWorkspace = draft.workspaces.find((item) => item.id === workspace.id);
+        if (currentWorkspace) currentWorkspace.tmuxSessionName = tmuxSessionName;
+      }
     });
     this.changed();
     return { session: created ?? { ...session, pid }, warning };
@@ -700,6 +720,30 @@ export class WorkspaceService extends EventEmitter {
       const warning = this.missingToolWarning(workspace.id, device, requestedKind);
       return { kind: "shell", warning };
     }
+  }
+
+  private async resolveTmuxSessionName(snapshot: AppSnapshot, workspace: Workspace, device: Device): Promise<string> {
+    if (workspace.tmuxSessionName) return workspace.tmuxSessionName;
+    const existingSessionName = snapshot.sessions.find((session) =>
+      session.workspaceId === workspace.id && session.kind === "tmux" && session.tmuxSessionName
+    )?.tmuxSessionName;
+    if (existingSessionName) return existingSessionName;
+
+    const reserved = snapshot.workspaces
+      .filter((item) => item.deviceId === device.id && item.id !== workspace.id)
+      .flatMap((item) => item.tmuxSessionName ? [item.tmuxSessionName] : []);
+    try {
+      const result = await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
+        "sh",
+        ["-lc", interactiveLoginShellCommand("tmux list-sessions -F '#{session_name}' 2>/dev/null || true")],
+        { cwd: workspace.path, timeoutMs: 8_000 }
+      );
+      reserved.push(...result.stdout.split("\n").map((name) => name.trim()).filter(Boolean));
+    } catch {
+      // Availability was already checked. If listing races with tmux startup,
+      // persisted workspace reservations still prevent app-owned collisions.
+    }
+    return nextTmuxSessionName(tmuxSessionBaseName(workspace.name), reserved);
   }
 
   private readonly tmuxMissingWarnings = new Set<string>();

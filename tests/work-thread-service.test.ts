@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
+import { nextTmuxSessionName, tmuxSessionBaseName, WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
 import type { CommandRunner } from "../src/main/runtime/command-runner";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
@@ -292,12 +292,38 @@ test("managed terminal creation records kind metadata and falls back when a tool
   assert.match(codex.warning ?? "", /Codex CLI.*normal terminal/);
   assert.equal(codex.session.kind, "shell");
   assert.equal(tmux.session.kind, "tmux");
-  assert.equal(tmux.session.tmuxSessionName, "superthread-workspace-dev_local");
+  assert.equal(tmux.session.tmuxSessionName, "demo");
   assert.equal(secondTmux.session.tmuxSessionName, tmux.session.tmuxSessionName);
   assert.notEqual(secondTmux.session.tmuxWindowName, tmux.session.tmuxWindowName);
+  assert.equal(service.snapshot().workspaces.find((workspace) => workspace.id === "workspace-dev_local")?.tmuxSessionName, "demo");
   assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux", "tmux"]);
-  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh"]);
+  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh", "sh"]);
   assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
+});
+
+test("tmux session names use the workspace name and increment around collisions", async () => {
+  assert.equal(tmuxSessionBaseName(" release.1:fix "), "release-1-fix");
+  assert.equal(nextTmuxSessionName("demo", ["demo", "demo-2", "other"]), "demo-3");
+  let listCount = 0;
+  const commandRunner: CommandRunner = {
+    run: async (_program, args) => {
+      if (args.join(" ").includes("list-sessions")) {
+        listCount += 1;
+        return { stdout: "demo\ndemo-2", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
+    }
+  };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
+  await store.update((draft) => addReadyWorkspace(draft));
+
+  const first = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+  const second = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+
+  assert.equal(first.session.tmuxSessionName, "demo-3");
+  assert.equal(second.session.tmuxSessionName, "demo-3");
+  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo-3");
+  assert.equal(listCount, 1);
 });
 
 test("concurrent duplicate terminal creation requests share one result", async () => {
@@ -305,10 +331,10 @@ test("concurrent duplicate terminal creation requests share one result", async (
   let releaseProbe!: () => void;
   let probeCount = 0;
   const commandRunner: CommandRunner = {
-    run: async () => {
+    run: async (_program, args) => {
       probeCount += 1;
-      await new Promise<void>((resolve) => { releaseProbe = resolve; });
-      return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
+      if (probeCount === 1) await new Promise<void>((resolve) => { releaseProbe = resolve; });
+      return { stdout: args.join(" ").includes("list-sessions") ? "" : "/usr/bin/tmux", stderr: "", exitCode: 0 };
     }
   };
   const { service, store } = await setup(undefined, fakeTerminals(created), commandRunner);
@@ -322,6 +348,7 @@ test("concurrent duplicate terminal creation requests share one result", async (
 
   const [firstResult, duplicateResult] = await Promise.all([first, duplicate]);
   assert.equal(firstResult.session.id, duplicateResult.session.id);
+  assert.equal(probeCount, 2);
   assert.equal(created.length, 1);
   assert.equal(service.snapshot().sessions.length, 1);
 });

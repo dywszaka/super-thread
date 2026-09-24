@@ -79,6 +79,7 @@ export interface Workspace {
   path: string;
   branch: string;
   baseBranch: string;
+  tmuxSessionName?: string;
   status: WorkspaceStatus;
   error?: string;
   createdAt: string;

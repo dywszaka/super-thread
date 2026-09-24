@@ -524,6 +524,9 @@ interface Workspace {
   branch: string
   baseBranch: string
 
+  // 首次创建 tmux Terminal 时分配并持久化
+  tmuxSessionName?: string
+
   status:
     | "creating"
     | "ready"
@@ -783,7 +786,7 @@ interface Session {
 
 - `shell`：普通 Terminal，在 Workspace 当前目录启动 shell。
 - `codex`：在 Workspace 当前目录启动 Codex CLI；缺少 Codex CLI 时回退为 `shell` 并提示。
-- `tmux`：同一个 Workspace 只使用一个主 tmux session；每个 SuperThread Terminal tab 对应该 session 内独立的 tmux window，并通过 grouped client session 保持各 PTY 的当前窗口互不干扰。恢复标签页时重连原 window。缺少 tmux 时回退为 `shell` 并提示，Remote Workspace 同一 Workspace 内只提示一次。
+- `tmux`：同一个 Workspace 只使用一个主 tmux session；session 默认使用 Workspace 名称，若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字，并将选定名称持久化到 Workspace。每个 SuperThread Terminal tab 对应该 session 内独立的 tmux window，并通过 grouped client session 保持各 PTY 的当前窗口互不干扰。恢复标签页时重连原 window。缺少 tmux 时回退为 `shell` 并提示，Remote Workspace 同一 Workspace 内只提示一次。
 
 Codex 与 tmux 的可用性探测及启动必须使用 Device 用户的交互式登录 shell，使 SSH
 设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致。
