@@ -274,8 +274,10 @@ test("running session summaries include only terminals actively doing work", asy
 
 test("managed terminal creation records kind metadata and falls back when a tool is missing", async () => {
   const created: Session[] = [];
+  const probes: Array<{ program: string; args: string[] }> = [];
   const commandRunner: CommandRunner = {
-    run: async (_program, args) => {
+    run: async (program, args) => {
+      probes.push({ program, args });
       if (args.join(" ").includes("codex")) throw new Error("missing codex");
       return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
     }
@@ -291,6 +293,8 @@ test("managed terminal creation records kind metadata and falls back when a tool
   assert.equal(tmux.session.kind, "tmux");
   assert.equal(tmux.session.tmuxSessionName?.startsWith("superthread-"), true);
   assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux"]);
+  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh"]);
+  assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
 });
 
 test("remote tmux fallback warning is shown once per workspace", async () => {

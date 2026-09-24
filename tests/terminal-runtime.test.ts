@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxPaneIsBusy } from "../src/main/runtime/terminal-runtime";
+import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
+
+test("managed tools run through the user's interactive login shell", () => {
+  assert.equal(quoteShellArgument("it's here"), `'it'\\''s here'`);
+  assert.equal(
+    interactiveLoginShellCommand("command -v codex"),
+    `exec "\${SHELL:-/bin/sh}" -lic 'command -v codex'`
+  );
+});
 
 test("attach returns a sequenced replay without emitting it as live output", () => {
   const runtime = new TerminalRuntime();

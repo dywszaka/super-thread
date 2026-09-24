@@ -5,6 +5,7 @@ import { basename } from "node:path";
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
 import type { Device, DeviceConnection, Session, SessionActivityStatus, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
+import { interactiveLoginShellCommand, quoteShellArgument } from "./login-shell";
 
 interface LiveSession {
   pty: IPty;
@@ -19,7 +20,6 @@ interface LiveSession {
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
 export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; }
 
-const quote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
 const remotePidMarker = /\x1b]777;superthread-pid=(\d+)\x07/;
 const idleShells = new Set(["bash", "dash", "fish", "ksh", "nu", "sh", "tcsh", "zsh"]);
 
@@ -76,12 +76,9 @@ export class TerminalRuntime extends EventEmitter {
       args = ["-t"];
       if (config.port) args.push("-p", String(config.port));
       args.push(target, command);
-    } else if (kind === "codex") {
-      program = "codex";
-      args = session.codexConversationId ? ["resume", session.codexConversationId] : [];
-    } else if (kind === "tmux") {
-      program = "tmux";
-      args = ["new-session", "-A", "-s", session.tmuxSessionName || session.id];
+    } else if (kind === "codex" || kind === "tmux") {
+      const command = this.managedToolCommand(kind, session);
+      args = ["-lic", command];
     }
     const instance = pty.spawn(program, args, {
       name: "xterm-256color",
@@ -130,13 +127,18 @@ export class TerminalRuntime extends EventEmitter {
   }
 
   private remoteCommand(kind: string, session: Session, cwd: string): string {
-    const prefix = `cd ${quote(cwd)} && exec `;
-    if (kind === "codex") {
-      const args = session.codexConversationId ? ` resume ${quote(session.codexConversationId)}` : "";
-      return `${prefix}codex${args}`;
+    if (kind === "codex" || kind === "tmux") {
+      return interactiveLoginShellCommand(`cd ${quoteShellArgument(cwd)} && ${this.managedToolCommand(kind, session)}`);
     }
-    if (kind === "tmux") return `${prefix}tmux new-session -A -s ${quote(session.tmuxSessionName || session.id)}`;
-    return `cd ${quote(cwd)} && printf '\\033]777;superthread-pid=%s\\007' "$$" && exec "\${SHELL:-/bin/sh}" -l`;
+    return `cd ${quoteShellArgument(cwd)} && printf '\\033]777;superthread-pid=%s\\007' "$$" && exec "\${SHELL:-/bin/sh}" -l`;
+  }
+
+  private managedToolCommand(kind: "codex" | "tmux", session: Session): string {
+    if (kind === "codex") {
+      const args = session.codexConversationId ? ` resume ${quoteShellArgument(session.codexConversationId)}` : "";
+      return `codex${args}`;
+    }
+    return `tmux new-session -A -s ${quoteShellArgument(session.tmuxSessionName || session.id)}`;
   }
 
   private async probeActivity(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
@@ -147,7 +149,7 @@ export class TerminalRuntime extends EventEmitter {
       let command: string;
       let interpret: (output: string) => boolean;
       if (kind === "tmux") {
-        command = `tmux display-message -p -t ${quote(session.tmuxSessionName || session.id)} '#{pane_current_command}'`;
+        command = `tmux display-message -p -t ${quoteShellArgument(session.tmuxSessionName || session.id)} '#{pane_current_command}'`;
         interpret = tmuxPaneIsBusy;
       } else {
         const pid = device.type === "remote" ? live.remotePid : live.pty.pid;

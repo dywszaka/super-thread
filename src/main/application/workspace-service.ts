@@ -32,6 +32,7 @@ import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
 import { TerminalRuntime, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
+import { interactiveLoginShellCommand } from "../runtime/login-shell";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
@@ -672,7 +673,11 @@ export class WorkspaceService extends EventEmitter {
     if (requestedKind === "shell") return { kind: "shell" };
     const program = requestedKind === "codex" ? "codex" : "tmux";
     try {
-      await this.commandRunnerFactory(this.connection(snapshot, device.id)).run("sh", ["-lc", `command -v ${program}`], { cwd: workspace.path, timeoutMs: 8_000 });
+      await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
+        "sh",
+        ["-lc", interactiveLoginShellCommand(`command -v ${program}`)],
+        { cwd: workspace.path, timeoutMs: 8_000 }
+      );
       return { kind: requestedKind };
     } catch {
       const warning = this.missingToolWarning(workspace.id, device, requestedKind);
