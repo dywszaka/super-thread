@@ -532,11 +532,14 @@ export class WorkspaceService extends EventEmitter {
   }
   shutdown(): void { this.tunnels.stop(); }
   async killSession(id: string): Promise<void> {
-    if (this.terminals.has(id)) this.terminals.kill(id);
+    const running = this.terminals.has(id);
+    // Remove durable state before killing the PTY. Its exit event may arrive
+    // immediately, and must observe that this user-closed session is gone.
     await this.store.update((draft) => {
       draft.sessions = draft.sessions.filter((item) => item.id !== id);
     });
     this.changed();
+    if (running) this.terminals.kill(id);
   }
 
   async reorderSessions(input: ReorderSessionsInput): Promise<void> {

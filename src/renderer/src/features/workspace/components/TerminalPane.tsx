@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
 import { Bot, Layers3, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,7 +7,7 @@ import { toast } from "sonner";
 import type { AppSnapshot, Session, SessionKind, TerminalOutput, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 
-function TerminalView({ session, active, resuming, onResume }: { session: Session; active: boolean; resuming: boolean; onResume: () => void }): React.ReactNode {
+function TerminalView({ session, active, resuming, onResume, onCreate }: { session: Session; active: boolean; resuming: boolean; onResume: () => void; onCreate: (kind: SessionKind) => void }): React.ReactNode {
   const container = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -94,11 +95,12 @@ function TerminalView({ session, active, resuming, onResume }: { session: Sessio
     });
     return () => cancelAnimationFrame(frame);
   }, [active, session.id, session.status]);
-  if (session.status === "exited" || session.status === "restore-failed") return <div className={`terminal-view terminal-exited ${active ? "active" : ""}`} aria-hidden={!active}><TerminalSquare size={28} /><h3>{session.status === "restore-failed" ? "Restore failed" : "Session exited"}</h3><p>{session.restoreError || "The workspace is intact. Resume this session to continue."}</p><div className="terminal-empty-actions"><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button>{session.status === "restore-failed" && <button className="button" onClick={() => void window.desktop.createSession({ workspaceId: session.workspaceId, kind: "shell" })}><Plus size={14} /> New Terminal</button>}</div></div>;
+  if (session.status === "exited" || session.status === "restore-failed") return <div className={`terminal-view terminal-exited ${active ? "active" : ""}`} aria-hidden={!active}><TerminalSquare size={28} /><h3>{session.status === "restore-failed" ? "Restore failed" : "Session exited"}</h3><p>{session.restoreError || "The workspace is intact. Resume this session to continue."}</p><div className="terminal-empty-actions"><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button>{session.status === "restore-failed" && <button className="button" onClick={() => onCreate("shell")}><Plus size={14} /> New Terminal</button>}</div></div>;
   return <div ref={container} className={`terminal-view terminal-host selectable ${active ? "active" : ""}`} aria-hidden={!active} />;
 }
 
 export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSnapshot; workspace: Workspace; visible: boolean }): React.ReactNode {
+  const client = useQueryClient();
   const { activeSessionIds, setActiveSession } = useWorkbenchStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -120,6 +122,8 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     setCreateMenu(false);
     try {
       const result = await window.desktop.createSession({ workspaceId: workspace.id, kind });
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      setActiveSession(workspace.id, result.session.id);
       if (result.warning) toast.warning(result.warning);
     }
     catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
@@ -166,7 +170,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
           {createMenu && <div className="terminal-kind-menu"><button onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}
         </div>
       </div>
-      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={`${session.id}:${replayVersions[session.id] ?? 0}`} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" onClick={() => void create("shell")}><Plus size={14} /> Terminal</button><button className="button" onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
+      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={`${session.id}:${replayVersions[session.id] ?? 0}`} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" onClick={() => void create("shell")}><Plus size={14} /> Terminal</button><button className="button" onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
       <div className="terminal-status"><span><i className={active?.status === "running" ? "online" : "offline"} /> {active?.activityStatus ?? active?.status ?? "no session"}</span><span>{active?.kind ?? "shell"}</span><span>{active?.cwd}</span>{active?.status === "running" && <button title="Replay terminal output" onClick={() => setReplayVersions((versions) => ({ ...versions, [active.id]: (versions[active.id] ?? 0) + 1 }))}><RotateCcw size={11} /></button>}</div>
     </section>
   );

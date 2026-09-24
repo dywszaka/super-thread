@@ -235,6 +235,30 @@ test("terminal close removes the persisted session and rename persists", async (
   assert.deepEqual(service.snapshot().sessions.map((item) => [item.id, item.name]), [["session-2", "logs"]]);
 });
 
+test("terminal close cannot be resurrected by its PTY exit event", async () => {
+  const terminals = new EventEmitter() as TerminalRuntime;
+  let running = true;
+  Object.assign(terminals, {
+    has: () => running,
+    attach: () => ({ data: "", sequence: 0 }),
+    write: () => {},
+    resize: () => {},
+    kill: (sessionId: string) => {
+      running = false;
+      terminals.emit("exit", { sessionId, exitCode: 0 });
+    }
+  });
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.sessions.push({ id: "session-1", workspaceId: "workspace-1", name: "Terminal 1", status: "running", shell: "/bin/zsh", pid: 123, createdAt: "now" });
+  });
+
+  await service.killSession("session-1");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(service.snapshot().sessions, []);
+});
+
 test("running session summaries include only terminals actively doing work", async () => {
   const { service, store } = await setup();
   await store.update((draft) => {

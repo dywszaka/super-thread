@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Box, FolderGit2, Plus, Server } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { ProjectList } from "./components/ProjectList";
 import { visibleWorkspaces } from "./selection";
 
 export function WorkspaceApp(): React.ReactNode {
+  const client = useQueryClient();
   const { data: snapshot, error, isLoading } = useQuery({ queryKey: ["snapshot"], queryFn: () => window.desktop.snapshot() });
   const store = useWorkbenchStore();
   const scope = store.scope;
@@ -32,10 +33,12 @@ export function WorkspaceApp(): React.ReactNode {
     if (action === "new-workspace") store.openDialog("workspace");
     if (action === "add-project") store.openDialog("project");
     if (action === "add-device") store.openDialog("device");
-    if (action === "new-terminal" && active) void window.desktop.createSession({ workspaceId: active.id }).then((result) => {
+    if (action === "new-terminal" && active) void window.desktop.createSession({ workspaceId: active.id }).then(async (result) => {
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      store.setActiveSession(active.id, result.session.id);
       if (result.warning) toast.warning(result.warning);
     }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)));
-  }), [active?.id]);
+  }), [active?.id, client]);
 
   if (isLoading || !snapshot) return <div className="boot-screen drag"><div className="boot-logo"><Box size={22} /><span /></div></div>;
   if (error) throw error;
