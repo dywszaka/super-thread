@@ -26,6 +26,10 @@ Build macOS release artifacts (`.dmg` and `.zip`) in `dist/`:
 npm run release
 ```
 
+Development and packaged builds share persistent data at
+`~/Library/Application Support/super-thread/`. The domain snapshot is stored in
+`workspace-runtime.json` inside that directory.
+
 ## Architecture
 
 - `src/main`: Electron native shell, persistence, device runtimes, Git and PTY ownership.

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, powerMonitor, type MessageBoxOptions } from "electron";
 import { join } from "node:path";
+import { applicationUserDataPath } from "./application-paths";
 import { WorkspaceService } from "./application/workspace-service";
 import { registerIpcHandlers } from "./ipc/register-handlers";
 import { createApplicationMenu } from "./menu/create-application-menu";
@@ -9,8 +10,8 @@ import { channels } from "../shared/contract";
 
 let mainWindow: BrowserWindow | null = null;
 
-// Keep existing project data when the displayed app name changes.
-app.setPath("userData", join(app.getPath("appData"), process.env.ELECTRON_RENDERER_URL ? "super-thread" : "SuperThread"));
+// Keep development and packaged builds on the same persistent application data.
+app.setPath("userData", applicationUserDataPath(app.getPath("appData")));
 app.setName("Super Thread");
 
 app.whenReady().then(async () => {
