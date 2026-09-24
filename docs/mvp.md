@@ -884,7 +884,7 @@ Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态�
 
 单个 Session 恢复失败时只影响自身：状态变为 `restore-failed`，保留 `restoreError`，UI 提供 Resume 重试和新建普通 Terminal 入口。其他 Session 的恢复继续执行。
 
-用户主动关闭 Terminal tab 时，Runtime 只关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录；这不主动终止独立运行的 tmux server 或 tmux 中的其他窗口。主动关闭的 Terminal 不会在下次打开 Workspace 时自动恢复。Terminal 名称、顺序、类型、工作目录和恢复标识需要持久化。
+用户主动关闭 Terminal tab 时，Runtime 关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录。tmux Terminal 还必须删除对应的 grouped client session 和 tmux window；删除最后一个 window 时主 tmux session 随之结束。若该 tmux Terminal 的 `activityStatus` 为 `busy`，UI 必须先提醒用户关闭会终止正在运行的任务，并经确认后才能继续。主动关闭的 Terminal 不会在下次打开 Workspace 时自动恢复。Terminal 名称、顺序、类型、工作目录和恢复标识需要持久化。
 
 Session 进入 `exited` 或 `restore-failed` 状态后，Terminal 页面中央提供 Resume 操作。Resume 保留原 Session 的 id、名称与标签页，在记录的 cwd 或 Workspace 路径中重新启动 PTY，并将 Session 状态更新为 `running`；它不承诺恢复已经退出的 shell 进程内存或历史终端缓冲。
 

@@ -31,8 +31,8 @@ import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runn
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
-import { TerminalRuntime, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
-import { interactiveLoginShellCommand } from "../runtime/login-shell";
+import { TerminalRuntime, tmuxClientSessionName, tmuxTarget, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
+import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
@@ -90,6 +90,7 @@ type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
+  private readonly closingSessionIds = new Set<string>();
 
   constructor(
     private readonly store: JsonStore,
@@ -569,15 +570,42 @@ export class WorkspaceService extends EventEmitter {
       });
   }
   shutdown(): void { this.tunnels.stop(); }
-  async killSession(id: string): Promise<void> {
+  async killSession(id: string, force = false): Promise<void> {
+    const snapshot = this.snapshot();
+    const session = snapshot.sessions.find((item) => item.id === id);
+    if (!session) return;
+    const hasOtherTmuxTerminals = snapshot.sessions.some((item) => item.id !== id && item.workspaceId === session.workspaceId && item.kind === "tmux");
+    if (session.kind === "tmux" && session.status === "running" && session.activityStatus === "busy" && !force) {
+      throw new Error(`This tmux terminal is running a task. Closing it will stop the task and delete its tmux ${hasOtherTmuxTerminals ? "window" : "session"}.`);
+    }
     const running = this.terminals.has(id);
-    // Remove durable state before killing the PTY. Its exit event may arrive
-    // immediately, and must observe that this user-closed session is gone.
-    await this.store.update((draft) => {
-      draft.sessions = draft.sessions.filter((item) => item.id !== id);
-    });
-    this.changed();
-    if (running) this.terminals.kill(id);
+    this.closingSessionIds.add(id);
+    try {
+      if (session.kind === "tmux" && session.tmuxSessionName) await this.deleteTmuxTerminal(snapshot, session, !hasOtherTmuxTerminals);
+      await this.store.update((draft) => {
+        draft.sessions = draft.sessions.filter((item) => item.id !== id);
+        if (session.kind === "tmux" && !draft.sessions.some((item) => item.workspaceId === session.workspaceId && item.kind === "tmux")) {
+          const workspace = draft.workspaces.find((item) => item.id === session.workspaceId);
+          if (workspace) workspace.tmuxSessionName = undefined;
+        }
+      });
+      this.changed();
+      if (running) this.terminals.kill(id);
+    } finally {
+      this.closingSessionIds.delete(id);
+    }
+  }
+
+  private async deleteTmuxTerminal(snapshot: AppSnapshot, session: Session, deleteWorkspaceSession: boolean): Promise<void> {
+    const workspace = this.workspace(snapshot, session.workspaceId);
+    const device = this.device(snapshot, workspace.deviceId);
+    const runner = this.commandRunnerFactory(this.connection(snapshot, device.id));
+    const target = quoteShellArgument(tmuxTarget(session));
+    const workspaceSession = quoteShellArgument(session.tmuxSessionName || session.id);
+    const command = session.tmuxWindowName
+      ? `tmux kill-session -t ${quoteShellArgument(tmuxClientSessionName(session))} 2>/dev/null || true; ${deleteWorkspaceSession ? `tmux kill-session -t ${workspaceSession}` : `tmux kill-window -t ${target}`} 2>/dev/null || true`
+      : `tmux kill-session -t ${workspaceSession} 2>/dev/null || true`;
+    await runner.run("sh", ["-lc", interactiveLoginShellCommand(command)], { cwd: workspace.path, timeoutMs: 8_000 });
   }
 
   async reorderSessions(input: ReorderSessionsInput): Promise<void> {
@@ -775,6 +803,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private async markSessionActivity(sessionId: string, activityStatus: SessionActivityStatus): Promise<void> {
+    if (this.closingSessionIds.has(sessionId)) return;
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
       if (session?.status === "running") session.activityStatus = activityStatus;
@@ -783,6 +812,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private async markSessionExited(sessionId: string, exitCode?: number): Promise<void> {
+    if (this.closingSessionIds.has(sessionId)) return;
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
       if (session) Object.assign(session, {

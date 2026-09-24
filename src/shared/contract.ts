@@ -183,7 +183,7 @@ export interface DesktopBridge {
   attachSession(id: string): Promise<TerminalReplay>;
   writeSession(id: string, data: string): void;
   resizeSession(id: string, cols: number, rows: number): void;
-  killSession(id: string): Promise<void>;
+  killSession(id: string, force?: boolean): Promise<void>;
   renameSession(input: RenameSessionInput): Promise<void>;
   onTerminalOutput(listener: (event: TerminalOutput) => void): () => void;
   onDataChanged(listener: () => void): () => void;

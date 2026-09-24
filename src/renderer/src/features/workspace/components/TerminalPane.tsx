@@ -145,8 +145,21 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     finally { creatingRef.current = false; setCreating(false); }
   };
   const close = async (sessionId: string): Promise<void> => {
-    try { await window.desktop.killSession(sessionId); }
-    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+    const session = sessions.find((item) => item.id === sessionId);
+    let force = false;
+    if (session?.kind === "tmux" && session.status === "running" && session.activityStatus === "busy") {
+      const resource = sessions.some((item) => item.id !== session.id && item.kind === "tmux") ? "window" : "session";
+      force = confirm(`“${session.name}” is running a task.\n\nClosing it will stop the task and delete its tmux ${resource}. Continue?`);
+      if (!force) return;
+    }
+    try { await window.desktop.killSession(sessionId, force); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!force && message.includes("This tmux terminal is running a task") && confirm(`${message}\n\nContinue?`)) {
+        try { await window.desktop.killSession(sessionId, true); }
+        catch (retryError) { toast.error(retryError instanceof Error ? retryError.message : String(retryError)); }
+      } else toast.error(message);
+    }
   };
   const resume = async (sessionId: string): Promise<void> => {
     setResumingId(sessionId);

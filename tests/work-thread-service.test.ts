@@ -259,6 +259,59 @@ test("terminal close cannot be resurrected by its PTY exit event", async () => {
   assert.deepEqual(service.snapshot().sessions, []);
 });
 
+test("closing a busy tmux terminal requires confirmation and deletes its tmux resources", async () => {
+  const commands: string[] = [];
+  const commandRunner: CommandRunner = {
+    run: async (_program, args) => {
+      commands.push(args.join(" "));
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+  };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
+  await store.update((draft) => {
+    addReadyWorkspace(draft);
+    const workspace = draft.workspaces[0];
+    if (workspace) workspace.tmuxSessionName = "demo";
+    draft.sessions.push({
+      id: "session-tmux", workspaceId: "workspace-dev_local", name: "build", status: "running", kind: "tmux",
+      shell: "tmux", activityStatus: "busy", tmuxSessionName: "demo", tmuxWindowName: "session-tmux", createdAt: "now"
+    });
+  });
+
+  await assert.rejects(() => service.killSession("session-tmux"), /running a task/);
+  assert.equal(service.snapshot().sessions.length, 1);
+  assert.equal(commands.length, 0);
+
+  await service.killSession("session-tmux", true);
+  assert.equal(service.snapshot().sessions.length, 0);
+  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, undefined);
+  assert.equal(commands.length, 1);
+  assert.match(commands[0] ?? "", /kill-session.*superthread-client-session-tmux/);
+  assert.match(commands[0] ?? "", /kill-session.*demo/);
+});
+
+test("closing one tmux window preserves the workspace session while other windows remain", async () => {
+  const commands: string[] = [];
+  const commandRunner: CommandRunner = { run: async (_program, args) => { commands.push(args.join(" ")); return { stdout: "", stderr: "", exitCode: 0 }; } };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
+  await store.update((draft) => {
+    addReadyWorkspace(draft);
+    const workspace = draft.workspaces[0];
+    if (workspace) workspace.tmuxSessionName = "demo";
+    draft.sessions.push(
+      { id: "tmux-1", workspaceId: "workspace-dev_local", name: "one", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowName: "tmux-1", createdAt: "now" },
+      { id: "tmux-2", workspaceId: "workspace-dev_local", name: "two", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowName: "tmux-2", createdAt: "now" }
+    );
+  });
+
+  await service.killSession("tmux-1");
+
+  assert.deepEqual(service.snapshot().sessions.map((session) => session.id), ["tmux-2"]);
+  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo");
+  assert.match(commands[0] ?? "", /kill-window.*demo:tmux-1/);
+  assert.doesNotMatch(commands[0] ?? "", /kill-session -t .*'demo'/);
+});
+
 test("running session summaries include only terminals actively doing work", async () => {
   const { service, store } = await setup();
   await store.update((draft) => {
