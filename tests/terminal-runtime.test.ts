@@ -47,10 +47,21 @@ test("tmux activity distinguishes Codex work from waiting for input", () => {
   assert.equal(tmuxActivityFromProbe("codex\nWorking (12s • esc to interrupt)"), "busy");
   assert.equal(tmuxActivityFromProbe("codex\n\n› Implement the next feature"), "waiting-input");
   assert.equal(tmuxActivityFromProbe("codex-aarch64-apple-darwin\nPermission required: allow this command?"), "waiting-input");
+  assert.equal(
+    tmuxActivityFromProbe("node\n› sleep 30\nWorking (2s • esc to interrupt)\nRan sleep 30\nAsk Codex to do anything"),
+    "waiting-input"
+  );
+  assert.equal(
+    tmuxActivityFromProbe("node\n› inspect the code\nAsk Codex to do anything\nWorking (2s • esc to interrupt)"),
+    "busy"
+  );
+  assert.equal(tmuxActivityFromProbe("node\nDevelopment server listening on port 3000"), "busy");
 });
 
 test("Codex output distinguishes working from waiting for input", () => {
   assert.equal(codexActivityFromOutput("Working (12s • esc to interrupt)"), "busy");
   assert.equal(codexActivityFromOutput("\n› Implement the next feature"), "waiting-input");
   assert.equal(codexActivityFromOutput("Permission required: allow this command?"), "waiting-input");
+  assert.equal(codexActivityFromOutput("› old request\nWorking (12s • esc to interrupt)"), "busy");
+  assert.equal(codexActivityFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything"), "waiting-input");
 });

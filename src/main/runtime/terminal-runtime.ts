@@ -39,15 +39,24 @@ export function tmuxActivityFromProbe(output: string): SessionActivityStatus {
   const [command = "", ...paneLines] = output.replaceAll("\r", "").split("\n");
   if (!tmuxPaneIsBusy(command)) return "idle";
   const executable = basename(command.trim()).replace(/^-/, "");
-  if (executable !== "codex" && !executable.startsWith("codex-")) return "busy";
-  return codexActivityFromOutput(paneLines.slice(-12).join("\n"));
+  const pane = paneLines.slice(-20).join("\n");
+  const isCodexProcess = executable === "codex" || executable.startsWith("codex-");
+  const isCodexNodeProcess = executable === "node" && /Ask Codex to do anything|\bWorking\b[^\n]*esc to interrupt|\bGPT-[\w.-]+\b[^\n]*(?:used|\bin\b|\bout\b)/i.test(pane);
+  if (!isCodexProcess && !isCodexNodeProcess) return "busy";
+  return codexActivityFromOutput(pane);
 }
 
 export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {
   const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-  return /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|(?:^|\n)\s*[›>]\s/im.test(plain)
-    ? "waiting-input"
-    : "busy";
+  const waitingAt = lastMatchIndex(plain, /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|Ask Codex to do anything|(?:^|\n)\s*[›>]\s/gim);
+  const workingAt = lastMatchIndex(plain, /\bWorking\b|esc to interrupt/gim);
+  return waitingAt > workingAt ? "waiting-input" : "busy";
+}
+
+function lastMatchIndex(value: string, pattern: RegExp): number {
+  let index = -1;
+  for (const match of value.matchAll(pattern)) index = match.index;
+  return index;
 }
 
 function run(program: string, args: string[]): Promise<string> {
@@ -167,7 +176,7 @@ export class TerminalRuntime extends EventEmitter {
         interpret = (output) => foregroundProcessIsBusy(output) ? "busy" : "idle";
       }
       const output = device.type === "remote"
-        ? await run("ssh", this.sshArgs(connection, command))
+        ? await run("ssh", this.sshArgs(connection, interactiveLoginShellCommand(command)))
         : await run("sh", ["-lc", command]);
       this.setActivity(session.id, live, interpret(output));
     } catch {
