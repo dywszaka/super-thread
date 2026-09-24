@@ -1,11 +1,30 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
-import { Bot, Layers3, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Bot, Layers3, LoaderCircle, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Session, SessionKind, TerminalOutput, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
+
+interface PendingSession {
+  id: string;
+  workspaceId: string;
+  kind: SessionKind;
+  name: string;
+  status: "creating" | "failed";
+  error?: string;
+}
+
+const pendingName = (kind: SessionKind): string => {
+  if (kind === "codex") return "Codex";
+  if (kind === "tmux") return "tmux";
+  return "Terminal";
+};
+
+const sessionIcon = (kind?: SessionKind, size = 13): React.ReactNode => (
+  kind === "codex" ? <Bot size={size} /> : kind === "tmux" ? <Layers3 size={size} /> : <TerminalSquare size={size} />
+);
 
 function TerminalView({ session, active, resuming, onResume, onCreate }: { session: Session; active: boolean; resuming: boolean; onResume: () => void; onCreate: (kind: SessionKind) => void }): React.ReactNode {
   const container = useRef<HTMLDivElement>(null);
@@ -95,32 +114,47 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
     });
     return () => cancelAnimationFrame(frame);
   }, [active, session.id, session.status]);
-  if (session.status === "exited" || session.status === "restore-failed") return <div className={`terminal-view terminal-exited ${active ? "active" : ""}`} aria-hidden={!active}><TerminalSquare size={28} /><h3>{session.status === "restore-failed" ? "Restore failed" : "Session exited"}</h3><p>{session.restoreError || "The workspace is intact. Resume this session to continue."}</p><div className="terminal-empty-actions"><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button>{session.status === "restore-failed" && <button className="button" onClick={() => onCreate("shell")}><Plus size={14} /> New Terminal</button>}</div></div>;
+  if (session.status === "exited" || session.status === "restore-failed") return <div className={`terminal-view terminal-exited ${active ? "active" : ""}`} aria-hidden={!active}>{sessionIcon(session.kind, 28)}<h3>{session.status === "restore-failed" ? "Restore failed" : "Session exited"}</h3><p>{session.restoreError || "The workspace is intact. Resume this session to continue."}</p><div className="terminal-empty-actions"><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button>{session.status === "restore-failed" && <button className="button" onClick={() => onCreate(session.kind ?? "shell")}><Plus size={14} /> New {pendingName(session.kind ?? "shell")}</button>}</div></div>;
   return <div ref={container} className={`terminal-view terminal-host selectable ${active ? "active" : ""}`} aria-hidden={!active} />;
+}
+
+function PendingTerminalView({ pending, active, onRetry, onClose }: { pending: PendingSession; active: boolean; onRetry: () => void; onClose: () => void }): React.ReactNode {
+  const creating = pending.status === "creating";
+  return (
+    <div className={`terminal-view terminal-exited terminal-pending ${active ? "active" : ""}`} aria-hidden={!active}>
+      {creating ? <LoaderCircle className="spinning" size={28} /> : <AlertTriangle size={28} />}
+      <h3>{creating ? `Starting ${pending.name}…` : `${pending.name} failed to start`}</h3>
+      <p>{creating ? "Preparing the terminal session." : pending.error}</p>
+      {!creating && <div className="terminal-empty-actions"><button className="button primary" onClick={onRetry}><RotateCcw size={14} /> Retry</button><button className="button" onClick={onClose}><X size={14} /> Close</button></div>}
+    </div>
+  );
 }
 
 export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSnapshot; workspace: Workspace; visible: boolean }): React.ReactNode {
   const client = useQueryClient();
-  const { activeSessionIds, setActiveSession } = useWorkbenchStore();
+  const { activeSessionIds, setActiveSession, sessionCreateRequests, acknowledgeSessionCreateRequest } = useWorkbenchStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [createMenu, setCreateMenu] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [pendingSessions, setPendingSessions] = useState<PendingSession[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const createMenuAnchor = useRef<HTMLDivElement>(null);
   const creatingRef = useRef(false);
   const sessions = useMemo(() => snapshot.sessions.filter((item) => item.workspaceId === workspace.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)), [snapshot.sessions, workspace.id]);
+  const pendingForWorkspace = useMemo(() => pendingSessions.filter((item) => item.workspaceId === workspace.id), [pendingSessions, workspace.id]);
   const activeSessionId = activeSessionIds[workspace.id];
-  const active = sessions.find((item) => item.id === activeSessionId) ?? sessions.find((item) => item.status === "running") ?? sessions[0];
+  const activeStoredSession = sessions.find((item) => item.id === activeSessionId);
+  const active = sessions.find((item) => item.id === activeSessionId) ?? pendingForWorkspace.find((item) => item.id === activeSessionId) ?? sessions.find((item) => item.status === "running") ?? pendingForWorkspace[0] ?? sessions[0];
   useEffect(() => {
     if (active && active.id !== activeSessionId) setActiveSession(workspace.id, active.id);
     if (!active && activeSessionId) setActiveSession(workspace.id, null);
-  }, [active?.id, activeSessionId, workspace.id]);
+  }, [active?.id, activeSessionId, setActiveSession, workspace.id]);
   useEffect(() => {
-    if (!visible || !active?.resultUnread) return;
+    if (!visible || !activeStoredSession?.resultUnread) return;
     const markIfViewed = (): void => {
-      if (document.visibilityState === "visible" && document.hasFocus()) void window.desktop.markSessionViewed(active.id);
+      if (document.visibilityState === "visible" && document.hasFocus()) void window.desktop.markSessionViewed(activeStoredSession.id);
     };
     markIfViewed();
     window.addEventListener("focus", markIfViewed);
@@ -129,7 +163,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
       window.removeEventListener("focus", markIfViewed);
       document.removeEventListener("visibilitychange", markIfViewed);
     };
-  }, [active?.id, active?.resultUnread, visible]);
+  }, [activeStoredSession?.id, activeStoredSession?.resultUnread, visible]);
   useEffect(() => {
     if (!createMenu) return;
     const closeCreateMenu = (event: PointerEvent): void => {
@@ -139,20 +173,41 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     window.addEventListener("pointerdown", closeCreateMenu);
     return () => window.removeEventListener("pointerdown", closeCreateMenu);
   }, [createMenu]);
-  const create = async (kind: SessionKind): Promise<void> => {
+  const closePending = useCallback((pendingId: string): void => {
+    setPendingSessions((items) => items.filter((item) => item.id !== pendingId));
+    if (activeSessionIds[workspace.id] === pendingId) setActiveSession(workspace.id, null);
+  }, [activeSessionIds, setActiveSession, workspace.id]);
+  const create = useCallback(async (kind: SessionKind, pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`): Promise<void> => {
     if (creatingRef.current) return;
     creatingRef.current = true;
     setCreating(true);
     setCreateMenu(false);
+    const name = pendingName(kind);
+    setPendingSessions((items) => items.some((item) => item.id === pendingId)
+      ? items.map((item) => item.id === pendingId ? { ...item, status: "creating", error: undefined } : item)
+      : [...items, { id: pendingId, workspaceId: workspace.id, kind, name, status: "creating" }]);
+    setActiveSession(workspace.id, pendingId);
     try {
       const result = await window.desktop.createSession({ workspaceId: workspace.id, kind });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
+      setPendingSessions((items) => items.filter((item) => item.id !== pendingId));
       setActiveSession(workspace.id, result.session.id);
       if (result.warning) toast.warning(result.warning);
     }
-    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPendingSessions((items) => items.map((item) => item.id === pendingId ? { ...item, status: "failed", error: message } : item));
+      setActiveSession(workspace.id, pendingId);
+      toast.error(message);
+    }
     finally { creatingRef.current = false; setCreating(false); }
-  };
+  }, [client, setActiveSession, workspace.id]);
+  useEffect(() => {
+    for (const request of sessionCreateRequests.filter((item) => item.workspaceId === workspace.id)) {
+      acknowledgeSessionCreateRequest(request.id);
+      void create(request.kind);
+    }
+  }, [acknowledgeSessionCreateRequest, create, sessionCreateRequests, workspace.id]);
   const close = async (sessionId: string): Promise<void> => {
     const session = sessions.find((item) => item.id === sessionId);
     let force = false;
@@ -202,13 +257,13 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   return (
     <section className="terminal-pane">
       <div className="terminal-tabs no-drag">
-        <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} draggable className={`terminal-tab ${active?.id === session.id ? "active" : ""} ${session.resultUnread ? "unread" : ""}`} onDragStart={(event) => { setDraggingId(session.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => { if (draggingId) event.preventDefault(); }} onDrop={() => void reorder(session.id)} onDragEnd={() => setDraggingId(null)} onClick={() => setActiveSession(workspace.id, session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, session.id); }}>{session.kind === "codex" ? <Bot size={13} /> : session.kind === "tmux" ? <Layers3 size={13} /> : <TerminalSquare size={13} />}{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status === "running" ? session.activityStatus ?? "running" : session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}</div>
+        <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} draggable className={`terminal-tab ${active?.id === session.id ? "active" : ""} ${session.resultUnread ? "unread" : ""}`} onDragStart={(event) => { setDraggingId(session.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => { if (draggingId) event.preventDefault(); }} onDrop={() => void reorder(session.id)} onDragEnd={() => setDraggingId(null)} onClick={() => setActiveSession(workspace.id, session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, session.id); }}>{sessionIcon(session.kind)}{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status === "running" ? session.activityStatus ?? "running" : session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}{pendingForWorkspace.map((pending) => <div key={pending.id} role="button" tabIndex={0} className={`terminal-tab pending ${active?.id === pending.id ? "active" : ""}`} onClick={() => setActiveSession(workspace.id, pending.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, pending.id); }}>{sessionIcon(pending.kind)}<span>{pending.name}</span><i className={pending.status} />{active?.id === pending.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); closePending(pending.id); }}><X size={12} /></button>}</div>)}</div>
         <div ref={createMenuAnchor} className="terminal-add-menu">
           <button className="icon-button terminal-add" disabled={creating} onClick={() => setCreateMenu(!createMenu)} title="New terminal"><Plus size={15} /></button>
           {createMenu && <div className="terminal-kind-menu"><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}
         </div>
       </div>
-      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={session.id} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
+      <div className="terminal-stage">{sessions.length + pendingForWorkspace.length > 0 ? <>{sessions.map((session) => <TerminalView key={session.id} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />)}{pendingForWorkspace.map((pending) => <PendingTerminalView key={pending.id} pending={pending} active={visible && active?.id === pending.id} onRetry={() => void create(pending.kind, pending.id)} onClose={() => closePending(pending.id)} />)}</> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
     </section>
   );
 }

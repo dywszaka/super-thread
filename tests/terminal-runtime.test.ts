@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
+import { codexActivityFromOutput, codexConversationIdFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, latestCodexConversationIdFromSessionIndex, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
 import type { Session } from "../src/shared/domain";
 
@@ -110,6 +110,17 @@ test("only the completed-result prompt marks a Codex result ready", () => {
   assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything"), true);
   assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nPermission required: allow this command?"), false);
   assert.equal(codexResultReadyFromOutput("Ask Codex to do anything"), true);
+});
+
+test("Codex conversation ids are parsed from labeled output and session index records", () => {
+  const id = "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99";
+  assert.equal(codexConversationIdFromOutput(`Session ID: ${id}`), id);
+  assert.equal(codexConversationIdFromOutput(`Run codex resume ${id} to continue`), id);
+  assert.equal(codexConversationIdFromOutput(`unlabeled ${id}`), undefined);
+  assert.equal(latestCodexConversationIdFromSessionIndex([
+    "{\"id\":\"01a0b3e5-40d8-7e41-a621-bb87ad39d801\",\"updated_at\":\"2026-09-24T10:00:00.000Z\"}",
+    "{\"id\":\"01a0ce85-2172-7443-a4b0-5bbfcb4688fd\",\"updated_at\":\"2026-09-24T10:05:00.000Z\"}"
+  ].join("\n"), "2026-09-24T10:01:00.000Z"), "01a0ce85-2172-7443-a4b0-5bbfcb4688fd");
 });
 
 test("a foreground command returning to idle marks a generic terminal result ready", () => {

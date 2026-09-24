@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Layers3, MessagesSquare, MonitorCog, Plus } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Plus, Server } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import type { AppSnapshot } from "@/shared/domain";
 import appIcon from "../../../assets/icon.png";
@@ -66,11 +66,14 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                     {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
                   <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}><MessagesSquare size={14} /><em>{thread.name}</em></button>
-                  <b>{workspaces.length}</b>
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
-                  {workspaces.map((workspace) => <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><FolderGit2 size={13} /><span><strong>{workspace.name}</strong><small>{workspaceProjectName(snapshot, workspace)}</small></span></button>)}
+                  {workspaces.map((workspace) => {
+                    const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
+                    const Icon = device?.type === "remote" ? Server : Laptop;
+                    return <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><Icon size={13} /><span><strong>{workspace.name}</strong><small>{workspaceProjectName(snapshot, workspace)}</small></span></button>;
+                  })}
                 </div>}
               </div>
             );

@@ -429,6 +429,80 @@ test("managed terminal creation records kind metadata and falls back when a tool
   assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
 });
 
+test("Codex conversation ids are persisted from terminal runtime events", async () => {
+  const terminals = fakeTerminals();
+  const commandRunner: CommandRunner = { run: async () => ({ stdout: "/usr/bin/codex", stderr: "", exitCode: 0 }) };
+  const { service, store } = await setup(undefined, terminals, commandRunner);
+  await store.update((draft) => addReadyWorkspace(draft));
+
+  const codex = await service.createSession({ workspaceId: "workspace-dev_local", kind: "codex" });
+  const changed = new Promise<void>((resolve) => service.once("changed", resolve));
+  terminals.emit("codex-conversation", { sessionId: codex.session.id, codexConversationId: "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99" });
+  await changed;
+
+  assert.equal(service.snapshot().sessions.find((session) => session.id === codex.session.id)?.codexConversationId, "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99");
+});
+
+test("resuming and startup restoration preserve saved Codex conversation ids", async () => {
+  const created: Session[] = [];
+  const { service, store } = await setup(undefined, fakeTerminals(created));
+  await store.update((draft) => {
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+    draft.sessions.push({
+      id: "codex-1", workspaceId: "workspace-1", name: "agent", status: "restore-failed", kind: "codex", shell: "codex",
+      codexConversationId: "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99", exitedAt: "then", createdAt: "now"
+    });
+  });
+
+  await service.resumeSession("codex-1");
+
+  assert.equal(created[0]?.id, "codex-1");
+  assert.equal(created[0]?.kind, "codex");
+  assert.equal(created[0]?.codexConversationId, "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99");
+  assert.equal(service.snapshot().sessions[0]?.status, "running");
+});
+
+test("Codex sessions with saved conversation ids auto-restore after abnormal exit", async () => {
+  const created: Session[] = [];
+  const terminals = fakeTerminals(created);
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+    draft.sessions.push({
+      id: "codex-1", workspaceId: "workspace-1", name: "agent", status: "running", kind: "codex", shell: "codex",
+      activityStatus: "idle", codexConversationId: "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99", createdAt: "now"
+    });
+  });
+  const restored = new Promise<void>((resolve) => {
+    let changes = 0;
+    service.on("changed", () => {
+      changes += 1;
+      if (changes === 2) resolve();
+    });
+  });
+
+  terminals.emit("exit", { sessionId: "codex-1", exitCode: 1 });
+  await restored;
+
+  assert.equal(created[0]?.id, "codex-1");
+  assert.equal(created[0]?.codexConversationId, "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99");
+  assert.equal(service.snapshot().sessions[0]?.status, "running");
+});
+
 test("tmux session names use the workspace name and increment around collisions", async () => {
   assert.equal(tmuxSessionBaseName(" release.1:fix "), "release-1-fix");
   assert.equal(nextTmuxSessionName("demo", ["demo", "demo-2", "other"]), "demo-3");

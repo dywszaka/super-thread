@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { WorkspaceScope } from "../features/workspace/selection";
+import type { SessionKind } from "@/shared/domain";
 
 type DialogName = "project" | "device" | "workThread" | "workspace" | null;
 
@@ -20,6 +21,7 @@ interface WorkbenchState {
   sidebarWidth: number;
   focusMode: boolean;
   expandedThreadIds: string[];
+  sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: SessionKind }>;
   dialog: DialogName;
   showAllWorkspaces(): void;
   showAllProjects(): void;
@@ -34,6 +36,8 @@ interface WorkbenchState {
   enterFocusMode(): void;
   exitFocusMode(): void;
   toggleThreadExpanded(id: string): void;
+  requestSessionCreate(workspaceId: string, kind: SessionKind): void;
+  acknowledgeSessionCreateRequest(id: string): void;
   openDialog(name: Exclude<DialogName, null>): void;
   closeDialog(): void;
 }
@@ -49,6 +53,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     sidebarWidth: 226,
     focusMode: false,
     expandedThreadIds: [],
+    sessionCreateRequests: [],
     dialog: null,
     showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null }),
     showAllProjects: () => set({ scope: { type: "all-projects" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
@@ -80,6 +85,12 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       expandedThreadIds: state.expandedThreadIds.includes(id)
         ? state.expandedThreadIds.filter((item) => item !== id)
         : [...state.expandedThreadIds, id]
+    })),
+    requestSessionCreate: (workspaceId, kind) => set((state) => ({
+      sessionCreateRequests: [...state.sessionCreateRequests, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, workspaceId, kind }]
+    })),
+    acknowledgeSessionCreateRequest: (id) => set((state) => ({
+      sessionCreateRequests: state.sessionCreateRequests.filter((request) => request.id !== id)
     })),
     openDialog: (dialog) => set({ dialog }),
     closeDialog: () => set({ dialog: null })

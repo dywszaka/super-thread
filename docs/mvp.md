@@ -794,6 +794,9 @@ Codex 必须基于最近的累计终端输出判断，不能让输入框之后�
 
 Codex 与 tmux 的可用性探测及启动必须使用 Device 用户的交互式登录 shell，使 SSH
 设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致。
+新建 Terminal、Codex 或 tmux 后，Renderer 必须立即展示并选中仅存在于 UI 状态中的初始化标签页；
+成功后用持久化 Session 替换该标签页，失败后保留错误、Retry 和 Close，且 Retry 复用同一标签页。
+未创建成功的初始化标签页不得写入持久领域数据。
 
 创建普通 Session：
 
@@ -886,7 +889,7 @@ Reconnect PTY
 
 Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态，不能信任旧 PID。上次退出或连接中断时仍标记为 `running` 的 Session 会按 Workspace 批量恢复；恢复时使用各自记录的 `cwd`，`tmux` Session 优先重连原 tmux session，`codex` Session 优先用记录的 Codex conversation 恢复。直接运行的 Codex 不承诺从被中断的执行中途继续。
 
-单个 Session 恢复失败时只影响自身：状态变为 `restore-failed`，保留 `restoreError`，UI 提供 Resume 重试和新建普通 Terminal 入口。其他 Session 的恢复继续执行。
+单个 Session 恢复失败时只影响自身：状态变为 `restore-failed`，保留 `restoreError`，UI 提供 Resume 重试和新建同类型 Session 入口。其他 Session 的恢复继续执行。
 
 用户主动关闭 Terminal tab 时，Runtime 关闭当前 PTY 或远程连接，并删除该 Session 的持久化记录。tmux Terminal 只删除对应的 tmux window，不显式删除 workspace 的 tmux session；最后一个 window 被删除后由 tmux 自动结束空 session。若该 tmux Terminal 的 `activityStatus` 为 `busy`，UI 必须先提醒用户关闭会终止正在运行的任务，并经确认后才能继续。主动关闭的 Terminal 不会在下次打开 Workspace 时自动恢复。Terminal 名称、顺序、类型、工作目录和恢复标识需要持久化。
 

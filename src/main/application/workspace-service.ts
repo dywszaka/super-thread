@@ -31,7 +31,7 @@ import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runn
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
-import { legacyTmuxClientSessionName, TerminalRuntime, tmuxTarget, tmuxWindowLookupCommand, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
+import { legacyTmuxClientSessionName, TerminalRuntime, tmuxTarget, tmuxWindowLookupCommand, type TerminalActivityEvent, type TerminalCodexConversationEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
@@ -91,6 +91,7 @@ type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 export class WorkspaceService extends EventEmitter {
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
   private readonly closingSessionIds = new Set<string>();
+  private readonly autoRestoredCodexSessionIds = new Set<string>();
 
   constructor(
     private readonly store: JsonStore,
@@ -103,6 +104,7 @@ export class WorkspaceService extends EventEmitter {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
     terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event));
+    terminals.on("codex-conversation", (event: TerminalCodexConversationEvent) => void this.recordCodexConversation(event));
     terminals.on("exit", (event: TerminalExitEvent) => void this.markSessionExited(event.sessionId, event.exitCode));
   }
 
@@ -559,7 +561,10 @@ export class WorkspaceService extends EventEmitter {
   attachSession(id: string): TerminalReplay { return this.terminals.attach(id); }
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }
-  reconnectTunnels(): void { this.tunnels.reconnectAll(); }
+  reconnectTunnels(): void {
+    this.tunnels.reconnectAll();
+    void this.restoreRecoverableCodexSessions();
+  }
   runningSessionSummaries(): string[] {
     const snapshot = this.snapshot();
     return snapshot.sessions
@@ -718,6 +723,17 @@ export class WorkspaceService extends EventEmitter {
     }
   }
 
+  private async restoreRecoverableCodexSessions(): Promise<void> {
+    const snapshot = this.snapshot();
+    for (const session of snapshot.sessions.filter((item) => item.status === "restore-failed" && item.kind === "codex" && item.codexConversationId)) {
+      try {
+        await this.resumeSession(session.id);
+      } catch {
+        // Keep each failed Codex session isolated; users can still retry or start fresh.
+      }
+    }
+  }
+
   private async restoreInterruptedSession(sessionId: string): Promise<void> {
     const snapshot = this.snapshot();
     const session = snapshot.sessions.find((item) => item.id === sessionId);
@@ -847,8 +863,21 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
+  private async recordCodexConversation(event: TerminalCodexConversationEvent): Promise<void> {
+    let recorded = false;
+    await this.store.update((draft) => {
+      const session = draft.sessions.find((item) => item.id === event.sessionId);
+      if (session?.kind === "codex" && !session.codexConversationId) {
+        session.codexConversationId = event.codexConversationId;
+        recorded = true;
+      }
+    });
+    if (recorded) this.changed();
+  }
+
   private async markSessionExited(sessionId: string, exitCode?: number): Promise<void> {
     if (this.closingSessionIds.has(sessionId)) return;
+    const sessionBeforeExit = this.snapshot().sessions.find((item) => item.id === sessionId);
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
       if (session) Object.assign(session, {
@@ -862,6 +891,14 @@ export class WorkspaceService extends EventEmitter {
       });
     });
     this.changed();
+    if (sessionBeforeExit?.kind === "codex" && sessionBeforeExit.codexConversationId && exitCode !== 0 && !this.autoRestoredCodexSessionIds.has(sessionId)) {
+      this.autoRestoredCodexSessionIds.add(sessionId);
+      try {
+        await this.resumeSession(sessionId);
+      } catch {
+        // resumeSession records restore-failed, preserving the retry/new-session UI path.
+      }
+    }
   }
 
   private git(snapshot: AppSnapshot, device: Device): WorkspaceGitRuntime { return this.gitRuntimeFactory(device, this.connection(snapshot, device.id)); }

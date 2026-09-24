@@ -16,12 +16,16 @@ interface LiveSession {
   probing: boolean;
   remotePid?: number;
   markerBuffer: string;
+  codexConversationProbe?: NodeJS.Timeout;
+  codexConversationId?: string;
 }
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
 export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; resultReady: boolean; }
+export interface TerminalCodexConversationEvent { sessionId: string; codexConversationId: string; }
 
 const remotePidMarker = /\x1b]777;superthread-pid=(\d+)\x07/;
 const idleShells = new Set(["bash", "dash", "fish", "ksh", "nu", "sh", "tcsh", "zsh"]);
+const codexUuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 export function foregroundProcessIsBusy(output: string): boolean {
   const [processGroup, terminalProcessGroup] = output.trim().split(/\s+/).map(Number);
@@ -97,6 +101,36 @@ export function codexResultReadyFromOutput(output: string): boolean {
   return promptAt >= 0 && promptAt > workingAt;
 }
 
+export function codexConversationIdFromOutput(output: string): string | undefined {
+  const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+  const patterns = [
+    new RegExp(`\\b(?:session|conversation|thread)[\\s_-]*(?:id)?\\s*[:=]\\s*(${codexUuidPattern})\\b`, "i"),
+    new RegExp(`\\bcodex\\s+resume\\s+(${codexUuidPattern})\\b`, "i")
+  ];
+  for (const pattern of patterns) {
+    const match = plain.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
+
+export function latestCodexConversationIdFromSessionIndex(index: string, sinceIso?: string): string | undefined {
+  const since = sinceIso ? Date.parse(sinceIso) - 5 * 60_000 : Number.NEGATIVE_INFINITY;
+  for (const line of index.trim().split("\n").reverse()) {
+    try {
+      const item = JSON.parse(line) as { id?: unknown; updated_at?: unknown };
+      if (typeof item.id !== "string") continue;
+      if (!new RegExp(`^${codexUuidPattern}$`, "i").test(item.id)) continue;
+      const updatedAt = typeof item.updated_at === "string" ? Date.parse(item.updated_at) : Number.NaN;
+      if (Number.isFinite(since) && Number.isFinite(updatedAt) && updatedAt < since) continue;
+      return item.id;
+    } catch {
+      // Ignore partial or legacy lines and keep scanning for a usable record.
+    }
+  }
+  return undefined;
+}
+
 function lastMatchIndex(value: string, pattern: RegExp): number {
   let index = -1;
   for (const match of value.matchAll(pattern)) index = match.index;
@@ -169,6 +203,10 @@ export class TerminalRuntime extends EventEmitter {
       live.buffer = (live.buffer + data).slice(-64_000);
       live.sequence += 1;
       if (kind === "codex") {
+        const codexConversationId = live.codexConversationId ?? codexConversationIdFromOutput(live.buffer);
+        if (codexConversationId && codexConversationId !== live.codexConversationId) {
+          this.recordCodexConversationId(session.id, live, codexConversationId);
+        }
         const activityStatus = codexActivityFromOutput(live.buffer);
         if (activityStatus) {
           const resultReady = live.activityStatus === "busy" && codexResultReadyFromOutput(live.buffer);
@@ -179,9 +217,16 @@ export class TerminalRuntime extends EventEmitter {
     });
     instance.onExit(({ exitCode }) => {
       if (live.activityTimer) clearInterval(live.activityTimer);
+      if (live.codexConversationProbe) clearInterval(live.codexConversationProbe);
       this.sessions.delete(session.id);
       this.emit("exit", { sessionId: session.id, exitCode } satisfies TerminalExitEvent);
     });
+    if (kind === "codex" && !session.codexConversationId) {
+      const probe = (): void => { void this.probeCodexConversationId(session, live, device, connection); };
+      live.codexConversationProbe = setInterval(probe, 1_500);
+      live.codexConversationProbe.unref();
+      probe();
+    }
     if (kind !== "codex") {
       const probe = (): void => { void this.probeActivity(session, live, device, connection); };
       live.activityTimer = setInterval(probe, 1_000);
@@ -240,6 +285,29 @@ export class TerminalRuntime extends EventEmitter {
     } finally {
       live.probing = false;
     }
+  }
+
+  private async probeCodexConversationId(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
+    if (live.codexConversationId || !this.sessions.has(session.id)) return;
+    try {
+      const command = "file=\"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl\"; if [ -f \"$file\" ]; then tail -n 80 \"$file\"; fi";
+      const output = device.type === "remote"
+        ? await run("ssh", this.sshArgs(connection, interactiveLoginShellCommand(command)))
+        : await run("sh", ["-lc", command]);
+      const codexConversationId = latestCodexConversationIdFromSessionIndex(output, session.createdAt);
+      if (codexConversationId) this.recordCodexConversationId(session.id, live, codexConversationId);
+    } catch {
+      // Codex may not have created its session index yet; the next probe can try again.
+    }
+  }
+
+  private recordCodexConversationId(sessionId: string, live: LiveSession, codexConversationId: string): void {
+    live.codexConversationId = codexConversationId;
+    if (live.codexConversationProbe) {
+      clearInterval(live.codexConversationProbe);
+      live.codexConversationProbe = undefined;
+    }
+    this.emit("codex-conversation", { sessionId, codexConversationId } satisfies TerminalCodexConversationEvent);
   }
 
   private sshArgs(connection: DeviceConnection, command: string): string[] {
