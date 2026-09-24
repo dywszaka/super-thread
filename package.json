@@ -47,7 +47,7 @@
     "appId": "com.superthread.desktop",
     "productName": "Super Thread",
     "files": ["out/**/*", "package.json"],
-    "extraResources": [{ "from": "src/renderer/src/assets/icon.png", "to": "icon.png" }],
+    "extraResources": [{ "from": "build/icon-app.png", "to": "icon.png" }],
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",

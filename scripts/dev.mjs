@@ -31,7 +31,7 @@ if (process.platform === "darwin") {
   }
 
   copyFileSync(join(root, "build/icon.icns"), join(branded, "Contents/Resources/icon.icns"));
-  copyFileSync(join(root, "src/renderer/src/assets/icon.png"), join(branded, "Contents/Resources/icon.png"));
+  copyFileSync(join(root, "build/icon-app.png"), join(branded, "Contents/Resources/icon.png"));
   env.ELECTRON_EXEC_PATH = executable;
 }
 
