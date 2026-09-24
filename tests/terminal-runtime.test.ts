@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxPaneIsBusy } from "../src/main/runtime/terminal-runtime";
+import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxPaneIsBusy } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
 
 test("managed tools run through the user's interactive login shell", () => {
@@ -39,6 +39,14 @@ test("tmux pane commands distinguish a shell prompt from an occupying command", 
   assert.equal(tmuxPaneIsBusy("zsh\n"), false);
   assert.equal(tmuxPaneIsBusy("/bin/bash\n"), false);
   assert.equal(tmuxPaneIsBusy("npm\n"), true);
+});
+
+test("tmux activity distinguishes Codex work from waiting for input", () => {
+  assert.equal(tmuxActivityFromProbe("zsh\n% "), "idle");
+  assert.equal(tmuxActivityFromProbe("npm\nBuilding renderer..."), "busy");
+  assert.equal(tmuxActivityFromProbe("codex\nWorking (12s • esc to interrupt)"), "busy");
+  assert.equal(tmuxActivityFromProbe("codex\n\n› Implement the next feature"), "waiting-input");
+  assert.equal(tmuxActivityFromProbe("codex-aarch64-apple-darwin\nPermission required: allow this command?"), "waiting-input");
 });
 
 test("Codex output distinguishes working from waiting for input", () => {

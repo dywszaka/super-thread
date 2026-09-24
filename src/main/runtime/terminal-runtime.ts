@@ -35,6 +35,14 @@ export function tmuxPaneIsBusy(command: string): boolean {
   return executable.length > 0 && !idleShells.has(executable);
 }
 
+export function tmuxActivityFromProbe(output: string): SessionActivityStatus {
+  const [command = "", ...paneLines] = output.replaceAll("\r", "").split("\n");
+  if (!tmuxPaneIsBusy(command)) return "idle";
+  const executable = basename(command.trim()).replace(/^-/, "");
+  if (executable !== "codex" && !executable.startsWith("codex-")) return "busy";
+  return codexActivityFromOutput(paneLines.slice(-12).join("\n"));
+}
+
 export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {
   const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
   return /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|(?:^|\n)\s*[›>]\s/im.test(plain)
@@ -147,20 +155,21 @@ export class TerminalRuntime extends EventEmitter {
     try {
       const kind = session.kind ?? "shell";
       let command: string;
-      let interpret: (output: string) => boolean;
+      let interpret: (output: string) => SessionActivityStatus;
       if (kind === "tmux") {
-        command = `tmux display-message -p -t ${quoteShellArgument(session.tmuxSessionName || session.id)} '#{pane_current_command}'`;
-        interpret = tmuxPaneIsBusy;
+        const target = quoteShellArgument(session.tmuxSessionName || session.id);
+        command = `tmux display-message -p -t ${target} '#{pane_current_command}'; tmux capture-pane -p -t ${target} -S -20`;
+        interpret = tmuxActivityFromProbe;
       } else {
         const pid = device.type === "remote" ? live.remotePid : live.pty.pid;
         if (!pid) return;
         command = `ps -o pgid= -o tpgid= -p ${pid}`;
-        interpret = foregroundProcessIsBusy;
+        interpret = (output) => foregroundProcessIsBusy(output) ? "busy" : "idle";
       }
       const output = device.type === "remote"
         ? await run("ssh", this.sshArgs(connection, command))
         : await run("sh", ["-lc", command]);
-      this.setActivity(session.id, live, interpret(output) ? "busy" : "idle");
+      this.setActivity(session.id, live, interpret(output));
     } catch {
       // A transient probe failure must not turn an idle terminal into a false running warning.
     } finally {
