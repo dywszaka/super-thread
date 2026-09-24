@@ -287,14 +287,43 @@ test("managed terminal creation records kind metadata and falls back when a tool
 
   const codex = await service.createSession({ workspaceId: "workspace-dev_local", kind: "codex" });
   const tmux = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+  const secondTmux = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
 
   assert.match(codex.warning ?? "", /Codex CLI.*normal terminal/);
   assert.equal(codex.session.kind, "shell");
   assert.equal(tmux.session.kind, "tmux");
-  assert.equal(tmux.session.tmuxSessionName?.startsWith("superthread-"), true);
-  assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux"]);
-  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh"]);
+  assert.equal(tmux.session.tmuxSessionName, "superthread-workspace-dev_local");
+  assert.equal(secondTmux.session.tmuxSessionName, tmux.session.tmuxSessionName);
+  assert.notEqual(secondTmux.session.tmuxWindowName, tmux.session.tmuxWindowName);
+  assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux", "tmux"]);
+  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh"]);
   assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
+});
+
+test("concurrent duplicate terminal creation requests share one result", async () => {
+  const created: Session[] = [];
+  let releaseProbe!: () => void;
+  let probeCount = 0;
+  const commandRunner: CommandRunner = {
+    run: async () => {
+      probeCount += 1;
+      await new Promise<void>((resolve) => { releaseProbe = resolve; });
+      return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
+    }
+  };
+  const { service, store } = await setup(undefined, fakeTerminals(created), commandRunner);
+  await store.update((draft) => addReadyWorkspace(draft));
+
+  const first = service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+  const duplicate = service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(probeCount, 1);
+  releaseProbe();
+
+  const [firstResult, duplicateResult] = await Promise.all([first, duplicate]);
+  assert.equal(firstResult.session.id, duplicateResult.session.id);
+  assert.equal(created.length, 1);
+  assert.equal(service.snapshot().sessions.length, 1);
 });
 
 test("remote tmux fallback warning is shown once per workspace", async () => {

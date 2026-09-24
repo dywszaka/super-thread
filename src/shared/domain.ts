@@ -100,6 +100,7 @@ export interface Session {
   exitCode?: number;
   restoreError?: string;
   tmuxSessionName?: string;
+  tmuxWindowName?: string;
   codexConversationId?: string;
   codexResultUnread?: boolean;
   fallbackMessage?: string;

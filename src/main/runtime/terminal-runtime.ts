@@ -46,6 +46,29 @@ export function tmuxActivityFromProbe(output: string): SessionActivityStatus {
   return codexActivityFromOutput(pane);
 }
 
+export function tmuxTarget(session: Session): string {
+  const sessionName = session.tmuxSessionName || session.id;
+  return session.tmuxWindowName ? `${sessionName}:${session.tmuxWindowName}` : sessionName;
+}
+
+export function tmuxClientSessionName(session: Session): string {
+  return `superthread-client-${session.id}`;
+}
+
+export function tmuxAttachCommand(session: Session, cwd: string): string {
+  const sessionName = session.tmuxSessionName || session.id;
+  if (!session.tmuxWindowName) {
+    return `tmux new-session -A -s ${quoteShellArgument(sessionName)}`;
+  }
+  const quotedSession = quoteShellArgument(sessionName);
+  const quotedWindow = quoteShellArgument(session.tmuxWindowName);
+  const clientSessionName = tmuxClientSessionName(session);
+  const clientSession = quoteShellArgument(clientSessionName);
+  const clientTarget = quoteShellArgument(`${clientSessionName}:${session.tmuxWindowName}`);
+  const quotedCwd = quoteShellArgument(cwd);
+  return `if tmux has-session -t ${quotedSession} 2>/dev/null; then if ! tmux list-windows -t ${quotedSession} -F '#{window_name}' | grep -Fqx -- ${quotedWindow}; then tmux new-window -d -t ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; else tmux new-session -d -s ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; if ! tmux has-session -t ${clientSession} 2>/dev/null; then tmux new-session -d -t ${quotedSession} -s ${clientSession}; fi; tmux select-window -t ${clientTarget}; exec tmux attach-session -t ${clientSession}`;
+}
+
 export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {
   const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
   const waitingAt = lastMatchIndex(plain, /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|Ask Codex to do anything|(?:^|\n)\s*[›>]\s/gim);
@@ -94,7 +117,7 @@ export class TerminalRuntime extends EventEmitter {
       if (config.port) args.push("-p", String(config.port));
       args.push(target, command);
     } else if (kind === "codex" || kind === "tmux") {
-      const command = this.managedToolCommand(kind, session);
+      const command = this.managedToolCommand(kind, session, cwd);
       args = ["-lic", command];
     }
     const instance = pty.spawn(program, args, {
@@ -145,17 +168,17 @@ export class TerminalRuntime extends EventEmitter {
 
   private remoteCommand(kind: string, session: Session, cwd: string): string {
     if (kind === "codex" || kind === "tmux") {
-      return interactiveLoginShellCommand(`cd ${quoteShellArgument(cwd)} && ${this.managedToolCommand(kind, session)}`);
+      return interactiveLoginShellCommand(`cd ${quoteShellArgument(cwd)} && ${this.managedToolCommand(kind, session, cwd)}`);
     }
     return `cd ${quoteShellArgument(cwd)} && printf '\\033]777;superthread-pid=%s\\007' "$$" && exec "\${SHELL:-/bin/sh}" -l`;
   }
 
-  private managedToolCommand(kind: "codex" | "tmux", session: Session): string {
+  private managedToolCommand(kind: "codex" | "tmux", session: Session, cwd: string): string {
     if (kind === "codex") {
       const args = session.codexConversationId ? ` resume ${quoteShellArgument(session.codexConversationId)}` : "";
       return `codex${args}`;
     }
-    return `tmux new-session -A -s ${quoteShellArgument(session.tmuxSessionName || session.id)}`;
+    return tmuxAttachCommand(session, cwd);
   }
 
   private async probeActivity(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
@@ -166,7 +189,7 @@ export class TerminalRuntime extends EventEmitter {
       let command: string;
       let interpret: (output: string) => SessionActivityStatus;
       if (kind === "tmux") {
-        const target = quoteShellArgument(session.tmuxSessionName || session.id);
+        const target = quoteShellArgument(tmuxTarget(session));
         command = `tmux display-message -p -t ${target} '#{pane_current_command}'; tmux capture-pane -p -t ${target} -S -20`;
         interpret = tmuxActivityFromProbe;
       } else {

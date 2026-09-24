@@ -76,6 +76,8 @@ type DirectoryRuntimeFactory = (device: Device, connection: DeviceConnection) =>
 type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
+  private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
+
   constructor(
     private readonly store: JsonStore,
     private readonly terminals = new TerminalRuntime(),
@@ -432,7 +434,18 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  async createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
+  createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
+    const key = `${input.workspaceId}:${input.kind ?? "shell"}:${input.name?.trim() ?? ""}`;
+    const pending = this.pendingSessionCreations.get(key);
+    if (pending) return pending;
+    const creation = this.createSessionOnce(input).finally(() => {
+      if (this.pendingSessionCreations.get(key) === creation) this.pendingSessionCreations.delete(key);
+    });
+    this.pendingSessionCreations.set(key, creation);
+    return creation;
+  }
+
+  private async createSessionOnce(input: CreateSessionInput): Promise<CreateSessionResult> {
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, input.workspaceId);
     if (workspace.status !== "ready") throw new Error("Workspace is not ready");
@@ -442,8 +455,9 @@ export class WorkspaceService extends EventEmitter {
     const requestedKind = input.kind ?? "shell";
     const { kind, warning } = await this.resolveSessionKind(snapshot, workspace, device, requestedKind);
     const timestamp = now();
+    const sessionId = id("session");
     const session: Session = {
-      id: id("session"),
+      id: sessionId,
       workspaceId: workspace.id,
       name: input.name || this.defaultSessionName(kind, count + 1),
       status: "running",
@@ -452,7 +466,10 @@ export class WorkspaceService extends EventEmitter {
       shell: this.sessionShellLabel(kind, device),
       cwd: workspace.path,
       activityStatus: kind === "codex" ? "busy" : "idle",
-      ...(kind === "tmux" ? { tmuxSessionName: `superthread-${workspace.id}-${count + 1}` } : {}),
+      ...(kind === "tmux" ? {
+        tmuxSessionName: `superthread-${workspace.id}`,
+        tmuxWindowName: sessionId
+      } : {}),
       ...(warning ? { fallbackMessage: warning } : {}),
       createdAt: timestamp
     };

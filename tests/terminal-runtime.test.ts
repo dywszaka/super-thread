@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxPaneIsBusy } from "../src/main/runtime/terminal-runtime";
+import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxClientSessionName, tmuxPaneIsBusy, tmuxTarget } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
+import type { Session } from "../src/shared/domain";
 
 test("managed tools run through the user's interactive login shell", () => {
   assert.equal(quoteShellArgument("it's here"), `'it'\\''s here'`);
@@ -56,6 +57,32 @@ test("tmux activity distinguishes Codex work from waiting for input", () => {
     "busy"
   );
   assert.equal(tmuxActivityFromProbe("node\nDevelopment server listening on port 3000"), "busy");
+});
+
+test("tmux tabs attach distinct windows in one workspace session", () => {
+  const first: Session = {
+    id: "session-1", workspaceId: "workspace-1", name: "tmux 1", status: "running", kind: "tmux", shell: "tmux",
+    tmuxSessionName: "superthread-workspace-1", tmuxWindowName: "session-1", createdAt: "now"
+  };
+  const second: Session = { ...first, id: "session-2", name: "tmux 2", tmuxWindowName: "session-2" };
+
+  assert.equal(tmuxTarget(first), "superthread-workspace-1:session-1");
+  assert.equal(tmuxTarget(second), "superthread-workspace-1:session-2");
+  assert.equal(tmuxClientSessionName(second), "superthread-client-session-2");
+  const command = tmuxAttachCommand(second, "/tmp/demo worktree");
+  assert.match(command, /tmux has-session -t 'superthread-workspace-1'/);
+  assert.match(command, /tmux new-window .* -n 'session-2' -c '\/tmp\/demo worktree'/);
+  assert.match(command, /tmux new-session -d -t 'superthread-workspace-1' -s 'superthread-client-session-2'/);
+  assert.match(command, /tmux select-window -t 'superthread-client-session-2:session-2'/);
+  assert.match(command, /tmux attach-session -t 'superthread-client-session-2'/);
+});
+
+test("legacy tmux tabs retain their original attach behavior", () => {
+  const session: Session = {
+    id: "session-1", workspaceId: "workspace-1", name: "tmux 1", status: "running", kind: "tmux", shell: "tmux",
+    tmuxSessionName: "legacy-session", createdAt: "now"
+  };
+  assert.equal(tmuxAttachCommand(session, "/tmp/demo"), "tmux new-session -A -s 'legacy-session'");
 });
 
 test("Codex output distinguishes working from waiting for input", () => {

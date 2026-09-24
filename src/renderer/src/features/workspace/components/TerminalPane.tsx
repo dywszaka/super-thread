@@ -107,7 +107,10 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [replayVersions, setReplayVersions] = useState<Record<string, number>>({});
   const [createMenu, setCreateMenu] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const createMenuAnchor = useRef<HTMLDivElement>(null);
+  const creatingRef = useRef(false);
   const sessions = useMemo(() => snapshot.sessions.filter((item) => item.workspaceId === workspace.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)), [snapshot.sessions, workspace.id]);
   const activeSessionId = activeSessionIds[workspace.id];
   const active = sessions.find((item) => item.id === activeSessionId) ?? sessions.find((item) => item.status === "running") ?? sessions[0];
@@ -118,7 +121,19 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   useEffect(() => {
     if (visible && active?.codexResultUnread) void window.desktop.markSessionViewed(active.id);
   }, [active?.id, active?.codexResultUnread, visible]);
+  useEffect(() => {
+    if (!createMenu) return;
+    const closeCreateMenu = (event: PointerEvent): void => {
+      const target = event.target;
+      if (target instanceof Node && !createMenuAnchor.current?.contains(target)) setCreateMenu(false);
+    };
+    window.addEventListener("pointerdown", closeCreateMenu);
+    return () => window.removeEventListener("pointerdown", closeCreateMenu);
+  }, [createMenu]);
   const create = async (kind: SessionKind): Promise<void> => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
     setCreateMenu(false);
     try {
       const result = await window.desktop.createSession({ workspaceId: workspace.id, kind });
@@ -127,6 +142,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
       if (result.warning) toast.warning(result.warning);
     }
     catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+    finally { creatingRef.current = false; setCreating(false); }
   };
   const close = async (sessionId: string): Promise<void> => {
     try { await window.desktop.killSession(sessionId); }
@@ -165,12 +181,12 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     <section className="terminal-pane">
       <div className="terminal-tabs no-drag">
         <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} draggable className={`terminal-tab ${active?.id === session.id ? "active" : ""} ${session.codexResultUnread ? "unread" : ""}`} onDragStart={(event) => { setDraggingId(session.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => { if (draggingId) event.preventDefault(); }} onDrop={() => void reorder(session.id)} onDragEnd={() => setDraggingId(null)} onClick={() => setActiveSession(workspace.id, session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, session.id); }}>{session.kind === "codex" ? <Bot size={13} /> : session.kind === "tmux" ? <Layers3 size={13} /> : <TerminalSquare size={13} />}{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status === "running" ? session.activityStatus ?? "running" : session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}</div>
-        <div className="terminal-add-menu">
-          <button className="icon-button terminal-add" onClick={() => setCreateMenu(!createMenu)} title="New terminal"><Plus size={15} /></button>
-          {createMenu && <div className="terminal-kind-menu"><button onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}
+        <div ref={createMenuAnchor} className="terminal-add-menu">
+          <button className="icon-button terminal-add" disabled={creating} onClick={() => setCreateMenu(!createMenu)} title="New terminal"><Plus size={15} /></button>
+          {createMenu && <div className="terminal-kind-menu"><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}
         </div>
       </div>
-      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={`${session.id}:${replayVersions[session.id] ?? 0}`} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" onClick={() => void create("shell")}><Plus size={14} /> Terminal</button><button className="button" onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
+      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={`${session.id}:${replayVersions[session.id] ?? 0}`} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
       <div className="terminal-status"><span><i className={active?.status === "running" ? "online" : "offline"} /> {active?.activityStatus ?? active?.status ?? "no session"}</span><span>{active?.kind ?? "shell"}</span><span>{active?.cwd}</span>{active?.status === "running" && <button title="Replay terminal output" onClick={() => setReplayVersions((versions) => ({ ...versions, [active.id]: (versions[active.id] ?? 0) + 1 }))}><RotateCcw size={11} /></button>}</div>
     </section>
   );
