@@ -118,7 +118,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     if (!active && activeSessionId) setActiveSession(workspace.id, null);
   }, [active?.id, activeSessionId, workspace.id]);
   useEffect(() => {
-    if (!visible || !active?.codexResultUnread) return;
+    if (!visible || !active?.resultUnread) return;
     const markIfViewed = (): void => {
       if (document.visibilityState === "visible" && document.hasFocus()) void window.desktop.markSessionViewed(active.id);
     };
@@ -129,7 +129,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
       window.removeEventListener("focus", markIfViewed);
       document.removeEventListener("visibilitychange", markIfViewed);
     };
-  }, [active?.id, active?.codexResultUnread, visible]);
+  }, [active?.id, active?.resultUnread, visible]);
   useEffect(() => {
     if (!createMenu) return;
     const closeCreateMenu = (event: PointerEvent): void => {
@@ -202,7 +202,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   return (
     <section className="terminal-pane">
       <div className="terminal-tabs no-drag">
-        <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} draggable className={`terminal-tab ${active?.id === session.id ? "active" : ""} ${session.codexResultUnread ? "unread" : ""}`} onDragStart={(event) => { setDraggingId(session.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => { if (draggingId) event.preventDefault(); }} onDrop={() => void reorder(session.id)} onDragEnd={() => setDraggingId(null)} onClick={() => setActiveSession(workspace.id, session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, session.id); }}>{session.kind === "codex" ? <Bot size={13} /> : session.kind === "tmux" ? <Layers3 size={13} /> : <TerminalSquare size={13} />}{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status === "running" ? session.activityStatus ?? "running" : session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}</div>
+        <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} draggable className={`terminal-tab ${active?.id === session.id ? "active" : ""} ${session.resultUnread ? "unread" : ""}`} onDragStart={(event) => { setDraggingId(session.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => { if (draggingId) event.preventDefault(); }} onDrop={() => void reorder(session.id)} onDragEnd={() => setDraggingId(null)} onClick={() => setActiveSession(workspace.id, session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, session.id); }}>{session.kind === "codex" ? <Bot size={13} /> : session.kind === "tmux" ? <Layers3 size={13} /> : <TerminalSquare size={13} />}{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status === "running" ? session.activityStatus ?? "running" : session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}</div>
         <div ref={createMenuAnchor} className="terminal-add-menu">
           <button className="icon-button terminal-add" disabled={creating} onClick={() => setCreateMenu(!createMenu)} title="New terminal"><Plus size={15} /></button>
           {createMenu && <div className="terminal-kind-menu"><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}

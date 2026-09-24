@@ -517,7 +517,7 @@ export class WorkspaceService extends EventEmitter {
     const restored = {
       ...session,
       cwd: session.cwd || workspace.path,
-      activityStatus: (session.codexResultUnread ? "waiting-input" : "idle") as SessionActivityStatus
+      activityStatus: (session.resultUnread ? "waiting-input" : "idle") as SessionActivityStatus
     };
     let pid: number;
     try {
@@ -634,7 +634,7 @@ export class WorkspaceService extends EventEmitter {
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
       if (session) {
-        session.codexResultUnread = false;
+        session.resultUnread = false;
         if (session.activityStatus === "waiting-input") session.activityStatus = "idle";
       }
     });
@@ -727,7 +727,7 @@ export class WorkspaceService extends EventEmitter {
       if (workspace.status !== "ready") throw new Error("Workspace is not ready");
       const device = this.device(snapshot, workspace.deviceId);
       const connection = this.connection(snapshot, device.id);
-      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: session.codexResultUnread ? "waiting-input" as const : "idle" as const };
+      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: session.resultUnread ? "waiting-input" as const : "idle" as const };
       const pid = this.terminals.create(restored, workspace, device, connection);
       await this.store.update((draft) => {
         const current = draft.sessions.find((item) => item.id === sessionId);
@@ -836,12 +836,12 @@ export class WorkspaceService extends EventEmitter {
       if (session?.status !== "running") return;
       if (event.activityStatus === "busy") {
         session.activityStatus = "busy";
-        session.codexResultUnread = false;
-      } else if (event.activityStatus === "waiting-input") {
-        session.codexResultUnread = event.resultReady || session.codexResultUnread === true;
-        session.activityStatus = session.codexResultUnread ? "waiting-input" : "idle";
+        session.resultUnread = false;
+      } else if (event.resultReady) {
+        session.resultUnread = true;
+        session.activityStatus = "waiting-input";
       } else {
-        session.activityStatus = "idle";
+        session.activityStatus = session.resultUnread ? "waiting-input" : "idle";
       }
     });
     this.changed();
@@ -858,7 +858,7 @@ export class WorkspaceService extends EventEmitter {
         activityStatus: undefined,
         exitReason: "process-exit",
         exitCode,
-        codexResultUnread: (session.kind ?? "shell") === "codex" && exitCode === 0
+        resultUnread: exitCode === 0
       });
     });
     this.changed();

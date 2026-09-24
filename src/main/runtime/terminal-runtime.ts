@@ -231,8 +231,9 @@ export class TerminalRuntime extends EventEmitter {
         ? await run("ssh", this.sshArgs(connection, interactiveLoginShellCommand(command)))
         : await run("sh", ["-lc", command]);
       const activityStatus = interpret(output);
-      const resultReady = kind === "tmux" && live.activityStatus === "busy" && activityStatus === "waiting-input"
-        && codexResultReadyFromOutput(output.split("\n").slice(1).join("\n"));
+      const resultReady = kind === "tmux" && activityStatus === "waiting-input"
+        ? live.activityStatus === "busy" && codexResultReadyFromOutput(output.split("\n").slice(1).join("\n"))
+        : undefined;
       this.setActivity(session.id, live, activityStatus, resultReady);
     } catch {
       // A transient probe failure must not turn an idle terminal into a false running warning.
@@ -250,10 +251,11 @@ export class TerminalRuntime extends EventEmitter {
     return args;
   }
 
-  private setActivity(sessionId: string, live: LiveSession, activityStatus: SessionActivityStatus, resultReady = false): void {
+  private setActivity(sessionId: string, live: LiveSession, activityStatus: SessionActivityStatus, resultReady?: boolean): void {
     if (live.activityStatus === activityStatus) return;
+    const completedWork = resultReady ?? (live.activityStatus === "busy" && activityStatus === "idle");
     live.activityStatus = activityStatus;
-    this.emit("activity", { sessionId, activityStatus, resultReady } satisfies TerminalActivityEvent);
+    this.emit("activity", { sessionId, activityStatus, resultReady: completedWork } satisfies TerminalActivityEvent);
   }
 
   attach(id: string): TerminalReplay {

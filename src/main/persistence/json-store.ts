@@ -58,11 +58,14 @@ function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
 }
 
 function normalizeSession(session: Session): Session {
+  const { codexResultUnread, ...current } = session;
+  const resultUnread = current.resultUnread ?? codexResultUnread;
   return {
     kind: "shell",
     order: 0,
     cwd: undefined,
-    activityStatus: session.status === "running" ? "idle" : undefined,
-    ...session
+    ...current,
+    activityStatus: session.status === "running" ? resultUnread ? "waiting-input" : current.activityStatus ?? "idle" : undefined,
+    resultUnread
   };
 }

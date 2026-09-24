@@ -366,16 +366,37 @@ test("Codex completion waits only until the result is viewed", async () => {
 
   await emitActivity("waiting-input", false);
   assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
-  assert.equal(service.snapshot().sessions[0]?.codexResultUnread, false);
+  assert.equal(Boolean(service.snapshot().sessions[0]?.resultUnread), false);
 
   await emitActivity("busy", false);
   await emitActivity("waiting-input", true);
   assert.equal(service.snapshot().sessions[0]?.activityStatus, "waiting-input");
-  assert.equal(service.snapshot().sessions[0]?.codexResultUnread, true);
+  assert.equal(service.snapshot().sessions[0]?.resultUnread, true);
 
   await service.markSessionViewed("codex-1");
   assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
-  assert.equal(service.snapshot().sessions[0]?.codexResultUnread, false);
+  assert.equal(service.snapshot().sessions[0]?.resultUnread, false);
+});
+
+test("shell command completion also waits until the result is viewed", async () => {
+  const terminals = fakeTerminals();
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.sessions.push({
+      id: "shell-1", workspaceId: "workspace-1", name: "build", status: "running", kind: "shell",
+      shell: "/bin/zsh", activityStatus: "busy", createdAt: "now"
+    });
+  });
+  const changed = new Promise<void>((resolve) => service.once("changed", resolve));
+  terminals.emit("activity", { sessionId: "shell-1", activityStatus: "idle", resultReady: true });
+  await changed;
+
+  assert.equal(service.snapshot().sessions[0]?.activityStatus, "waiting-input");
+  assert.equal(service.snapshot().sessions[0]?.resultUnread, true);
+
+  await service.markSessionViewed("shell-1");
+  assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
+  assert.equal(service.snapshot().sessions[0]?.resultUnread, false);
 });
 
 test("managed terminal creation records kind metadata and falls back when a tool is missing", async () => {

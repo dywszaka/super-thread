@@ -111,3 +111,16 @@ test("only the completed-result prompt marks a Codex result ready", () => {
   assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nPermission required: allow this command?"), false);
   assert.equal(codexResultReadyFromOutput("Ask Codex to do anything"), true);
 });
+
+test("a foreground command returning to idle marks a generic terminal result ready", () => {
+  const runtime = new TerminalRuntime();
+  const events: unknown[] = [];
+  runtime.on("activity", (event) => events.push(event));
+  const internal = runtime as unknown as {
+    setActivity(sessionId: string, live: { activityStatus: "idle" | "busy" | "waiting-input" }, activityStatus: "idle" | "busy" | "waiting-input", resultReady?: boolean): void;
+  };
+
+  internal.setActivity("shell-1", { activityStatus: "busy" }, "idle");
+
+  assert.deepEqual(events, [{ sessionId: "shell-1", activityStatus: "idle", resultReady: true }]);
+});

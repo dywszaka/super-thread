@@ -6,7 +6,7 @@ export type SessionKind = "shell" | "codex" | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export interface WorkThread {
   id: string;
@@ -106,6 +106,8 @@ export interface Session {
   tmuxWindowKey?: string;
   tmuxWindowName?: string;
   codexConversationId?: string;
+  resultUnread?: boolean;
+  /** Legacy field retained only for persisted-data migration. */
   codexResultUnread?: boolean;
   fallbackMessage?: string;
   restoredAt?: string;

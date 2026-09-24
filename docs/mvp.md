@@ -750,7 +750,7 @@ interface Session {
   tmuxSessionName?: string
   tmuxWindowKey?: string
   codexConversationId?: string
-  codexResultUnread?: boolean
+  resultUnread?: boolean
 
   createdAt: Date
   exitedAt?: Date
@@ -774,8 +774,9 @@ interface Session {
 ```
 
 `status` 描述 PTY 生命周期；产品界面中的 `running` 描述终端是否正在执行工作，两者不可混用。只有
-`status === "running" && activityStatus === "busy"` 才计为 running：Codex 正在工作时为 `busy`，
-本轮工作完成且结果尚未被用户查看时为 `waiting-input`，结果所在 Terminal 在前台窗口中显示后转为 `idle`；普通 shell 或 tmux 只有前台 command 占用 Terminal、需要等待完成或
+`status === "running" && activityStatus === "busy"` 才计为 running。任何 Terminal（shell、Codex 或 tmux）
+在前台工作或 command 执行时为 `busy`；工作结束且结果尚未被用户查看时为 `waiting-input`，结果所在 Terminal
+在前台窗口中显示后转为 `idle`。普通 shell 或 tmux 只有前台 command 占用 Terminal、需要等待完成或
 通过 Ctrl+C 中断时才为 `busy`，停留在交互式 shell prompt 时为 `idle`。Codex 运行在 tmux pane 内时
 仍按 Codex 的当前屏幕状态判断，不能仅因 pane 进程显示为 `node` 或 `codex` 就计为 running。直接运行的
 Codex 必须基于最近的累计终端输出判断，不能让输入框之后的 footer/status 重绘把等待状态覆盖为 `busy`。

@@ -30,7 +30,7 @@ test("JsonStore migrates older snapshots without clearing user data", async () =
   await writeFile(path, JSON.stringify({
     schemaVersion: CURRENT_SCHEMA_VERSION - 1,
     projects: [{ id: "legacy-project", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "then", updatedAt: "then" }],
-    sessions: [{ id: "session-1", workspaceId: "workspace-1", name: "Terminal 1", status: "running", shell: "/bin/zsh", createdAt: "then" }]
+    sessions: [{ id: "session-1", workspaceId: "workspace-1", name: "Terminal 1", status: "running", shell: "/bin/zsh", codexResultUnread: true, createdAt: "then" }]
   }), "utf8");
 
   const snapshot = await new JsonStore(path).load();
@@ -38,5 +38,7 @@ test("JsonStore migrates older snapshots without clearing user data", async () =
   assert.equal(snapshot.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(snapshot.projects[0]?.id, "legacy-project");
   assert.equal(snapshot.sessions[0]?.kind, "shell");
-  assert.equal(snapshot.sessions[0]?.activityStatus, "idle");
+  assert.equal(snapshot.sessions[0]?.activityStatus, "waiting-input");
+  assert.equal(snapshot.sessions[0]?.resultUnread, true);
+  assert.equal(snapshot.sessions[0]?.codexResultUnread, undefined);
 });
