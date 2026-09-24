@@ -70,8 +70,9 @@ export function tmuxAttachCommand(session: Session, cwd: string): string {
     const quotedSession = quoteShellArgument(sessionName);
     const quotedKey = quoteShellArgument(session.tmuxWindowKey);
     const quotedCwd = quoteShellArgument(cwd);
+    const clientSession = quoteShellArgument(legacyTmuxClientSessionName(session));
     const lookup = tmuxWindowLookupCommand(session);
-    return `if tmux has-session -t ${quotedSession} 2>/dev/null; then window=$(${lookup}); if [ -z "$window" ]; then window=$(tmux new-window -d -P -F '#{window_id}' -t ${quotedSession} -c ${quotedCwd}); fi; else window=$(tmux new-session -d -P -F '#{window_id}' -s ${quotedSession} -c ${quotedCwd}); fi; tmux set-option -w -t "$window" @superthread_terminal_id ${quotedKey}; exec tmux attach-session -t ${quotedSession}:"$window"`;
+    return `if tmux has-session -t ${quotedSession} 2>/dev/null; then window=$(${lookup}); if [ -z "$window" ]; then window=$(tmux new-window -d -P -F '#{window_id}' -t ${quotedSession} -c ${quotedCwd}); fi; else window=$(tmux new-session -d -P -F '#{window_id}' -s ${quotedSession} -c ${quotedCwd}); fi; tmux set-option -w -t "$window" @superthread_terminal_id ${quotedKey}; tmux kill-session -t ${clientSession} 2>/dev/null || true; tmux new-session -d -t ${quotedSession} -s ${clientSession}; tmux select-window -t ${clientSession}:"$window"; exec tmux attach-session -t ${clientSession}`;
   }
   const quotedSession = quoteShellArgument(sessionName);
   const quotedWindow = quoteShellArgument(session.tmuxWindowName || session.id);

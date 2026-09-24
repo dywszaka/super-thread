@@ -32,6 +32,7 @@ export function WorkspaceApp(): React.ReactNode {
   useEffect(() => {
     if (!showingTerminal && store.focusMode) store.exitFocusMode();
   }, [showingTerminal, store.focusMode]);
+  useEffect(() => window.desktop.setFocusMode(focusMode), [focusMode]);
   useEffect(() => window.desktop.onMenuAction((action) => {
     if (action === "new-work-thread") store.openDialog("workThread");
     if (action === "new-workspace") store.openDialog("workspace");

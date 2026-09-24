@@ -48,7 +48,10 @@ export function registerIpcHandlers(service: WorkspaceService): void {
     await shell.openExternal(url);
   });
   ipcMain.handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
-  ipcMain.handle(channels.activateSession, (_event, id) => service.activateSession(sessionIdSchema.parse(id)));
+  ipcMain.on(channels.setFocusMode, (event, enabled) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    owner?.setWindowButtonPosition({ x: 16, y: z.boolean().parse(enabled) ? 13 : 18 });
+  });
   ipcMain.handle(channels.resumeSession, (_event, id) => service.resumeSession(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.reorderSessions, (_event, input) => service.reorderSessions(reorderSessionsSchema.parse(input)));
   ipcMain.handle(channels.markSessionViewed, (_event, id) => service.markSessionViewed(sessionIdSchema.parse(id)));

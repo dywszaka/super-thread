@@ -556,22 +556,6 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  async activateSession(sessionId: string): Promise<void> {
-    const snapshot = this.snapshot();
-    const session = snapshot.sessions.find((item) => item.id === sessionId);
-    if (!session || session.kind !== "tmux") return;
-    const workspace = this.workspace(snapshot, session.workspaceId);
-    const device = this.device(snapshot, workspace.deviceId);
-    const command = session.tmuxWindowKey
-      ? `target=$(${tmuxWindowLookupCommand(session)}); test -n "$target"; tmux select-window -t "$target"`
-      : `tmux select-window -t ${quoteShellArgument(tmuxTarget(session))}`;
-    await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
-      "sh",
-      ["-lc", interactiveLoginShellCommand(command)],
-      { cwd: workspace.path, timeoutMs: 8_000 }
-    );
-  }
-
   attachSession(id: string): TerminalReplay { return this.terminals.attach(id); }
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }

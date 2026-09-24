@@ -274,13 +274,11 @@ test("renaming a tmux terminal renames its tagged tmux window", async () => {
   });
 
   await service.renameSession({ id: "tmux-rename", name: "build logs" });
-  await service.activateSession("tmux-rename");
 
   assert.equal(service.snapshot().sessions[0]?.name, "build logs");
   assert.match(commands[0] ?? "", /@superthread_terminal_id/);
   assert.match(commands[0] ?? "", /rename-window -t .*'build logs'/);
-  assert.match(commands[1] ?? "", /select-window/);
-  assert.match(commands[1] ?? "", /@superthread_terminal_id/);
+  assert.equal(commands.length, 1);
 });
 
 test("closing a busy tmux terminal requires confirmation and deletes its tmux resources", async () => {

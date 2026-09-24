@@ -105,7 +105,6 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [resumingId, setResumingId] = useState<string | null>(null);
-  const [replayVersions, setReplayVersions] = useState<Record<string, number>>({});
   const [createMenu, setCreateMenu] = useState(false);
   const [creating, setCreating] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -121,9 +120,6 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   useEffect(() => {
     if (visible && active?.codexResultUnread) void window.desktop.markSessionViewed(active.id);
   }, [active?.id, active?.codexResultUnread, visible]);
-  useEffect(() => {
-    if (visible && active?.kind === "tmux") void window.desktop.activateSession(active.id).catch(() => {});
-  }, [active?.id, active?.kind, visible]);
   useEffect(() => {
     if (!createMenu) return;
     const closeCreateMenu = (event: PointerEvent): void => {
@@ -202,8 +198,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
           {createMenu && <div className="terminal-kind-menu"><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}
         </div>
       </div>
-      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={`${session.id}:${replayVersions[session.id] ?? 0}`} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
-      <div className="terminal-status"><span><i className={active?.status === "running" ? "online" : "offline"} /> {active?.activityStatus ?? active?.status ?? "no session"}</span><span>{active?.kind ?? "shell"}</span><span>{active?.cwd}</span>{active?.status === "running" && <button title="Replay terminal output" onClick={() => setReplayVersions((versions) => ({ ...versions, [active.id]: (versions[active.id] ?? 0) + 1 }))}><RotateCcw size={11} /></button>}</div>
+      <div className="terminal-stage">{sessions.length > 0 ? sessions.map((session) => <TerminalView key={session.id} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />) : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
     </section>
   );
 }

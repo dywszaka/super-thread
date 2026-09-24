@@ -787,7 +787,7 @@ interface Session {
 
 - `shell`：普通 Terminal，在 Workspace 当前目录启动 shell。
 - `codex`：在 Workspace 当前目录启动 Codex CLI；缺少 Codex CLI 时回退为 `shell` 并提示。
-- `tmux`：Workspace 与 tmux session 一一对应，session 在第一个 tmux Terminal 创建时建立，并使用 Workspace 名称；若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字。每个 Terminal 对应该 session 内的一个 tmux window，切换 Terminal tab 时同步选择对应 window。window 初始名称由 tmux 自动管理，用户重命名 Terminal 时同步执行 `rename-window`。Runtime 使用隐藏的 window tag 稳定定位 window，不得用内部 Session ID 作为可见 window 名称。恢复标签页时重连原 window。缺少 tmux 时回退为 `shell` 并提示，Remote Workspace 同一 Workspace 内只提示一次。
+- `tmux`：Workspace 与主 tmux session 一一对应，session 在第一个 tmux Terminal 创建时建立，并使用 Workspace 名称；若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字。每个 Terminal 对应该主 session 内的一个 tmux window，并通过独立的 grouped client session 保持自己的选中 window，使 Terminal tab 切换只切换已挂载的 PTY，不等待额外的本地 shell 或 SSH 命令。window 初始名称由 tmux 自动管理，用户重命名 Terminal 时同步执行 `rename-window`。Runtime 使用隐藏的 window tag 稳定定位 window，不得用内部 Session ID 作为可见 window 名称。恢复标签页时重连原 window。缺少 tmux 时回退为 `shell` 并提示，Remote Workspace 同一 Workspace 内只提示一次。
 
 Codex 与 tmux 的可用性探测及启动必须使用 Device 用户的交互式登录 shell，使 SSH
 设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致。
