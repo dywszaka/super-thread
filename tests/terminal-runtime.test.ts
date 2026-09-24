@@ -72,6 +72,8 @@ test("tmux tabs attach distinct windows in one workspace session", () => {
   assert.match(firstCommand, /tmux new-session -d -P -F '#\{window_id\}' -s 'fa-attn-nvfp4'/);
   assert.match(firstCommand, /set-option -w -t "\$window" @superthread_terminal_id 'session-1'/);
   assert.match(firstCommand, /new-session -d -t 'fa-attn-nvfp4' -s 'superthread-client-session-1'/);
+  assert.match(firstCommand, /status-left/);
+  assert.match(firstCommand, /session_group/);
   assert.match(firstCommand, /select-window -t 'superthread-client-session-1':"\$window"/);
   assert.match(firstCommand, /attach-session -t 'superthread-client-session-1'/);
   assert.doesNotMatch(firstCommand, / -n /);
