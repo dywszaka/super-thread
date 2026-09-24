@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, foregroundProcessIsBusy, legacyTmuxClientSessionName, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxTarget } from "../src/main/runtime/terminal-runtime";
+import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
 import type { Session } from "../src/shared/domain";
 
@@ -62,22 +62,22 @@ test("tmux activity distinguishes Codex work from waiting for input", () => {
 test("tmux tabs attach distinct windows in one workspace session", () => {
   const first: Session = {
     id: "session-1", workspaceId: "workspace-1", name: "tmux 1", status: "running", kind: "tmux", shell: "tmux",
-    tmuxSessionName: "fa-attn-nvfp4", tmuxWindowName: "session-1", createdAt: "now"
+    tmuxSessionName: "fa-attn-nvfp4", tmuxWindowKey: "session-1", createdAt: "now"
   };
-  const second: Session = { ...first, id: "session-2", name: "tmux 2", tmuxClientSessionName: "fa-attn-nvfp4-2", tmuxWindowName: "session-2" };
+  const second: Session = { ...first, id: "session-2", name: "tmux 2", tmuxWindowKey: "session-2" };
 
-  assert.equal(tmuxTarget(first), "fa-attn-nvfp4:session-1");
-  assert.equal(tmuxTarget(second), "fa-attn-nvfp4:session-2");
-  assert.equal(legacyTmuxClientSessionName(second), "superthread-client-session-2");
+  assert.match(tmuxWindowLookupCommand(first), /@superthread_terminal_id/);
+  assert.match(tmuxWindowLookupCommand(first), /key='session-1'/);
   const firstCommand = tmuxAttachCommand(first, "/tmp/demo worktree");
-  assert.match(firstCommand, /tmux select-window -t 'fa-attn-nvfp4:session-1'/);
-  assert.match(firstCommand, /tmux attach-session -t 'fa-attn-nvfp4'/);
-  assert.doesNotMatch(firstCommand, /new-session -d -t 'fa-attn-nvfp4' -s/);
+  assert.match(firstCommand, /tmux new-session -d -P -F '#\{window_id\}' -s 'fa-attn-nvfp4'/);
+  assert.match(firstCommand, /set-option -w -t "\$window" @superthread_terminal_id 'session-1'/);
+  assert.match(firstCommand, /attach-session -t 'fa-attn-nvfp4':"\$window"/);
+  assert.doesNotMatch(firstCommand, / -n /);
   const secondCommand = tmuxAttachCommand(second, "/tmp/demo worktree");
-  assert.match(secondCommand, /tmux new-window .* -n 'session-2' -c '\/tmp\/demo worktree'/);
-  assert.match(secondCommand, /tmux new-session -d -t 'fa-attn-nvfp4' -s 'fa-attn-nvfp4-2'/);
-  assert.match(secondCommand, /tmux select-window -t 'fa-attn-nvfp4-2:session-2'/);
-  assert.match(secondCommand, /tmux attach-session -t 'fa-attn-nvfp4-2'/);
+  assert.match(secondCommand, /tmux new-window -d -P -F '#\{window_id\}' -t 'fa-attn-nvfp4'/);
+  assert.match(secondCommand, /@superthread_terminal_id 'session-2'/);
+  assert.match(secondCommand, /attach-session -t 'fa-attn-nvfp4':"\$window"/);
+  assert.doesNotMatch(secondCommand, /superthread-client/);
 });
 
 test("legacy tmux tabs retain their original attach behavior", () => {

@@ -259,6 +259,30 @@ test("terminal close cannot be resurrected by its PTY exit event", async () => {
   assert.deepEqual(service.snapshot().sessions, []);
 });
 
+test("renaming a tmux terminal renames its tagged tmux window", async () => {
+  const commands: string[] = [];
+  const commandRunner: CommandRunner = {
+    run: async (_program, args) => { commands.push(args.join(" ")); return { stdout: "", stderr: "", exitCode: 0 }; }
+  };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
+  await store.update((draft) => {
+    addReadyWorkspace(draft);
+    draft.sessions.push({
+      id: "tmux-rename", workspaceId: "workspace-dev_local", name: "tmux 1", status: "running", kind: "tmux",
+      shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowKey: "tmux-rename", createdAt: "now"
+    });
+  });
+
+  await service.renameSession({ id: "tmux-rename", name: "build logs" });
+  await service.activateSession("tmux-rename");
+
+  assert.equal(service.snapshot().sessions[0]?.name, "build logs");
+  assert.match(commands[0] ?? "", /@superthread_terminal_id/);
+  assert.match(commands[0] ?? "", /rename-window -t .*'build logs'/);
+  assert.match(commands[1] ?? "", /select-window/);
+  assert.match(commands[1] ?? "", /@superthread_terminal_id/);
+});
+
 test("closing a busy tmux terminal requires confirmation and deletes its tmux resources", async () => {
   const commands: string[] = [];
   const commandRunner: CommandRunner = {
@@ -274,7 +298,7 @@ test("closing a busy tmux terminal requires confirmation and deletes its tmux re
     if (workspace) workspace.tmuxSessionName = "demo";
     draft.sessions.push({
       id: "session-tmux", workspaceId: "workspace-dev_local", name: "build", status: "running", kind: "tmux",
-      shell: "tmux", activityStatus: "busy", tmuxSessionName: "demo", tmuxWindowName: "session-tmux", createdAt: "now"
+      shell: "tmux", activityStatus: "busy", tmuxSessionName: "demo", tmuxWindowKey: "session-tmux", createdAt: "now"
     });
   });
 
@@ -287,7 +311,9 @@ test("closing a busy tmux terminal requires confirmation and deletes its tmux re
   assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, undefined);
   assert.equal(commands.length, 1);
   assert.match(commands[0] ?? "", /kill-session.*superthread-client-session-tmux/);
-  assert.match(commands[0] ?? "", /kill-session.*demo/);
+  assert.match(commands[0] ?? "", /@superthread_terminal_id/);
+  assert.match(commands[0] ?? "", /kill-window/);
+  assert.equal(commands[0]?.match(/kill-session/g)?.length, 1);
 });
 
 test("closing one tmux window preserves the workspace session while other windows remain", async () => {
@@ -299,8 +325,8 @@ test("closing one tmux window preserves the workspace session while other window
     const workspace = draft.workspaces[0];
     if (workspace) workspace.tmuxSessionName = "demo";
     draft.sessions.push(
-      { id: "tmux-1", workspaceId: "workspace-dev_local", name: "one", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowName: "tmux-1", createdAt: "now" },
-      { id: "tmux-2", workspaceId: "workspace-dev_local", name: "two", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowName: "tmux-2", createdAt: "now" }
+      { id: "tmux-1", workspaceId: "workspace-dev_local", name: "one", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowKey: "tmux-1", createdAt: "now" },
+      { id: "tmux-2", workspaceId: "workspace-dev_local", name: "two", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowKey: "tmux-2", createdAt: "now" }
     );
   });
 
@@ -308,8 +334,8 @@ test("closing one tmux window preserves the workspace session while other window
 
   assert.deepEqual(service.snapshot().sessions.map((session) => session.id), ["tmux-2"]);
   assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo");
-  assert.match(commands[0] ?? "", /kill-window.*demo:tmux-1/);
-  assert.doesNotMatch(commands[0] ?? "", /kill-session -t .*'demo'/);
+  assert.match(commands[0] ?? "", /kill-window/);
+  assert.equal(commands[0]?.match(/kill-session/g)?.length, 1);
 });
 
 test("running session summaries include only terminals actively doing work", async () => {
@@ -347,12 +373,11 @@ test("managed terminal creation records kind metadata and falls back when a tool
   assert.equal(tmux.session.kind, "tmux");
   assert.equal(tmux.session.tmuxSessionName, "demo");
   assert.equal(secondTmux.session.tmuxSessionName, tmux.session.tmuxSessionName);
-  assert.equal(tmux.session.tmuxClientSessionName, undefined);
-  assert.equal(secondTmux.session.tmuxClientSessionName, "demo-2");
-  assert.notEqual(secondTmux.session.tmuxWindowName, tmux.session.tmuxWindowName);
+  assert.equal(tmux.session.tmuxWindowKey, tmux.session.id);
+  assert.equal(secondTmux.session.tmuxWindowKey, secondTmux.session.id);
   assert.equal(service.snapshot().workspaces.find((workspace) => workspace.id === "workspace-dev_local")?.tmuxSessionName, "demo");
   assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux", "tmux"]);
-  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh", "sh", "sh"]);
+  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh", "sh"]);
   assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
 });
 
@@ -377,10 +402,10 @@ test("tmux session names use the workspace name and increment around collisions"
 
   assert.equal(first.session.tmuxSessionName, "demo-3");
   assert.equal(second.session.tmuxSessionName, "demo-3");
-  assert.equal(first.session.tmuxClientSessionName, undefined);
-  assert.equal(second.session.tmuxClientSessionName, "demo-4");
+  assert.equal(first.session.tmuxWindowKey, first.session.id);
+  assert.equal(second.session.tmuxWindowKey, second.session.id);
   assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo-3");
-  assert.equal(listCount, 2);
+  assert.equal(listCount, 1);
 });
 
 test("concurrent duplicate terminal creation requests share one result", async () => {

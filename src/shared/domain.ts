@@ -101,7 +101,9 @@ export interface Session {
   exitCode?: number;
   restoreError?: string;
   tmuxSessionName?: string;
+  /** Legacy grouped-client metadata kept only for cleanup compatibility. */
   tmuxClientSessionName?: string;
+  tmuxWindowKey?: string;
   tmuxWindowName?: string;
   codexConversationId?: string;
   codexResultUnread?: boolean;

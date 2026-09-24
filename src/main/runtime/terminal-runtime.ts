@@ -55,23 +55,30 @@ export function legacyTmuxClientSessionName(session: Session): string {
   return `superthread-client-${session.id}`;
 }
 
+export function tmuxWindowLookupCommand(session: Session): string {
+  const sessionName = quoteShellArgument(session.tmuxSessionName || session.id);
+  const windowKey = quoteShellArgument(session.tmuxWindowKey || session.id);
+  return `tmux list-windows -t ${sessionName} -F '#{window_id} #{@superthread_terminal_id}' 2>/dev/null | awk -v key=${windowKey} '$2 == key { print $1; exit }'`;
+}
+
 export function tmuxAttachCommand(session: Session, cwd: string): string {
   const sessionName = session.tmuxSessionName || session.id;
-  if (!session.tmuxWindowName) {
+  if (!session.tmuxWindowKey && !session.tmuxWindowName) {
     return `tmux new-session -A -s ${quoteShellArgument(sessionName)}`;
   }
+  if (session.tmuxWindowKey) {
+    const quotedSession = quoteShellArgument(sessionName);
+    const quotedKey = quoteShellArgument(session.tmuxWindowKey);
+    const quotedCwd = quoteShellArgument(cwd);
+    const lookup = tmuxWindowLookupCommand(session);
+    return `if tmux has-session -t ${quotedSession} 2>/dev/null; then window=$(${lookup}); if [ -z "$window" ]; then window=$(tmux new-window -d -P -F '#{window_id}' -t ${quotedSession} -c ${quotedCwd}); fi; else window=$(tmux new-session -d -P -F '#{window_id}' -s ${quotedSession} -c ${quotedCwd}); fi; tmux set-option -w -t "$window" @superthread_terminal_id ${quotedKey}; exec tmux attach-session -t ${quotedSession}:"$window"`;
+  }
   const quotedSession = quoteShellArgument(sessionName);
-  const quotedWindow = quoteShellArgument(session.tmuxWindowName);
-  const quotedTarget = quoteShellArgument(tmuxTarget(session));
+  const quotedWindow = quoteShellArgument(session.tmuxWindowName || session.id);
   const quotedCwd = quoteShellArgument(cwd);
   const ensureWindow = `if tmux has-session -t ${quotedSession} 2>/dev/null; then if ! tmux list-windows -t ${quotedSession} -F '#{window_name}' | grep -Fqx -- ${quotedWindow}; then tmux new-window -d -t ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; else tmux new-session -d -s ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi`;
-  if (!session.tmuxClientSessionName) {
-    const legacyClient = quoteShellArgument(legacyTmuxClientSessionName(session));
-    return `${ensureWindow}; tmux kill-session -t ${legacyClient} 2>/dev/null || true; tmux select-window -t ${quotedTarget}; exec tmux attach-session -t ${quotedSession}`;
-  }
-  const clientSession = quoteShellArgument(session.tmuxClientSessionName);
-  const clientTarget = quoteShellArgument(`${session.tmuxClientSessionName}:${session.tmuxWindowName}`);
-  return `${ensureWindow}; if ! tmux has-session -t ${clientSession} 2>/dev/null; then tmux new-session -d -t ${quotedSession} -s ${clientSession}; fi; tmux select-window -t ${clientTarget}; exec tmux attach-session -t ${clientSession}`;
+  const legacyClient = quoteShellArgument(session.tmuxClientSessionName || legacyTmuxClientSessionName(session));
+  return `${ensureWindow}; tmux kill-session -t ${legacyClient} 2>/dev/null || true; exec tmux attach-session -t ${quoteShellArgument(tmuxTarget(session))}`;
 }
 
 export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {
@@ -194,8 +201,12 @@ export class TerminalRuntime extends EventEmitter {
       let command: string;
       let interpret: (output: string) => SessionActivityStatus;
       if (kind === "tmux") {
-        const target = quoteShellArgument(tmuxTarget(session));
-        command = `tmux display-message -p -t ${target} '#{pane_current_command}'; tmux capture-pane -p -t ${target} -S -20`;
+        if (session.tmuxWindowKey) {
+          command = `target=$(${tmuxWindowLookupCommand(session)}); test -n "$target"; tmux display-message -p -t "$target" '#{pane_current_command}'; tmux capture-pane -p -t "$target" -S -20`;
+        } else {
+          const target = quoteShellArgument(tmuxTarget(session));
+          command = `tmux display-message -p -t ${target} '#{pane_current_command}'; tmux capture-pane -p -t ${target} -S -20`;
+        }
         interpret = tmuxActivityFromProbe;
       } else {
         const pid = device.type === "remote" ? live.remotePid : live.pty.pid;

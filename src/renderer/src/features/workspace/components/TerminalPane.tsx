@@ -122,6 +122,9 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     if (visible && active?.codexResultUnread) void window.desktop.markSessionViewed(active.id);
   }, [active?.id, active?.codexResultUnread, visible]);
   useEffect(() => {
+    if (visible && active?.kind === "tmux") void window.desktop.activateSession(active.id).catch(() => {});
+  }, [active?.id, active?.kind, visible]);
+  useEffect(() => {
     if (!createMenu) return;
     const closeCreateMenu = (event: PointerEvent): void => {
       const target = event.target;
