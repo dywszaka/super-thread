@@ -118,7 +118,17 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     if (!active && activeSessionId) setActiveSession(workspace.id, null);
   }, [active?.id, activeSessionId, workspace.id]);
   useEffect(() => {
-    if (visible && active?.codexResultUnread) void window.desktop.markSessionViewed(active.id);
+    if (!visible || !active?.codexResultUnread) return;
+    const markIfViewed = (): void => {
+      if (document.visibilityState === "visible" && document.hasFocus()) void window.desktop.markSessionViewed(active.id);
+    };
+    markIfViewed();
+    window.addEventListener("focus", markIfViewed);
+    document.addEventListener("visibilitychange", markIfViewed);
+    return () => {
+      window.removeEventListener("focus", markIfViewed);
+      document.removeEventListener("visibilitychange", markIfViewed);
+    };
   }, [active?.id, active?.codexResultUnread, visible]);
   useEffect(() => {
     if (!createMenu) return;

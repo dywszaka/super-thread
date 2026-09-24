@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
+import { codexActivityFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
 import type { Session } from "../src/shared/domain";
 
@@ -94,6 +94,7 @@ test("legacy tmux tabs retain their original attach behavior", () => {
 });
 
 test("Codex output distinguishes working from waiting for input", () => {
+  assert.equal(codexActivityFromOutput("Codex CLI starting…"), undefined);
   assert.equal(codexActivityFromOutput("Working (12s • esc to interrupt)"), "busy");
   assert.equal(codexActivityFromOutput("\n› Implement the next feature"), "waiting-input");
   assert.equal(codexActivityFromOutput("Permission required: allow this command?"), "waiting-input");
@@ -103,4 +104,10 @@ test("Codex output distinguishes working from waiting for input", () => {
     codexActivityFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything\nGPT-5.6-Sol medium · 191K used · 340K in · 2.89K out · 1 warning"),
     "waiting-input"
   );
+});
+
+test("only the completed-result prompt marks a Codex result ready", () => {
+  assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything"), true);
+  assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nPermission required: allow this command?"), false);
+  assert.equal(codexResultReadyFromOutput("Ask Codex to do anything"), true);
 });

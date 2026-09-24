@@ -20,8 +20,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   const sessions = snapshot.sessions.filter((session) => session.workspaceId === workspace.id);
   const activeCount = sessions.filter((session) => session.status === "running" && session.activityStatus === "busy").length;
-  const waitingCodexCount = sessions.filter((session) => session.kind === "codex" && session.activityStatus === "waiting-input").length;
-  const unreadCodexCount = sessions.filter((session) => session.codexResultUnread).length;
+  const waitingCodexCount = sessions.filter((session) => session.activityStatus === "waiting-input").length;
   const failedRestoreCount = sessions.filter((session) => session.status === "restore-failed").length;
   useEffect(() => {
     if (!details && !menu) return;
@@ -67,10 +66,9 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
         <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}</p>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
       </button>
-      {(activeCount > 0 || waitingCodexCount > 0 || unreadCodexCount > 0 || failedRestoreCount > 0) && <div className="session-summary no-drag">
+      {(activeCount > 0 || waitingCodexCount > 0 || failedRestoreCount > 0) && <div className="session-summary no-drag">
         {activeCount > 0 && <span><i className="busy" /> {activeCount} running</span>}
         {waitingCodexCount > 0 && <span><i className="waiting" /> {waitingCodexCount} waiting</span>}
-        {unreadCodexCount > 0 && <span><i className="unread" /> {unreadCodexCount} unread</span>}
         {failedRestoreCount > 0 && <span><i className="failed" /> {failedRestoreCount} failed</span>}
       </div>}
       <div className="header-actions no-drag"><button className="button" disabled={workspace.status !== "ready"} title="Enter Focus mode" onClick={enterFocusMode}><Focus size={14} /> Focus</button><button className="button" disabled={workspace.status !== "ready" || openingInVSCode} title="Open this workspace in Visual Studio Code" onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button><button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New</button><div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions"><MoreHorizontal size={17} /></button>{menu && <div className="context-menu"><button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button></div>}</div></div>

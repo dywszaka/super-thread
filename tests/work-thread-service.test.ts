@@ -349,6 +349,35 @@ test("running session summaries include only terminals actively doing work", asy
   assert.deepEqual(service.runningSessionSummaries(), ["Unknown workspace / build (shell)"]);
 });
 
+test("Codex completion waits only until the result is viewed", async () => {
+  const terminals = fakeTerminals();
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.sessions.push({
+      id: "codex-1", workspaceId: "workspace-1", name: "agent", status: "running", kind: "codex",
+      shell: "codex", activityStatus: "idle", createdAt: "now"
+    });
+  });
+  const emitActivity = async (activityStatus: "idle" | "busy" | "waiting-input", resultReady: boolean): Promise<void> => {
+    const changed = new Promise<void>((resolve) => service.once("changed", resolve));
+    terminals.emit("activity", { sessionId: "codex-1", activityStatus, resultReady });
+    await changed;
+  };
+
+  await emitActivity("waiting-input", false);
+  assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
+  assert.equal(service.snapshot().sessions[0]?.codexResultUnread, false);
+
+  await emitActivity("busy", false);
+  await emitActivity("waiting-input", true);
+  assert.equal(service.snapshot().sessions[0]?.activityStatus, "waiting-input");
+  assert.equal(service.snapshot().sessions[0]?.codexResultUnread, true);
+
+  await service.markSessionViewed("codex-1");
+  assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
+  assert.equal(service.snapshot().sessions[0]?.codexResultUnread, false);
+});
+
 test("managed terminal creation records kind metadata and falls back when a tool is missing", async () => {
   const created: Session[] = [];
   const probes: Array<{ program: string; args: string[] }> = [];

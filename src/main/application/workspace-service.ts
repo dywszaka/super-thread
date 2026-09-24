@@ -102,7 +102,7 @@ export class WorkspaceService extends EventEmitter {
   ) {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
-    terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event.sessionId, event.activityStatus));
+    terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event));
     terminals.on("exit", (event: TerminalExitEvent) => void this.markSessionExited(event.sessionId, event.exitCode));
   }
 
@@ -482,7 +482,7 @@ export class WorkspaceService extends EventEmitter {
       order: this.nextSessionOrder(snapshot, workspace.id),
       shell: this.sessionShellLabel(kind, device),
       cwd: workspace.path,
-      activityStatus: kind === "codex" ? "busy" : "idle",
+      activityStatus: "idle",
       ...(kind === "tmux" ? {
         tmuxSessionName,
         tmuxWindowKey: sessionId
@@ -517,7 +517,7 @@ export class WorkspaceService extends EventEmitter {
     const restored = {
       ...session,
       cwd: session.cwd || workspace.path,
-      activityStatus: ((session.kind ?? "shell") === "codex" ? "busy" : "idle") as SessionActivityStatus
+      activityStatus: (session.codexResultUnread ? "waiting-input" : "idle") as SessionActivityStatus
     };
     let pid: number;
     try {
@@ -633,7 +633,10 @@ export class WorkspaceService extends EventEmitter {
   async markSessionViewed(sessionId: string): Promise<void> {
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
-      if (session) session.codexResultUnread = false;
+      if (session) {
+        session.codexResultUnread = false;
+        if (session.activityStatus === "waiting-input") session.activityStatus = "idle";
+      }
     });
     this.changed();
   }
@@ -724,7 +727,7 @@ export class WorkspaceService extends EventEmitter {
       if (workspace.status !== "ready") throw new Error("Workspace is not ready");
       const device = this.device(snapshot, workspace.deviceId);
       const connection = this.connection(snapshot, device.id);
-      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: (session.kind ?? "shell") === "codex" ? "busy" as const : "idle" as const };
+      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: session.codexResultUnread ? "waiting-input" as const : "idle" as const };
       const pid = this.terminals.create(restored, workspace, device, connection);
       await this.store.update((draft) => {
         const current = draft.sessions.find((item) => item.id === sessionId);
@@ -826,11 +829,20 @@ export class WorkspaceService extends EventEmitter {
     return orders.length ? Math.max(...orders) + 1 : 0;
   }
 
-  private async markSessionActivity(sessionId: string, activityStatus: SessionActivityStatus): Promise<void> {
-    if (this.closingSessionIds.has(sessionId)) return;
+  private async markSessionActivity(event: TerminalActivityEvent): Promise<void> {
+    if (this.closingSessionIds.has(event.sessionId)) return;
     await this.store.update((draft) => {
-      const session = draft.sessions.find((item) => item.id === sessionId);
-      if (session?.status === "running") session.activityStatus = activityStatus;
+      const session = draft.sessions.find((item) => item.id === event.sessionId);
+      if (session?.status !== "running") return;
+      if (event.activityStatus === "busy") {
+        session.activityStatus = "busy";
+        session.codexResultUnread = false;
+      } else if (event.activityStatus === "waiting-input") {
+        session.codexResultUnread = event.resultReady || session.codexResultUnread === true;
+        session.activityStatus = session.codexResultUnread ? "waiting-input" : "idle";
+      } else {
+        session.activityStatus = "idle";
+      }
     });
     this.changed();
   }

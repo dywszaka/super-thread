@@ -18,7 +18,7 @@ interface LiveSession {
   markerBuffer: string;
 }
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
-export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; }
+export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; resultReady: boolean; }
 
 const remotePidMarker = /\x1b]777;superthread-pid=(\d+)\x07/;
 const idleShells = new Set(["bash", "dash", "fish", "ksh", "nu", "sh", "tcsh", "zsh"]);
@@ -43,7 +43,7 @@ export function tmuxActivityFromProbe(output: string): SessionActivityStatus {
   const isCodexProcess = executable === "codex" || executable.startsWith("codex-");
   const isCodexNodeProcess = executable === "node" && /Ask Codex to do anything|\bWorking\b[^\n]*esc to interrupt|\bGPT-[\w.-]+\b[^\n]*(?:used|\bin\b|\bout\b)/i.test(pane);
   if (!isCodexProcess && !isCodexNodeProcess) return "busy";
-  return codexActivityFromOutput(pane);
+  return codexActivityFromOutput(pane) ?? "busy";
 }
 
 export function tmuxTarget(session: Session): string {
@@ -82,11 +82,19 @@ export function tmuxAttachCommand(session: Session, cwd: string): string {
   return `${ensureWindow}; tmux kill-session -t ${legacyClient} 2>/dev/null || true; exec tmux attach-session -t ${quoteShellArgument(tmuxTarget(session))}`;
 }
 
-export function codexActivityFromOutput(output: string): "busy" | "waiting-input" {
+export function codexActivityFromOutput(output: string): "busy" | "waiting-input" | undefined {
   const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
   const waitingAt = lastMatchIndex(plain, /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|Ask Codex to do anything|(?:^|\n)\s*[›>]\s/gim);
   const workingAt = lastMatchIndex(plain, /\bWorking\b|esc to interrupt/gim);
+  if (waitingAt < 0 && workingAt < 0) return undefined;
   return waitingAt > workingAt ? "waiting-input" : "busy";
+}
+
+export function codexResultReadyFromOutput(output: string): boolean {
+  const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+  const promptAt = lastMatchIndex(plain, /Ask Codex to do anything|(?:^|\n)\s*[›>]\s/gim);
+  const workingAt = lastMatchIndex(plain, /\bWorking\b|esc to interrupt/gim);
+  return promptAt >= 0 && promptAt > workingAt;
 }
 
 function lastMatchIndex(value: string, pattern: RegExp): number {
@@ -161,7 +169,11 @@ export class TerminalRuntime extends EventEmitter {
       live.buffer = (live.buffer + data).slice(-64_000);
       live.sequence += 1;
       if (kind === "codex") {
-        this.setActivity(session.id, live, codexActivityFromOutput(live.buffer));
+        const activityStatus = codexActivityFromOutput(live.buffer);
+        if (activityStatus) {
+          const resultReady = live.activityStatus === "busy" && codexResultReadyFromOutput(live.buffer);
+          this.setActivity(session.id, live, activityStatus, resultReady);
+        }
       }
       this.emit("output", { sessionId: session.id, data, sequence: live.sequence } satisfies TerminalOutput);
     });
@@ -218,7 +230,10 @@ export class TerminalRuntime extends EventEmitter {
       const output = device.type === "remote"
         ? await run("ssh", this.sshArgs(connection, interactiveLoginShellCommand(command)))
         : await run("sh", ["-lc", command]);
-      this.setActivity(session.id, live, interpret(output));
+      const activityStatus = interpret(output);
+      const resultReady = kind === "tmux" && live.activityStatus === "busy" && activityStatus === "waiting-input"
+        && codexResultReadyFromOutput(output.split("\n").slice(1).join("\n"));
+      this.setActivity(session.id, live, activityStatus, resultReady);
     } catch {
       // A transient probe failure must not turn an idle terminal into a false running warning.
     } finally {
@@ -235,10 +250,10 @@ export class TerminalRuntime extends EventEmitter {
     return args;
   }
 
-  private setActivity(sessionId: string, live: LiveSession, activityStatus: SessionActivityStatus): void {
+  private setActivity(sessionId: string, live: LiveSession, activityStatus: SessionActivityStatus, resultReady = false): void {
     if (live.activityStatus === activityStatus) return;
     live.activityStatus = activityStatus;
-    this.emit("activity", { sessionId, activityStatus } satisfies TerminalActivityEvent);
+    this.emit("activity", { sessionId, activityStatus, resultReady } satisfies TerminalActivityEvent);
   }
 
   attach(id: string): TerminalReplay {
