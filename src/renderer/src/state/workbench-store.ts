@@ -18,6 +18,7 @@ interface WorkbenchState {
   activeSessionIds: Record<string, string>;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
+  focusMode: boolean;
   expandedThreadIds: string[];
   dialog: DialogName;
   showAllWorkspaces(): void;
@@ -30,6 +31,8 @@ interface WorkbenchState {
   setActiveSession(workspaceId: string, id: string | null): void;
   setSidebarCollapsed(collapsed: boolean): void;
   setSidebarWidth(width: number): void;
+  enterFocusMode(): void;
+  exitFocusMode(): void;
   toggleThreadExpanded(id: string): void;
   openDialog(name: Exclude<DialogName, null>): void;
   closeDialog(): void;
@@ -44,6 +47,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     activeSessionIds: {},
     sidebarCollapsed: false,
     sidebarWidth: 226,
+    focusMode: false,
     expandedThreadIds: [],
     dialog: null,
     showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null }),
@@ -70,6 +74,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     }),
     setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
     setSidebarWidth: (sidebarWidth) => set({ sidebarWidth: Math.min(340, Math.max(184, sidebarWidth)) }),
+    enterFocusMode: () => set({ focusMode: true }),
+    exitFocusMode: () => set({ focusMode: false }),
     toggleThreadExpanded: (id) => set((state) => ({
       expandedThreadIds: state.expandedThreadIds.includes(id)
         ? state.expandedThreadIds.filter((item) => item !== id)

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Box, FolderGit2, Plus, Server } from "lucide-react";
+import { AlertTriangle, Box, Focus, FolderGit2, Plus, Server } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import type { Workspace } from "@/shared/domain";
@@ -22,12 +22,16 @@ export function WorkspaceApp(): React.ReactNode {
   const active: Workspace | undefined = snapshot?.workspaces.find((item) => item.id === store.activeWorkspaceId && filtered.some((candidate) => candidate.id === item.id)) ?? filtered[0];
   const showingWorkspace = scope.type !== "all-projects" && scope.type !== "all-work-threads" && scope.type !== "all-devices";
   const showingTerminal = showingWorkspace && active?.status === "ready";
+  const focusMode = store.focusMode && showingTerminal;
 
   useEffect(() => {
     if (store.scope.type === "all-projects" || store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
     if (active && active.id !== store.activeWorkspaceId) store.setActiveWorkspace(active.id);
     if (!active && store.activeWorkspaceId) store.setActiveWorkspace(null);
   }, [active?.id, store.scope.type]);
+  useEffect(() => {
+    if (!showingTerminal && store.focusMode) store.exitFocusMode();
+  }, [showingTerminal, store.focusMode]);
   useEffect(() => window.desktop.onMenuAction((action) => {
     if (action === "new-work-thread") store.openDialog("workThread");
     if (action === "new-workspace") store.openDialog("workspace");
@@ -49,10 +53,10 @@ export function WorkspaceApp(): React.ReactNode {
       : "All workspaces";
   const hasActiveThreads = snapshot.workThreads.some((thread) => thread.status === "active");
   return (
-    <div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
-      <Sidebar snapshot={snapshot} />
+    <div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""} ${focusMode ? "focus-mode" : ""}`}>
+      {!focusMode && <Sidebar snapshot={snapshot} />}
       <div className="workbench">
-        {store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
+        {focusMode ? <FocusTitlebar /> : store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : <>
           {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
         </>}
         <div className={`workspace-terminal-stack ${showingTerminal ? "active" : ""}`}>
@@ -64,6 +68,15 @@ export function WorkspaceApp(): React.ReactNode {
       </div>
       <WorkspaceDialogs snapshot={snapshot} />
     </div>
+  );
+}
+
+function FocusTitlebar(): React.ReactNode {
+  const exitFocusMode = useWorkbenchStore((state) => state.exitFocusMode);
+  return (
+    <header className="focus-titlebar drag">
+      <button className="button no-drag" onClick={exitFocusMode} title="Exit Focus mode"><Focus size={14} /> Exit Focus</button>
+    </header>
   );
 }
 
