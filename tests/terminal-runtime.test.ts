@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, codexConversationIdFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, latestCodexConversationIdFromSessionIndex, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
+import { codexActivityFromOutput, codexConversationIdFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, latestCodexConversationIdFromSessionIndex, sshTerminalArgs, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
 import type { Session } from "../src/shared/domain";
 
@@ -40,6 +40,22 @@ test("tmux pane commands distinguish a shell prompt from an occupying command", 
   assert.equal(tmuxPaneIsBusy("zsh\n"), false);
   assert.equal(tmuxPaneIsBusy("/bin/bash\n"), false);
   assert.equal(tmuxPaneIsBusy("npm\n"), true);
+});
+
+test("remote terminal SSH detects unreachable and stale connections", () => {
+  assert.deepEqual(sshTerminalArgs({
+    deviceId: "remote-1",
+    transport: "ssh",
+    config: { host: "gpu.example", user: "builder", port: 2222 }
+  }, "run remote shell"), [
+    "-t",
+    "-o", "ConnectTimeout=5",
+    "-o", "ServerAliveInterval=5",
+    "-o", "ServerAliveCountMax=3",
+    "-p", "2222",
+    "builder@gpu.example",
+    "run remote shell"
+  ]);
 });
 
 test("tmux activity distinguishes Codex work from waiting for input", () => {

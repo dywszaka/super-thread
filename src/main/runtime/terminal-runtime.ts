@@ -55,6 +55,20 @@ export function tmuxTarget(session: Session): string {
   return session.tmuxWindowName ? `${sessionName}:${session.tmuxWindowName}` : sessionName;
 }
 
+export function sshTerminalArgs(connection: DeviceConnection, command: string): string[] {
+  const config = connection.config;
+  const target = config.user ? `${config.user}@${config.host}` : String(config.host);
+  const args = [
+    "-t",
+    "-o", "ConnectTimeout=5",
+    "-o", "ServerAliveInterval=5",
+    "-o", "ServerAliveCountMax=3"
+  ];
+  if (config.port) args.push("-p", String(config.port));
+  args.push(target, command);
+  return args;
+}
+
 export function legacyTmuxClientSessionName(session: Session): string {
   return `superthread-client-${session.id}`;
 }
@@ -164,13 +178,9 @@ export class TerminalRuntime extends EventEmitter {
     let program = shell;
     let args: string[] = ["-l"];
     if (device.type === "remote") {
-      const config = connection.config;
-      const target = config.user ? `${config.user}@${config.host}` : String(config.host);
       const command = this.remoteCommand(kind, session, cwd);
       program = "ssh";
-      args = ["-t"];
-      if (config.port) args.push("-p", String(config.port));
-      args.push(target, command);
+      args = sshTerminalArgs(connection, command);
     } else if (kind === "codex" || kind === "tmux") {
       const command = this.managedToolCommand(kind, session, cwd);
       args = ["-lic", command];

@@ -895,6 +895,8 @@ Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态�
 
 Session 进入 `exited` 或 `restore-failed` 状态后，Terminal 页面中央提供 Resume 操作。Resume 保留原 Session 的 id、名称与标签页，在记录的 cwd 或 Workspace 路径中重新启动 PTY，并将 Session 状态更新为 `running`；它不承诺恢复已经退出的 shell 进程内存或历史终端缓冲。
 
+Remote Session 的交互式 SSH 连接必须配置连接超时和 server keepalive。SSH 在 Session 创建、恢复或网络中断时退出，即使退出发生在持久化启动状态之前，也必须把原 Session 记录为 `exited` 并显示 Resume；不得遗留没有真实 PTY 的 `running` 状态。Resume 必须复用原 Session metadata，tmux 类型应重连原 tmux session/window，而不是要求用户关闭标签页后新建。
+
 退出整个应用时，如果存在 `status === "running" && activityStatus === "busy"` 的 Session，主进程必须展示确认提醒并列出仍在执行的 Session。Codex 等待输入和停留在 shell prompt 的空闲 Session 不触发提醒。macOS 上只关闭窗口不触发该提醒，窗口关闭期间 PTY 继续存活并可重新附着。
 
 ---

@@ -557,6 +557,57 @@ test("concurrent duplicate terminal creation requests share one result", async (
   assert.equal(service.snapshot().sessions.length, 1);
 });
 
+test("a remote session that exits during startup remains retryable in place", async () => {
+  const created: Session[] = [];
+  let failImmediately = true;
+  const terminals = new EventEmitter() as TerminalRuntime;
+  Object.assign(terminals, {
+    has: () => false,
+    create: (session: Session) => {
+      created.push({ ...session });
+      if (failImmediately) terminals.emit("exit", { sessionId: session.id, exitCode: 255 });
+      return 900 + created.length;
+    },
+    attach: () => ({ data: "", sequence: 0 }),
+    write: () => {},
+    resize: () => {},
+    kill: () => {}
+  });
+  const commandRunner: CommandRunner = {
+    run: async (_program, args) => ({ stdout: args.join(" ").includes("list-sessions") ? "" : "/usr/bin/tmux", stderr: "", exitCode: 0 })
+  };
+  const { service, store } = await setup(undefined, terminals, commandRunner);
+  await store.update((draft) => {
+    draft.devices.push({ id: "dev_remote", name: "GPU host", type: "remote", status: "online", createdAt: "now" });
+    draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_remote", path: "/srv/demo", createdAt: "now" });
+    draft.workspaces.push({
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_remote",
+      checkoutId: "checkout-1", path: "/srv/demo-worktree", branch: "work/demo", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+  });
+
+  const result = await service.createSession({ workspaceId: "workspace-1", kind: "tmux" });
+  const failed = service.snapshot().sessions.find((session) => session.id === result.session.id);
+
+  assert.equal(failed?.status, "exited");
+  assert.equal(failed?.exitCode, 255);
+  assert.ok(failed?.tmuxSessionName);
+  assert.equal(failed?.tmuxWindowKey, result.session.id);
+
+  failImmediately = false;
+  await service.resumeSession(result.session.id);
+
+  const resumed = service.snapshot().sessions.find((session) => session.id === result.session.id);
+  assert.equal(resumed?.status, "running");
+  assert.equal(resumed?.tmuxSessionName, failed?.tmuxSessionName);
+  assert.equal(resumed?.tmuxWindowKey, failed?.tmuxWindowKey);
+  assert.deepEqual(created.map((session) => session.id), [result.session.id, result.session.id]);
+});
+
 test("remote tmux fallback warning is shown once per workspace", async () => {
   const commandRunner: CommandRunner = { run: async () => { throw new Error("missing tmux"); } };
   const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);

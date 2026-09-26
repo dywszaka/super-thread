@@ -90,6 +90,8 @@ type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
+  private readonly startingSessionIds = new Set<string>();
+  private readonly exitsDuringSessionStart = new Map<string, TerminalExitEvent>();
   private readonly closingSessionIds = new Set<string>();
   private readonly autoRestoredCodexSessionIds = new Set<string>();
 
@@ -105,7 +107,7 @@ export class WorkspaceService extends EventEmitter {
     terminals.on("output", (event) => this.emit("terminal-output", event));
     terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event));
     terminals.on("codex-conversation", (event: TerminalCodexConversationEvent) => void this.recordCodexConversation(event));
-    terminals.on("exit", (event: TerminalExitEvent) => void this.markSessionExited(event.sessionId, event.exitCode));
+    terminals.on("exit", (event: TerminalExitEvent) => this.handleTerminalExit(event));
   }
 
   async initialize(): Promise<void> {
@@ -492,7 +494,15 @@ export class WorkspaceService extends EventEmitter {
       ...(warning ? { fallbackMessage: warning } : {}),
       createdAt: timestamp
     };
-    const pid = this.terminals.create(session, workspace, device, connection);
+    this.startingSessionIds.add(session.id);
+    let pid: number;
+    try {
+      pid = this.terminals.create(session, workspace, device, connection);
+    } catch (error) {
+      this.startingSessionIds.delete(session.id);
+      this.exitsDuringSessionStart.delete(session.id);
+      throw error;
+    }
     let created: Session | undefined;
     await this.store.update((draft) => {
       created = { ...session, pid };
@@ -502,6 +512,7 @@ export class WorkspaceService extends EventEmitter {
         if (currentWorkspace) currentWorkspace.tmuxSessionName = tmuxSessionName;
       }
     });
+    await this.finishSessionStart(session.id);
     this.changed();
     return { session: created ?? { ...session, pid }, warning };
   }
@@ -522,9 +533,12 @@ export class WorkspaceService extends EventEmitter {
       activityStatus: (session.resultUnread ? "waiting-input" : "idle") as SessionActivityStatus
     };
     let pid: number;
+    this.startingSessionIds.add(session.id);
     try {
       pid = this.terminals.create(restored, workspace, device, connection);
     } catch (error) {
+      this.startingSessionIds.delete(session.id);
+      this.exitsDuringSessionStart.delete(session.id);
       await this.store.update((draft) => {
         const current = draft.sessions.find((item) => item.id === sessionId);
         if (!current) throw new Error("Terminal session not found");
@@ -555,6 +569,7 @@ export class WorkspaceService extends EventEmitter {
       });
       delete current.exitedAt;
     });
+    await this.finishSessionStart(session.id);
     this.changed();
   }
 
@@ -744,7 +759,15 @@ export class WorkspaceService extends EventEmitter {
       const device = this.device(snapshot, workspace.deviceId);
       const connection = this.connection(snapshot, device.id);
       const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: session.resultUnread ? "waiting-input" as const : "idle" as const };
-      const pid = this.terminals.create(restored, workspace, device, connection);
+      this.startingSessionIds.add(session.id);
+      let pid: number;
+      try {
+        pid = this.terminals.create(restored, workspace, device, connection);
+      } catch (error) {
+        this.startingSessionIds.delete(session.id);
+        this.exitsDuringSessionStart.delete(session.id);
+        throw error;
+      }
       await this.store.update((draft) => {
         const current = draft.sessions.find((item) => item.id === sessionId);
         if (!current) return;
@@ -760,6 +783,7 @@ export class WorkspaceService extends EventEmitter {
         });
         delete current.exitedAt;
       });
+      await this.finishSessionStart(session.id);
     } catch (error) {
       await this.store.update((draft) => {
         const current = draft.sessions.find((item) => item.id === sessionId);
@@ -873,6 +897,22 @@ export class WorkspaceService extends EventEmitter {
       }
     });
     if (recorded) this.changed();
+  }
+
+  private handleTerminalExit(event: TerminalExitEvent): void {
+    if (this.startingSessionIds.has(event.sessionId)) {
+      this.exitsDuringSessionStart.set(event.sessionId, event);
+      return;
+    }
+    void this.markSessionExited(event.sessionId, event.exitCode);
+  }
+
+  private async finishSessionStart(sessionId: string): Promise<void> {
+    this.startingSessionIds.delete(sessionId);
+    const earlyExit = this.exitsDuringSessionStart.get(sessionId);
+    if (!earlyExit) return;
+    this.exitsDuringSessionStart.delete(sessionId);
+    await this.markSessionExited(sessionId, earlyExit.exitCode);
   }
 
   private async markSessionExited(sessionId: string, exitCode?: number): Promise<void> {
