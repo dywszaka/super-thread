@@ -800,6 +800,10 @@ Codex 与 tmux 的可用性探测及启动必须使用 Device 用户的交互式
 成功后用持久化 Session 替换该标签页，失败后保留错误、Retry 和 Close，且 Retry 复用同一标签页。
 未创建成功的初始化标签页不得写入持久领域数据。
 
+Terminal 输入必须保留 xterm 的原生 IME composition 处理，以支持中文输入法的全角标点等
+非 ASCII 字符。Codex Session 中 `Shift+Enter` 插入换行而不提交 prompt；普通 `Enter`
+继续提交，shell 与 tmux Session 的按键行为保持终端默认语义。
+
 创建普通 Session：
 
 ```text

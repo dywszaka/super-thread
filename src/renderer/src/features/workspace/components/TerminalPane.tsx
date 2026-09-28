@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Session, SessionKind, TerminalOutput, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
+import { terminalInputForKeyEvent } from "../terminal-keyboard";
 
 interface PendingSession {
   id: string;
@@ -38,8 +39,13 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
       allowProposedApi: false, scrollback: 10_000
     });
     const fit = new FitAddon();
-    // Let IME Process keys reach the textarea/input path so macOS punctuation mode is preserved.
-    terminal.attachCustomKeyEventHandler((event) => event.key !== "Process" && event.keyCode !== 229);
+    terminal.attachCustomKeyEventHandler((event) => {
+      const input = terminalInputForKeyEvent(session.kind, event);
+      if (input === undefined) return true;
+      event.preventDefault();
+      void window.desktop.writeSession(session.id, input);
+      return false;
+    });
     terminal.loadAddon(fit); terminal.open(container.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
