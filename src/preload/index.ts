@@ -16,6 +16,7 @@ const bridge: DesktopBridge = {
   deleteProject: (id) => ipcRenderer.invoke(channels.deleteProject, id),
   setupProject: (input) => ipcRenderer.invoke(channels.setupProject, input),
   createWorkThread: (input) => ipcRenderer.invoke(channels.createWorkThread, input),
+  setWorkThreadPriority: (input) => ipcRenderer.invoke(channels.setWorkThreadPriority, input),
   archiveWorkThread: (id) => ipcRenderer.invoke(channels.archiveWorkThread, id),
   restoreWorkThread: (id) => ipcRenderer.invoke(channels.restoreWorkThread, id),
   deleteWorkThread: (id) => ipcRenderer.invoke(channels.deleteWorkThread, id),

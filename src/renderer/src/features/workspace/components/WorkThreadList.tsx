@@ -3,7 +3,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
+import { sortedWorkThreads } from "../selection";
 import { SidebarReopenButton } from "./Sidebar";
+import { WorkThreadPriorityMenu } from "./WorkThreadPriorityMenu";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -12,7 +14,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   const [busyId, setBusyId] = useState<string | null>(null);
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const setWorkThreadFilter = useWorkbenchStore((state) => state.setWorkThreadFilter);
-  const threads = snapshot.workThreads.filter((thread) => thread.status === status);
+  const threads = sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === status));
 
   const archive = async (id: string, name: string): Promise<void> => {
     if (!confirm(`Archive “${name}”?\n\nIts workspaces will be hidden from active views. Running terminal sessions will continue.`)) return;
@@ -67,6 +69,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                   <span><strong>{thread.name}</strong><small><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</small></span>
                 </button>
                 <div className="work-thread-card-actions">
+                  <WorkThreadPriorityMenu id={thread.id} priority={thread.priority} />
                   {status === "active"
                     ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
                     : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}

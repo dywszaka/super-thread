@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AppSnapshot, Session } from "../../shared/domain";
+import type { AppSnapshot, Session, WorkThread } from "../../shared/domain";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../../shared/domain";
 
 export class JsonStore {
@@ -46,7 +46,7 @@ function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
     ...base,
     ...stored,
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    workThreads: stored.workThreads ?? base.workThreads,
+    workThreads: (stored.workThreads ?? base.workThreads).map(normalizeWorkThread),
     projects: stored.projects ?? base.projects,
     devices: stored.devices ?? base.devices,
     connections: stored.connections ?? base.connections,
@@ -55,6 +55,10 @@ function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
     sessions: (stored.sessions ?? base.sessions).map(normalizeSession)
   };
   return data;
+}
+
+function normalizeWorkThread(workThread: WorkThread): WorkThread {
+  return { ...workThread, priority: workThread.priority ?? "normal" };
 }
 
 function normalizeSession(session: Session): Session {

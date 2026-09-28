@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef } from "react";
 import type { AppSnapshot } from "@/shared/domain";
 import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
-import { visibleWorkspaces, workspaceProjectName } from "../selection";
+import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
+import { openWorkThreadPriorityMenu, WorkThreadPriorityIcon, WorkThreadPriorityMenu } from "./WorkThreadPriorityMenu";
 
 export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const {
@@ -24,7 +25,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     openDialog
   } = useWorkbenchStore();
   const resizing = useRef(false);
-  const activeThreads = useMemo(() => snapshot.workThreads.filter((thread) => thread.status === "active"), [snapshot.workThreads]);
+  const activeThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
   const allActiveWorkspaces = useMemo(() => visibleWorkspaces(snapshot, { type: "all-workspaces" }), [snapshot]);
 
   useEffect(() => {
@@ -61,11 +62,12 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
             const isSelected = scope.type === "work-thread" && scope.id === thread.id;
             return (
               <div className="thread-tree" key={thread.id}>
-                <div className={`thread-row ${isSelected ? "selected" : ""}`}>
+                <div className={`thread-row ${isSelected ? "selected" : ""}`} onContextMenu={(event) => { event.preventDefault(); openWorkThreadPriorityMenu(thread.id); }}>
                   <button className="thread-disclosure" onClick={() => toggleThreadExpanded(thread.id)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${thread.name}`}>
                     {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
-                  <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}><MessagesSquare size={14} /><em>{thread.name}</em></button>
+                  <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}>{thread.priority === "normal" ? <MessagesSquare size={14} /> : <span className={`thread-priority-indicator ${thread.priority}`} title={`${thread.priority} priority`}><WorkThreadPriorityIcon priority={thread.priority} /></span>}<em>{thread.name}</em></button>
+                  <WorkThreadPriorityMenu id={thread.id} priority={thread.priority} compact />
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}

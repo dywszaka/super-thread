@@ -19,6 +19,7 @@ import type {
   Session,
   SessionActivityStatus,
   SessionKind,
+  SetWorkThreadPriorityInput,
   SetupProjectInput,
   TerminalReplay,
   UpdateProjectInput,
@@ -306,9 +307,23 @@ export class WorkspaceService extends EventEmitter {
         id: id("thread"),
         name,
         status: "active",
+        priority: input.priority ?? "normal",
         createdAt: timestamp,
         updatedAt: timestamp
       });
+    });
+    this.changed();
+  }
+
+  async setWorkThreadPriority(input: SetWorkThreadPriorityInput): Promise<void> {
+    const workThread = this.workThread(this.snapshot(), input.id);
+    if (workThread.priority === input.priority) return;
+    await this.store.update((draft) => {
+      const item = draft.workThreads.find((candidate) => candidate.id === input.id);
+      if (item) {
+        item.priority = input.priority;
+        item.updatedAt = now();
+      }
     });
     this.changed();
   }

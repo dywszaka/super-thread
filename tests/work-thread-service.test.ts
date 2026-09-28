@@ -40,7 +40,7 @@ function workspaceFixture(deviceId = "dev_local"): { threadId: string; projectId
 }
 
 function addReadyWorkspace(snapshot: ReturnType<typeof emptySnapshot>, ids = workspaceFixture()): void {
-  snapshot.workThreads.push({ id: ids.threadId, name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+  snapshot.workThreads.push({ id: ids.threadId, name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
   snapshot.projects.push({ id: ids.projectId, name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   snapshot.checkouts.push({ id: ids.checkoutId, projectId: ids.projectId, deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
   snapshot.workspaces.push({
@@ -55,7 +55,18 @@ test("WorkThread names are globally unique ignoring case and whitespace", async 
   await service.createWorkThread({ name: "  Terminal polish  " });
 
   assert.equal(service.snapshot().workThreads[0]?.name, "Terminal polish");
+  assert.equal(service.snapshot().workThreads[0]?.priority, "normal");
   await assert.rejects(() => service.createWorkThread({ name: "terminal POLISH" }), /already exists/);
+});
+
+test("WorkThread priority can be set during creation and changed later", async () => {
+  const { service } = await setup();
+  await service.createWorkThread({ name: "Important work", priority: "high" });
+  const thread = service.snapshot().workThreads[0];
+  assert.equal(thread?.priority, "high");
+
+  await service.setWorkThreadPriority({ id: thread!.id, priority: "low" });
+  assert.equal(service.snapshot().workThreads[0]?.priority, "low");
 });
 
 test("archiving and restoring a WorkThread preserves its workspaces and sessions", async () => {
@@ -447,7 +458,7 @@ test("resuming and startup restoration preserve saved Codex conversation ids", a
   const created: Session[] = [];
   const { service, store } = await setup(undefined, fakeTerminals(created));
   await store.update((draft) => {
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
     draft.workspaces.push({
@@ -474,7 +485,7 @@ test("Codex sessions with saved conversation ids auto-restore after abnormal exi
   const terminals = fakeTerminals(created);
   const { service, store } = await setup(undefined, terminals);
   await store.update((draft) => {
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
     draft.workspaces.push({
@@ -580,7 +591,7 @@ test("a remote session that exits during startup remains retryable in place", as
   await store.update((draft) => {
     draft.devices.push({ id: "dev_remote", name: "GPU host", type: "remote", status: "online", createdAt: "now" });
     draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } });
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_remote", path: "/srv/demo", createdAt: "now" });
     draft.workspaces.push({
@@ -614,7 +625,7 @@ test("remote tmux fallback warning is shown once per workspace", async () => {
   await store.update((draft) => {
     draft.devices.push({ id: "dev_remote", name: "GPU host", type: "remote", status: "online", createdAt: "now" });
     draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } });
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_remote", path: "/srv/demo", createdAt: "now" });
     draft.workspaces.push({
@@ -635,7 +646,7 @@ test("remote tmux fallback warning is shown once per workspace", async () => {
 test("terminal order persists when sessions are reordered", async () => {
   const { service, store } = await setup();
   await store.update((draft) => {
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
       checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
@@ -684,7 +695,7 @@ test("resuming an exited session restarts it in place", async () => {
   const created: Session[] = [];
   const { service, store } = await setup(undefined, fakeTerminals(created));
   await store.update((draft) => {
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", createdAt: "now", updatedAt: "now" });
+    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" });
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
     draft.workspaces.push({

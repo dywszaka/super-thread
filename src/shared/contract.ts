@@ -11,6 +11,7 @@ import type {
   DirectoryListing,
   ReorderSessionsInput,
   RenameSessionInput,
+  SetWorkThreadPriorityInput,
   SetupProjectInput,
   TerminalOutput,
   TerminalReplay,
@@ -31,6 +32,7 @@ export const channels = {
   deleteProject: "project:delete",
   setupProject: "project:setup",
   createWorkThread: "work-thread:create",
+  setWorkThreadPriority: "work-thread:set-priority",
   archiveWorkThread: "work-thread:archive",
   restoreWorkThread: "work-thread:restore",
   deleteWorkThread: "work-thread:delete",
@@ -128,8 +130,14 @@ export const browseDirectorySchema = z.object({
 }).strict();
 
 export const createWorkThreadSchema = z.object({
-  name: z.string().trim().min(1).max(80)
-});
+  name: z.string().trim().min(1).max(80),
+  priority: z.enum(["high", "normal", "low"]).optional()
+}).strict();
+
+export const setWorkThreadPrioritySchema = z.object({
+  id: z.string().min(1),
+  priority: z.enum(["high", "normal", "low"])
+}).strict();
 
 export const createWorkspaceSchema = z.object({
   workThreadId: z.string().min(1),
@@ -171,6 +179,7 @@ export interface DesktopBridge {
   deleteProject(id: string): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;
   createWorkThread(input: CreateWorkThreadInput): Promise<void>;
+  setWorkThreadPriority(input: SetWorkThreadPriorityInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;
   restoreWorkThread(id: string): Promise<void>;
   deleteWorkThread(id: string): Promise<void>;

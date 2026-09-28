@@ -10,6 +10,7 @@ import {
   createWorkspaceSchema,
   reorderSessionsSchema,
   renameSessionSchema,
+  setWorkThreadPrioritySchema,
   setupProjectSchema,
   updateProjectSchema,
   updateRemoteDeviceSchema
@@ -38,6 +39,7 @@ export function registerIpcHandlers(service: WorkspaceService): void {
   ipcMain.handle(channels.deleteProject, (_event, id) => service.deleteProject(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.setupProject, (_event, input) => service.setupProject(setupProjectSchema.parse(input)));
   ipcMain.handle(channels.createWorkThread, (_event, input) => service.createWorkThread(createWorkThreadSchema.parse(input)));
+  ipcMain.handle(channels.setWorkThreadPriority, (_event, input) => service.setWorkThreadPriority(setWorkThreadPrioritySchema.parse(input)));
   ipcMain.handle(channels.archiveWorkThread, (_event, id) => service.archiveWorkThread(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.restoreWorkThread, (_event, id) => service.restoreWorkThread(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.deleteWorkThread, (_event, id) => service.deleteWorkThread(sessionIdSchema.parse(id)));

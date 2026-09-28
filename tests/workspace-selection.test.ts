@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveSelectionId, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
+import { resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
 import { emptySnapshot, type Workspace } from "../src/shared/domain";
 
 test("workspace selection adopts the first project added after the dialog mounts", () => {
@@ -13,6 +13,18 @@ test("workspace selection preserves valid choices and replaces stale ones", () =
   assert.equal(resolveSelectionId("project-2", "project-1", items), "project-2");
   assert.equal(resolveSelectionId("missing", "project-1", items), "project-1");
   assert.equal(resolveSelectionId("missing", "also-missing", items), "project-1");
+});
+
+test("work threads sort by priority and keep creation order within a priority", () => {
+  const threads = [
+    { id: "normal-new", name: "Normal new", status: "active" as const, priority: "normal" as const, createdAt: "2026-02-01", updatedAt: "now" },
+    { id: "low", name: "Low", status: "active" as const, priority: "low" as const, createdAt: "2026-01-01", updatedAt: "now" },
+    { id: "high", name: "High", status: "active" as const, priority: "high" as const, createdAt: "2026-03-01", updatedAt: "now" },
+    { id: "normal-old", name: "Normal old", status: "active" as const, priority: "normal" as const, createdAt: "2026-01-01", updatedAt: "now" }
+  ];
+
+  assert.deepEqual(sortedWorkThreads(threads).map((thread) => thread.id), ["high", "normal-old", "normal-new", "low"]);
+  assert.deepEqual(threads.map((thread) => thread.id), ["normal-new", "low", "high", "normal-old"]);
 });
 
 const workspace = (id: string, workThreadId: string, projectId: string): Workspace => ({
@@ -33,8 +45,8 @@ const workspace = (id: string, workThreadId: string, projectId: string): Workspa
 test("workspace scopes exclude workspaces in archived work threads", () => {
   const snapshot = emptySnapshot();
   snapshot.workThreads.push(
-    { id: "thread-active", name: "Active", status: "active", createdAt: "now", updatedAt: "now" },
-    { id: "thread-archived", name: "Archived", status: "archived", createdAt: "now", updatedAt: "now", archivedAt: "now" }
+    { id: "thread-active", name: "Active", status: "active", priority: "normal", createdAt: "now", updatedAt: "now" },
+    { id: "thread-archived", name: "Archived", status: "archived", priority: "normal", createdAt: "now", updatedAt: "now", archivedAt: "now" }
   );
   snapshot.workspaces.push(
     workspace("workspace-a", "thread-active", "project-a"),

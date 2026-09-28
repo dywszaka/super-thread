@@ -1,4 +1,16 @@
-import type { AppSnapshot, Workspace } from "@/shared/domain";
+import type { AppSnapshot, WorkThread, WorkThreadPriority, Workspace } from "@/shared/domain";
+
+const workThreadPriorityOrder: Record<WorkThreadPriority, number> = { high: 0, normal: 1, low: 2 };
+
+export function compareWorkThreads(left: WorkThread, right: WorkThread): number {
+  return workThreadPriorityOrder[left.priority] - workThreadPriorityOrder[right.priority]
+    || left.createdAt.localeCompare(right.createdAt)
+    || left.id.localeCompare(right.id);
+}
+
+export function sortedWorkThreads(workThreads: readonly WorkThread[]): WorkThread[] {
+  return [...workThreads].sort(compareWorkThreads);
+}
 
 export interface SelectableItem {
   id: string;

@@ -482,6 +482,7 @@ interface WorkThread {
   id: string
   name: string
   status: "active" | "archived"
+  priority: "high" | "normal" | "low"
   createdAt: Date
   updatedAt: Date
   archivedAt?: Date
@@ -493,6 +494,7 @@ interface WorkThread {
 - 名称在 active 与 archived 范围内忽略大小写唯一。
 - 一个 Workspace 必须且只能属于一个 WorkThread。
 - WorkThread 可以暂时为空，也可以包含多个 Workspace。
+- WorkThread 优先级由用户手动设置，默认为 `normal`；列表按 `high`、`normal`、`low` 排序，同级保持创建顺序。
 - 归档只隐藏整组内容，不停止 Session 或删除 Git Worktree。
 - 只有空 WorkThread 可以永久删除。
 
@@ -1022,6 +1024,8 @@ Terminal Sessions B
 Terminal 永远属于 Workspace。
 
 每个 Workspace 分别记住最后访问的 Session。切换到其他 Workspace 再返回时，恢复该 Workspace 上次选中的 Session；只有记录的 Session 已不存在时才回退到第一个可用 Session。
+
+左侧栏和 All work threads 页面按 WorkThread 优先级排序。左侧栏的 WorkThread 行在悬停、键盘聚焦或右键点击时提供优先级快捷菜单；修改后立即持久化和重新排序，但不得改变当前 scope、展开状态或 Workspace 选择。创建 WorkThread 时可以选择优先级，默认为 Normal。
 
 左侧栏可以整栏隐藏。隐藏时主界面只保留左上角展开按钮，按钮必须避开 macOS 交通灯。侧栏展开/隐藏状态、原宽度以及每个 WorkThread 的展开状态是本地 workbench 偏好，重开应用后保持。
 

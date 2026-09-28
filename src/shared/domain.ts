@@ -1,17 +1,19 @@
 export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
+export type WorkThreadPriority = "high" | "normal" | "low";
 export type WorkspaceStatus = "creating" | "ready" | "error";
 export type SessionStatus = "running" | "exited" | "restore-failed";
 export type SessionKind = "shell" | "codex" | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export interface WorkThread {
   id: string;
   name: string;
   status: WorkThreadStatus;
+  priority: WorkThreadPriority;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
@@ -139,6 +141,12 @@ export const emptySnapshot = (): AppSnapshot => ({
 
 export interface CreateWorkThreadInput {
   name: string;
+  priority?: WorkThreadPriority;
+}
+
+export interface SetWorkThreadPriorityInput {
+  id: string;
+  priority: WorkThreadPriority;
 }
 
 export interface AddRemoteDeviceInput {
