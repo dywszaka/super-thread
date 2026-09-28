@@ -3,7 +3,7 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 import type { WorkspaceScope } from "../features/workspace/selection";
 import type { SessionKind } from "@/shared/domain";
 
-type DialogName = "project" | "device" | "workThread" | "workspace" | null;
+type DialogName = "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
 const memoryStorage: StateStorage = {
   getItem: () => null,
@@ -23,6 +23,7 @@ interface WorkbenchState {
   expandedThreadIds: string[];
   sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: SessionKind }>;
   dialog: DialogName;
+  setupProjectTarget: { projectId: string; deviceId: string } | null;
   showAllWorkspaces(): void;
   showAllProjects(): void;
   showAllWorkThreads(): void;
@@ -39,6 +40,7 @@ interface WorkbenchState {
   requestSessionCreate(workspaceId: string, kind: SessionKind): void;
   acknowledgeSessionCreateRequest(id: string): void;
   openDialog(name: Exclude<DialogName, null>): void;
+  openSetupProject(projectId: string, deviceId: string): void;
   closeDialog(): void;
 }
 
@@ -54,6 +56,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     focusMode: false,
     expandedThreadIds: [],
     sessionCreateRequests: [],
+    setupProjectTarget: null,
     dialog: null,
     showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null }),
     showAllProjects: () => set({ scope: { type: "all-projects" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
@@ -93,6 +96,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       sessionCreateRequests: state.sessionCreateRequests.filter((request) => request.id !== id)
     })),
     openDialog: (dialog) => set({ dialog }),
+    openSetupProject: (projectId, deviceId) => set({ dialog: "setupProject", setupProjectTarget: { projectId, deviceId } }),
     closeDialog: () => set({ dialog: null })
   }), {
     name: "superthread-workbench",

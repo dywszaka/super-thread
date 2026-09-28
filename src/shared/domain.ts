@@ -2,12 +2,13 @@ export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
 export type WorkThreadPriority = "high" | "normal" | "low";
 export type WorkspaceStatus = "creating" | "ready" | "error";
+export type WorkspaceKind = "main" | "worktree";
 export type SessionStatus = "running" | "exited" | "restore-failed";
 export type SessionKind = "shell" | "codex" | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 export interface WorkThread {
   id: string;
@@ -78,6 +79,8 @@ export interface Workspace {
   projectId: string;
   deviceId: string;
   checkoutId: string;
+  /** Missing only in snapshots created before schema version 6; treated as worktree. */
+  kind?: WorkspaceKind;
   path: string;
   branch: string;
   baseBranch: string;
@@ -179,13 +182,16 @@ export interface BrowseDirectoryInput {
   path?: string;
 }
 
-export interface CreateWorkspaceInput {
+interface CreateWorkspaceBaseInput {
   workThreadId: string;
   projectId: string;
   deviceId: string;
   name: string;
-  baseBranch: string;
 }
+
+export type CreateWorkspaceInput =
+  | (CreateWorkspaceBaseInput & { kind: "main" })
+  | (CreateWorkspaceBaseInput & { kind: "worktree"; baseBranch: string });
 
 export interface CreateSessionInput {
   workspaceId: string;

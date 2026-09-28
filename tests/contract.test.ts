@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, renameSessionSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
+import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
   assert.equal(addProjectSchema.safeParse({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
@@ -16,6 +16,14 @@ test("SetupProject requires the path that matches the selected setup mode", () =
   assert.equal(setupProjectSchema.safeParse({ projectId: "project-1", deviceId: "dev_local", mode: "clone", parentDirectory: "/Users/me/code" }).success, true);
   assert.equal(setupProjectSchema.safeParse({ projectId: "project-1", deviceId: "dev_remote", mode: "import", parentDirectory: "/srv" }).success, false);
   assert.equal(setupProjectSchema.safeParse({ projectId: "project-1", deviceId: "dev_local", mode: "clone", path: "/Users/me/code/demo" }).success, false);
+});
+
+test("CreateWorkspace distinguishes a main checkout from an isolated worktree", () => {
+  const base = { workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local", name: "demo" };
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "main" }).success, true);
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "main", baseBranch: "main" }).success, false);
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "worktree", baseBranch: "main" }).success, true);
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "worktree" }).success, false);
 });
 
 test("UpdateProject accepts safe names and rejects path-like names", () => {

@@ -279,9 +279,6 @@ export class WorkspaceService extends EventEmitter {
     if (snapshot.checkouts.some((item) => item.projectId === project.id && item.deviceId === device.id)) {
       throw new Error(`${project.name} is already set up on ${device.name}`);
     }
-    if (input.mode === "clone" && device.type !== "local") {
-      throw new Error("Clone is only available on the local device. Import an existing repository on remote devices.");
-    }
     const runtime = this.git(snapshot, device);
     const info = input.mode === "import"
       ? await runtime.inspect(input.path)
@@ -374,6 +371,13 @@ export class WorkspaceService extends EventEmitter {
     this.assertProjectNameUsableForWorkspace(snapshot, project);
     const checkout = snapshot.checkouts.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId);
     if (!checkout) throw new Error("Project is not set up on the selected device");
+    if (input.kind === "main") {
+      const existing = snapshot.workspaces.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId && item.kind === "main");
+      if (existing) {
+        const owner = snapshot.workThreads.find((item) => item.id === existing.workThreadId);
+        throw new Error(`The main workspace for ${project.name} on ${device.name} is already used by “${existing.name}” in “${owner?.name ?? "another work thread"}”`);
+      }
+    }
     if (snapshot.workspaces.some((item) => item.deviceId === input.deviceId && item.name === input.name)) {
       throw new Error(`A workspace named ${input.name} already exists on ${device.name}`);
     }
@@ -381,8 +385,10 @@ export class WorkspaceService extends EventEmitter {
     const timestamp = now();
     const pending: Workspace = {
       id: workspaceId, name: input.name, workThreadId: workThread.id, projectId: input.projectId, deviceId: input.deviceId,
-      checkoutId: checkout.id, path: "", branch: `work/${input.name}`, baseBranch: input.baseBranch,
-      status: "creating", createdAt: timestamp, updatedAt: timestamp
+      checkoutId: checkout.id, kind: input.kind, path: input.kind === "main" ? checkout.path : "",
+      branch: input.kind === "main" ? project.defaultBranch : `work/${input.name}`,
+      baseBranch: input.kind === "main" ? project.defaultBranch : input.baseBranch,
+      status: input.kind === "main" ? "ready" : "creating", createdAt: timestamp, updatedAt: timestamp
     };
     await this.store.update((draft) => {
       draft.workspaces.push(pending);
@@ -390,6 +396,15 @@ export class WorkspaceService extends EventEmitter {
       if (thread) thread.updatedAt = timestamp;
     });
     this.changed();
+    if (input.kind === "main") {
+      try {
+        await this.createSession({ workspaceId, name: "Terminal 1" });
+      } catch (error) {
+        await this.removeWorkspaceMetadata(workspaceId, workThread.id);
+        throw error;
+      }
+      return;
+    }
     const runtime = this.git(snapshot, device);
     let created: { path: string; branch: string };
     try {
@@ -427,6 +442,13 @@ export class WorkspaceService extends EventEmitter {
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, workspaceId);
     if (workspace.status === "error" && !workspace.path) {
+      for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
+        this.terminals.kill(session.id);
+      }
+      await this.removeWorkspaceMetadata(workspaceId, workspace.workThreadId);
+      return;
+    }
+    if (workspace.kind === "main") {
       for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
         this.terminals.kill(session.id);
       }

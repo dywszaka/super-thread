@@ -139,13 +139,21 @@ export const setWorkThreadPrioritySchema = z.object({
   priority: z.enum(["high", "normal", "low"])
 }).strict();
 
-export const createWorkspaceSchema = z.object({
+const createWorkspaceBaseSchema = {
   workThreadId: z.string().min(1),
   projectId: z.string().min(1),
   deviceId: z.string().min(1),
-  name: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/),
-  baseBranch: z.string().trim().min(1).max(255)
-});
+  name: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/)
+};
+
+export const createWorkspaceSchema = z.discriminatedUnion("kind", [
+  z.object({ ...createWorkspaceBaseSchema, kind: z.literal("main") }).strict(),
+  z.object({
+    ...createWorkspaceBaseSchema,
+    kind: z.literal("worktree"),
+    baseBranch: z.string().trim().min(1).max(255)
+  }).strict()
+]);
 
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),

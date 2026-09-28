@@ -12,6 +12,7 @@ const cleanError = (error: unknown): string => error instanceof Error ? error.me
 export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const client = useQueryClient();
   const openDialog = useWorkbenchStore((state) => state.openDialog);
+  const openSetupProject = useWorkbenchStore((state) => state.openSetupProject);
   const setProjectFilter = useWorkbenchStore((state) => state.setProjectFilter);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
             const workspaces = snapshot.workspaces.filter((workspace) => workspace.projectId === project.id);
             const checkoutDevices = checkouts.map((checkout) => snapshot.devices.find((device) => device.id === checkout.deviceId)?.name).filter(Boolean);
             const busy = busyId === project.id;
+            const missingDevice = snapshot.devices.find((device) => !checkouts.some((checkout) => checkout.deviceId === device.id));
             return (
               <article className="project-card" key={project.id}>
                 <div className="project-card-icon"><FolderGit2 size={19} /></div>
@@ -55,6 +57,7 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
                   <div className="project-usage"><span><HardDrive size={12} /> {checkouts.length} {checkouts.length === 1 ? "checkout" : "checkouts"}{checkoutDevices.length > 0 ? ` · ${checkoutDevices.join(", ")}` : ""}</span><span><GitBranch size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span></div>
                 </div>
                 <div className="project-card-actions">
+                  {missingDevice && <button className="button" disabled={busy} onClick={() => openSetupProject(project.id, missingDevice.id)}><Plus size={14} /> Set up device</button>}
                   {workspaces.length > 0 && <button className="button" disabled={busy} onClick={() => setProjectFilter(project.id)}>View workspaces</button>}
                   <button className="icon-button" disabled={busy} title="Edit project name" onClick={() => setEditingId(project.id)}><Pencil size={14} /></button>
                   <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this project" : "Delete project"} onClick={() => void remove(project)}><Trash2 size={14} /></button>

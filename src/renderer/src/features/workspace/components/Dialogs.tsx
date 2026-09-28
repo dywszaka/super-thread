@@ -129,6 +129,51 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   );
 }
 
+export function SetupProjectDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
+  const { dialog, closeDialog, setupProjectTarget } = useWorkbenchStore();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"clone" | "import">("clone");
+  const [projectId, setProjectId] = useState("");
+  const [deviceId, setDeviceId] = useState("");
+  const [path, setPath] = useState("");
+  const project = snapshot.projects.find((item) => item.id === projectId);
+  const device = snapshot.devices.find((item) => item.id === deviceId);
+  const checkout = snapshot.checkouts.find((item) => item.projectId === projectId && item.deviceId === deviceId);
+
+  useEffect(() => {
+    if (dialog !== "setupProject") return;
+    setProjectId(setupProjectTarget?.projectId ?? snapshot.projects[0]?.id ?? "");
+    setDeviceId(setupProjectTarget?.deviceId ?? snapshot.devices[0]?.id ?? "");
+    setMode("clone");
+    setPath("");
+  }, [dialog, setupProjectTarget, snapshot.projects, snapshot.devices]);
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!project || !device || checkout) return;
+    setBusy(true);
+    try {
+      if (mode === "clone") await window.desktop.setupProject({ projectId, deviceId, mode, parentDirectory: path });
+      else await window.desktop.setupProject({ projectId, deviceId, mode, path });
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      toast.success(`${project.name} is now available on ${device.name}`);
+      closeDialog();
+    } catch (error) { toast.error(message(error)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open={dialog === "setupProject"} title="Set up project on device" description="Clone or import the base checkout before creating a workspace." busy={busy} submitDisabled={!project || !device || Boolean(checkout) || !path.trim()} submitLabel={mode === "clone" ? "Clone Project" : "Import Existing"} onClose={closeDialog} onSubmit={submit}>
+      <div className="form-grid two"><Field label="Project"><select value={projectId} onChange={(event) => { setProjectId(event.target.value); setPath(""); }}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={deviceId} onChange={(event) => { setDeviceId(event.target.value); setPath(""); }}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
+      {checkout ? <div className="callout"><HardDrive size={16} /><span>{project?.name} is already available on {device?.name} at <code>{checkout.path}</code>.</span></div> : <>
+        <div className="segmented"><button type="button" className={mode === "clone" ? "active" : ""} onClick={() => { setMode("clone"); setPath(""); }}><Link size={15} /> Clone project</button><button type="button" className={mode === "import" ? "active" : ""} onClick={() => { setMode("import"); setPath(""); }}><HardDrive size={15} /> Import existing</button></div>
+        <Field label={mode === "clone" ? "Base directory" : "Repository directory"} hint={mode === "clone" ? `The repository will be cloned into a ${project?.name ?? "project"} subdirectory.` : "The selected repository must match the project origin remote."}><DirectoryField value={path} onChange={setPath} remote={device?.type === "remote"} deviceId={deviceId} placeholder={device?.type === "remote" ? "~/code" : "/Users/you/code"} /></Field>
+      </>}
+    </Modal>
+  );
+}
+
 export function NewWorkThreadDialog(): ReactNode {
   const { dialog, closeDialog, setWorkThreadFilter } = useWorkbenchStore();
   const client = useQueryClient();
@@ -157,7 +202,7 @@ export function NewWorkThreadDialog(): ReactNode {
 }
 
 export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  const { dialog, closeDialog, projectFilter, workThreadFilter, setActiveWorkspace } = useWorkbenchStore();
+  const { dialog, closeDialog, projectFilter, workThreadFilter, setActiveWorkspace, openSetupProject } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const activeWorkThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
@@ -165,29 +210,25 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   const [projectId, setProjectId] = useState(projectFilter || snapshot.projects[0]?.id || "");
   const [deviceId, setDeviceId] = useState(snapshot.devices[0]?.id || "");
   const [name, setName] = useState("");
+  const [kind, setKind] = useState<"main" | "worktree">("worktree");
   const resolvedWorkThreadId = resolveSelectionId(workThreadId, workThreadFilter, activeWorkThreads);
   const resolvedProjectId = resolveSelectionId(projectId, projectFilter, snapshot.projects);
   const resolvedDeviceId = resolveSelectionId(deviceId, null, snapshot.devices);
   const project = snapshot.projects.find((item) => item.id === resolvedProjectId);
   const device = snapshot.devices.find((item) => item.id === resolvedDeviceId);
   const [baseBranch, setBaseBranch] = useState(project?.defaultBranch || "main");
-  const [setupMode, setSetupMode] = useState<"import" | "clone">("clone");
-  const [setupPath, setSetupPath] = useState("");
   const checkout = useMemo(() => snapshot.checkouts.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId), [snapshot, resolvedProjectId, resolvedDeviceId]);
-  const effectiveSetupMode = device?.type === "remote" ? "import" : setupMode;
+  const mainWorkspace = useMemo(() => snapshot.workspaces.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId && item.kind === "main"), [snapshot, resolvedProjectId, resolvedDeviceId]);
 
   useEffect(() => {
     setBaseBranch(project?.defaultBranch || "main");
   }, [resolvedProjectId]);
 
   useEffect(() => {
-    if (device?.type === "remote") setSetupMode("import");
-  }, [device?.type]);
-
-  useEffect(() => {
     if (dialog !== "workspace") return;
     setWorkThreadId(workThreadFilter || activeWorkThreads[0]?.id || "");
     setProjectId(projectFilter || snapshot.projects[0]?.id || "");
+    setKind("worktree");
   }, [dialog, workThreadFilter, projectFilter]);
 
   const updateProject = (value: string): void => {
@@ -197,17 +238,9 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
-      if (!checkout) {
-        if (effectiveSetupMode === "import") {
-          await window.desktop.setupProject({ projectId: resolvedProjectId, deviceId: resolvedDeviceId, mode: "import", path: setupPath });
-        } else {
-          await window.desktop.setupProject({ projectId: resolvedProjectId, deviceId: resolvedDeviceId, mode: "clone", parentDirectory: setupPath });
-        }
-        await client.invalidateQueries({ queryKey: ["snapshot"] });
-        toast.success(`${project?.name} is now available on ${device?.name}`);
-        return;
-      }
-      await window.desktop.createWorkspace({ workThreadId: resolvedWorkThreadId, projectId: resolvedProjectId, deviceId: resolvedDeviceId, name, baseBranch });
+      if (!checkout) return;
+      const common = { workThreadId: resolvedWorkThreadId, projectId: resolvedProjectId, deviceId: resolvedDeviceId, name };
+      await window.desktop.createWorkspace(kind === "main" ? { ...common, kind } : { ...common, kind, baseBranch });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       const fresh = await window.desktop.snapshot();
       const created = fresh.workspaces.find((item) => item.name === name && item.deviceId === resolvedDeviceId && item.workThreadId === resolvedWorkThreadId);
@@ -217,13 +250,15 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   };
   const noProjects = snapshot.projects.length === 0;
   const noWorkThreads = activeWorkThreads.length === 0;
+  const validWorkspaceName = /^[a-zA-Z0-9._-]+$/.test(name);
+  const valid = !noProjects && !noWorkThreads && Boolean(checkout && validWorkspaceName && (kind === "main" ? !mainWorkspace : baseBranch.trim()));
   return (
-    <Modal open={dialog === "workspace"} title="New workspace" description="Create an isolated Git worktree inside a work thread." busy={busy} submitDisabled={noProjects || noWorkThreads} submitLabel={!checkout ? (effectiveSetupMode === "clone" ? "Clone Project" : "Import Existing") : "Create Workspace"} onClose={closeDialog} onSubmit={submit}>
+    <Modal open={dialog === "workspace"} title="New workspace" description="Use the project checkout directly or create an isolated Git worktree." busy={busy} submitDisabled={!valid} submitLabel="Create Workspace" onClose={closeDialog} onSubmit={submit}>
       {noProjects ? <div className="empty-dialog"><GitBranch size={24} /><h3>Add a project first</h3><p>Import a repository before creating a workspace.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("project")}><Plus size={14} /> Add Project</button></div> : <>
         {noWorkThreads ? <div className="empty-dialog"><MessagesSquare size={24} /><h3>Create a work thread first</h3><p>Every workspace belongs to one active work thread.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("workThread")}><Plus size={14} /> New Work Thread</button></div> : <>
           <Field label="Work Thread"><select value={resolvedWorkThreadId} onChange={(event) => setWorkThreadId(event.target.value)} required>{activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
           <div className="form-grid two"><Field label="Project"><select value={resolvedProjectId} onChange={(e) => updateProject(e.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={resolvedDeviceId} onChange={(e) => setDeviceId(e.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
-          {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up a base checkout before creating a workspace.</span></div></div>{device?.type !== "remote" && <div className="segmented"><button type="button" className={setupMode === "clone" ? "active" : ""} onClick={() => setSetupMode("clone")}>Clone project</button><button type="button" className={setupMode === "import" ? "active" : ""} onClick={() => setSetupMode("import")}>Import existing</button></div>}<Field label={effectiveSetupMode === "clone" ? "Parent directory" : "Repository directory"}><DirectoryField value={setupPath} onChange={setSetupPath} remote={device?.type === "remote"} deviceId={resolvedDeviceId} placeholder={device?.type === "remote" ? "~" : "/Users/you/code"} /></Field></div> : <><Field label="Name" hint={`Creates branch work/${name || "workspace-name"}`}><input value={name} onChange={(e) => setName(e.target.value)} placeholder="nvfp4-kernel" pattern="[a-zA-Z0-9._-]+" required /></Field><Field label="Base branch"><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" required /></Field></>}
+          {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div><button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button></div> : <><Field label="Workspace type"><div className="segmented"><button type="button" className={kind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button><button type="button" className={kind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Main checkout</button></div></Field><Field label="Name" hint={kind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`}><input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "main" ? project?.name : "nvfp4-kernel"} pattern="[a-zA-Z0-9._-]+" required /></Field>{kind === "main" && mainWorkspace ? <div className="callout"><HardDrive size={16} /><span>The main checkout is already used by <strong>{mainWorkspace.name}</strong> in <strong>{snapshot.workThreads.find((item) => item.id === mainWorkspace.workThreadId)?.name}</strong>.</span></div> : kind === "worktree" && <Field label="Base branch"><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" required /></Field>}</>}
         </>}
       </>}
     </Modal>
@@ -231,5 +266,5 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
 }
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  return <><AddProjectDialog snapshot={snapshot} /><AddDeviceDialog /><NewWorkThreadDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
+  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog /><NewWorkThreadDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
 }

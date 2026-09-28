@@ -45,7 +45,10 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   };
   const remove = async (): Promise<void> => {
     setMenu(false);
-    if (!confirm(`Delete workspace “${workspace.name}”?\n\nThis will delete the Git worktree and branch “${workspace.branch}”.`)) return;
+    const consequence = workspace.kind === "main"
+      ? "This removes only the SuperThread workspace and its terminal sessions. The project checkout is kept."
+      : `This will delete the Git worktree and branch “${workspace.branch}”.`;
+    if (!confirm(`Delete workspace “${workspace.name}”?\n\n${consequence}`)) return;
     try {
       await window.desktop.deleteWorkspace(workspace.id);
       setActiveWorkspace(null);
@@ -63,7 +66,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
       <SidebarReopenButton />
       <button ref={detailsButton} className="workspace-identity no-drag" onClick={() => { setDetails((open) => !open); setMenu(false); }}>
         <div><span>{workThread?.name}</span><i>/</i><span>{project?.name}</span><i>/</i><strong>{workspace.name}</strong></div>
-        <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}</p>
+        <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}{workspace.kind === "main" ? " · Main checkout" : ""}</p>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
       </button>
       {(activeCount > 0 || waitingCodexCount > 0 || failedRestoreCount > 0) && <div className="session-summary no-drag">
@@ -72,7 +75,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
         {failedRestoreCount > 0 && <span><i className="failed" /> {failedRestoreCount} failed</span>}
       </div>}
       <div className="header-actions no-drag"><button className="button" disabled={workspace.status !== "ready"} title="Enter Focus mode" onClick={enterFocusMode}><Focus size={14} /> Focus</button><button className="button" disabled={workspace.status !== "ready" || openingInVSCode} title="Open this workspace in Visual Studio Code" onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button><button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New</button><div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions"><MoreHorizontal size={17} /></button>{menu && <div className="context-menu"><button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button></div>}</div></div>
-      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
+      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Main checkout" : "Worktree"}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
     </header>
   );
 }

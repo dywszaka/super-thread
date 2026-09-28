@@ -444,7 +444,7 @@ git clone <repository-url> ~/code/llama.cpp
 
 然后创建 ProjectCheckout。
 
-Clone 只允许在 Local Device 执行。Remote Device 不显示 Clone 入口，服务层也必须拒绝远端 clone 请求。
+Clone 是独立于 New Workspace 的 Project Setup 操作。Local 与 Remote Device 均可选择 base directory，并由所属 Device Runtime 在该目录下执行 `git clone`；远端使用 SSH 连接及该设备自身的 Git 凭据。
 
 ### Import Existing Repository
 
@@ -506,7 +506,7 @@ Workspace 是整个系统最核心的 runtime abstraction。
 
 定义：
 
-> Workspace 是 Project 在某个 Device 上的一份隔离 Working Copy。
+> Workspace 是 Project 在某个 Device 上的一份 Working Copy；可以直接使用 base checkout，也可以使用隔离的 Git worktree。
 
 数据结构：
 
@@ -520,6 +520,8 @@ interface Workspace {
   projectId: string
   deviceId: string
   checkoutId: string
+
+  kind: "main" | "worktree"
 
   path: string
 
@@ -557,6 +559,11 @@ interface Workspace {
 ---
 
 # 11. Workspace Creation
+
+Workspace 有两种创建模式：
+
+- `main`：直接使用所选 `Project × Device` 的 base checkout，不创建 worktree 或分支。每个 `Project × Device` 最多只能有一个 main Workspace；若已被其他 WorkThread 使用，创建必须被阻止，并提示现有 Workspace 与所属 WorkThread。
+- `worktree`：从 base checkout 的本地 ref 创建隔离的 Git worktree 和 `work/{workspace-name}` 分支。
 
 用户：
 
@@ -1155,9 +1162,9 @@ llama.cpp isn't available on dev-cuda.
 [Import Existing]
 ```
 
-完成 Setup 后继续创建 Workspace。
+New Workspace 只提示需要先 Setup，并提供前往独立 Project Setup 操作的入口；不在该弹窗内执行 clone 或 import。完成 Setup 后，用户重新创建 Workspace。
 
-Remote Device 只能 Import Existing。Local Device 可以选择 Import Existing 或 Clone Project。
+独立 Project Setup 支持在 Local 或 Remote Device 上选择 base directory 后 Clone Project，也支持 Import Existing。
 
 ---
 

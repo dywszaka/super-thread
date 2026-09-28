@@ -89,7 +89,7 @@ test("archiving and restoring a WorkThread preserves its workspaces and sessions
   assert.equal(archived.workspaces[0]?.id, "workspace-1");
   assert.equal(archived.sessions[0]?.id, "session-1");
   assert.equal(archived.sessions[0]?.status, "running");
-  await assert.rejects(() => service.createWorkspace({ workThreadId: threadId, projectId: "project-1", deviceId: "dev_local", name: "new", baseBranch: "main" }), /archived/);
+  await assert.rejects(() => service.createWorkspace({ workThreadId: threadId, projectId: "project-1", deviceId: "dev_local", name: "new", kind: "worktree", baseBranch: "main" }), /archived/);
 
   await service.restoreWorkThread(threadId);
   assert.equal(service.snapshot().workThreads[0]?.status, "active");
@@ -163,12 +163,50 @@ test("failed workspace creation removes the pending workspace record", async () 
   });
 
   await assert.rejects(
-    () => service.createWorkspace({ workThreadId: threadId, projectId: "project-1", deviceId: "dev_local", name: "broken", baseBranch: "main" }),
+    () => service.createWorkspace({ workThreadId: threadId, projectId: "project-1", deviceId: "dev_local", name: "broken", kind: "worktree", baseBranch: "main" }),
     /worktree creation failed/
   );
 
   assert.deepEqual(service.snapshot().workspaces, []);
   assert.deepEqual(service.snapshot().sessions, []);
+});
+
+test("a Project x Device can have one main-checkout workspace", async () => {
+  let worktreeCalled = false;
+  let deleteCalled = false;
+  const created: Session[] = [];
+  const fakeGit: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    createWorktree: async () => { worktreeCalled = true; return { path: "", branch: "" }; },
+    inspectWorkspaceDeleteRisk: async () => { throw new Error("Main workspace deletion must not inspect Git risk"); },
+    deleteWorktree: async () => { deleteCalled = true; }
+  };
+  const { service, store } = await setup(fakeGit, fakeTerminals(created));
+  await service.createWorkThread({ name: "Main owner" });
+  await service.createWorkThread({ name: "Other thread" });
+  const [owner, other] = service.snapshot().workThreads;
+  await store.update((draft) => {
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+  });
+
+  await service.createWorkspace({ workThreadId: owner!.id, projectId: "project-1", deviceId: "dev_local", name: "main-demo", kind: "main" });
+  const workspace = service.snapshot().workspaces[0];
+  assert.equal(workspace?.path, "/tmp/demo");
+  assert.equal(workspace?.kind, "main");
+  assert.equal(worktreeCalled, false);
+  assert.equal(created[0]?.cwd, "/tmp/demo");
+
+  await assert.rejects(
+    () => service.createWorkspace({ workThreadId: other!.id, projectId: "project-1", deviceId: "dev_local", name: "duplicate", kind: "main" }),
+    /already used by.*Main owner/
+  );
+
+  await service.deleteWorkspace(workspace!.id);
+  assert.equal(deleteCalled, false);
+  assert.deepEqual(service.snapshot().workspaces, []);
+  assert.equal(service.snapshot().checkouts[0]?.path, "/tmp/demo");
 });
 
 test("deleting a legacy failed workspace only removes its metadata", async () => {

@@ -102,22 +102,22 @@ test("AddProject accepts a unique custom name after a project name conflict", as
   assert.equal(service.snapshot().projects.at(-1)?.name, "demo-gpu");
 });
 
-test("SetupProject rejects remote clone before invoking Git", async () => {
-  let cloneCalled = false;
-  const { service, store } = await setup(() => fakeGit({
-    clone: async () => {
-      cloneCalled = true;
-      return { root: "", name: "", remote: "", defaultBranch: "main" };
+test("SetupProject can clone a known project on a remote device", async () => {
+  const clonedOn: string[] = [];
+  const { service, store } = await setup((device) => fakeGit({
+    clone: async (_url, parentDirectory) => {
+      clonedOn.push(device.id);
+      return { root: `${parentDirectory}/demo`, name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" };
     }
   }));
   await store.update((draft) => {
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   });
 
-  await assert.rejects(() => service.setupProject({ projectId: "project-1", deviceId: "dev_remote", mode: "clone", parentDirectory: "/srv" }), /local device/);
+  await service.setupProject({ projectId: "project-1", deviceId: "dev_remote", mode: "clone", parentDirectory: "/srv" });
 
-  assert.equal(cloneCalled, false);
-  assert.deepEqual(service.snapshot().checkouts, []);
+  assert.deepEqual(clonedOn, ["dev_remote"]);
+  assert.equal(service.snapshot().checkouts[0]?.path, "/srv/demo");
 });
 
 test("SetupProject import can add an existing remote checkout for a known project", async () => {
