@@ -11,9 +11,8 @@ export const openItermScript = `on run argv
       create window with default profile command launchCommand
     else
       tell current window
-        set newTab to (create tab with default profile command launchCommand)
+        create tab with default profile command launchCommand
       end tell
-      tell newTab to select
     end if
   end tell
 end run`;

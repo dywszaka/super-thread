@@ -39,5 +39,5 @@ test("iTerm reuses the current window and falls back to a new window", () => {
   assert.match(openItermScript, /create window with default profile command launchCommand/);
   assert.match(openItermScript, /tell current window/);
   assert.match(openItermScript, /create tab with default profile command launchCommand/);
-  assert.match(openItermScript, /tell newTab to select/);
+  assert.doesNotMatch(openItermScript, /newTab|tell .* to select/);
 });
