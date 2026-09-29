@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { itermTmuxCommand } from "../src/main/runtime/iterm-runtime";
+import { itermTmuxCommand, openItermScript } from "../src/main/runtime/iterm-runtime";
 import type { Device, DeviceConnection, Workspace } from "../src/shared/domain";
 
 const workspace: Workspace = {
@@ -9,18 +9,18 @@ const workspace: Workspace = {
   status: "ready", createdAt: "now", updatedAt: "now"
 };
 
-test("iTerm opens a local workspace tmux session through the login shell", () => {
+test("iTerm opens a local workspace tmux session without loading an interactive shell", () => {
   const device: Device = { id: "dev_local", name: "Local", type: "local", status: "online", createdAt: "now" };
   const connection: DeviceConnection = { deviceId: device.id, transport: "local", config: {} };
 
   const command = itermTmuxCommand(workspace, device, connection, "demo-session");
 
-  assert.match(command, /\$\{SHELL:-\/bin\/sh\}.*-lic/);
+  assert.doesNotMatch(command, /\$\{SHELL:-\/bin\/sh\}|-lic/);
   assert.match(command, /cd .*demo worktree/);
   assert.match(command, /tmux attach-session -t .*demo-session/);
 });
 
-test("iTerm opens a remote workspace tmux session over interactive SSH", () => {
+test("iTerm opens a remote workspace tmux session without loading the remote interactive shell", () => {
   const device: Device = { id: "dev_remote", name: "GPU", type: "remote", status: "online", createdAt: "now" };
   const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "gpu.example", user: "builder", port: 2222 } };
 
@@ -31,4 +31,13 @@ test("iTerm opens a remote workspace tmux session over interactive SSH", () => {
   assert.match(command, /ServerAliveInterval=5/);
   assert.match(command, /tmux attach-session/);
   assert.match(command, /demo-session/);
+  assert.doesNotMatch(command, /\$\{SHELL:-\/bin\/sh\}|-lic/);
+});
+
+test("iTerm reuses the current window and falls back to a new window", () => {
+  assert.match(openItermScript, /if \(count of windows\) is 0 then/);
+  assert.match(openItermScript, /create window with default profile command launchCommand/);
+  assert.match(openItermScript, /tell current window/);
+  assert.match(openItermScript, /create tab with default profile command launchCommand/);
+  assert.match(openItermScript, /tell newTab to select/);
 });

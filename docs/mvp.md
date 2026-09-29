@@ -795,10 +795,11 @@ Codex 必须基于最近的累计终端输出判断，不能让输入框之后�
 
 - `shell`：普通 Terminal，在 Workspace 当前目录启动 shell。
 - `codex`：在 Workspace 当前目录启动 Codex CLI；缺少 Codex CLI 时回退为 `shell` 并提示。
-- `tmux` 不创建 SuperThread Session 或内嵌 Terminal。每个 Workspace 只拥有一个 tmux session；首次选择 `tmux in iTerm` 时按 Workspace 名称分配并持久化 session 名称，若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字。Runtime 在 Workspace 所属 Device 上确保该 session 存在，然后让 iTerm 通过本地 shell 或交互式 SSH attach。重复打开必须复用同一个 tmux session，不得创建额外 tmux window 或 SuperThread Session 记录。缺少 tmux 或 iTerm 时直接提示错误，不回退为内嵌 shell。
+- `tmux` 不创建 SuperThread Session 或内嵌 Terminal。每个 Workspace 只拥有一个 tmux session；首次选择 `tmux in iTerm` 时按 Workspace 名称分配并持久化 session 名称，若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字。Runtime 在 Workspace 所属 Device 上确保该 session 存在，然后让 iTerm 通过本地命令或 SSH 直接 attach，不加载可能截断命令的交互式登录 shell。已有 iTerm terminal window 时在当前窗口新建并选中 tab；没有 terminal window 时才新建 window。重复打开必须复用同一个 tmux session，不得创建额外 tmux window 或 SuperThread Session 记录。缺少 tmux 或 iTerm 时直接提示错误，不回退为内嵌 shell。
 
-Codex 与 Workspace tmux 的可用性探测及启动必须使用 Device 用户的交互式登录 shell，使 SSH
-设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致。
+Codex 与 Workspace tmux 的可用性探测、创建必须使用 Device 用户的交互式登录 shell，使 SSH
+设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致；iTerm attach
+是例外，必须直接执行，避免有 TTY 时的 shell 初始化逻辑替换 attach 命令。
 新建 Terminal 或 Codex 后，Renderer 必须立即展示并选中仅存在于 UI 状态中的初始化标签页；
 成功后用持久化 Session 替换该标签页，失败后保留错误、Retry 和 Close，且 Retry 复用同一标签页。
 未创建成功的初始化标签页不得写入持久领域数据。
