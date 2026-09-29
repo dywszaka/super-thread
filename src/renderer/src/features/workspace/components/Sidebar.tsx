@@ -1,10 +1,27 @@
-import { ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Plus, Server } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
-import type { AppSnapshot } from "@/shared/domain";
+import { Archive, Check, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Plus, Server } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import type { AppSnapshot, WorkThread, WorkThreadPriority } from "@/shared/domain";
 import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
-import { openWorkThreadPriorityMenu, WorkThreadPriorityIcon, WorkThreadPriorityMenu } from "./WorkThreadPriorityMenu";
+import { WorkThreadPriorityIcon } from "./WorkThreadPriorityMenu";
+
+interface WorkThreadMenuState {
+  thread: WorkThread;
+  x: number;
+  y: number;
+}
+
+const priorities: ReadonlyArray<{ value: WorkThreadPriority; label: string }> = [
+  { value: "high", label: "High priority" },
+  { value: "normal", label: "Normal priority" },
+  { value: "low", label: "Low priority" }
+];
+
+const cleanError = (error: unknown): string => error instanceof Error
+  ? error.message.replace(/^Error invoking remote method '[^']+': /, "")
+  : String(error);
 
 export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const {
@@ -25,6 +42,9 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     openDialog
   } = useWorkbenchStore();
   const resizing = useRef(false);
+  const threadMenuRef = useRef<HTMLDivElement>(null);
+  const [threadMenu, setThreadMenu] = useState<WorkThreadMenuState | null>(null);
+  const [threadMenuBusy, setThreadMenuBusy] = useState(false);
   const activeThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
   const allActiveWorkspaces = useMemo(() => visibleWorkspaces(snapshot, { type: "all-workspaces" }), [snapshot]);
 
@@ -38,6 +58,67 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
       window.removeEventListener("pointerup", up);
     };
   }, [setSidebarWidth]);
+
+  useEffect(() => {
+    if (!threadMenu) return;
+    const close = (event: PointerEvent): void => {
+      if (!threadMenuRef.current?.contains(event.target as Node)) setThreadMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setThreadMenu(null);
+    };
+    const closeOnBlur = (): void => setThreadMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("blur", closeOnBlur);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("blur", closeOnBlur);
+    };
+  }, [threadMenu]);
+
+  const openThreadMenu = (event: React.MouseEvent, thread: WorkThread): void => {
+    event.preventDefault();
+    const width = 184;
+    const height = 158;
+    setThreadMenu({
+      thread,
+      x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
+      y: Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6))
+    });
+  };
+
+  const setPriority = async (priority: WorkThreadPriority): Promise<void> => {
+    const thread = threadMenu?.thread;
+    if (!thread) return;
+    setThreadMenu(null);
+    if (thread.priority === priority) return;
+    setThreadMenuBusy(true);
+    try {
+      await window.desktop.setWorkThreadPriority({ id: thread.id, priority });
+    } catch (error) {
+      toast.error(cleanError(error));
+    } finally {
+      setThreadMenuBusy(false);
+    }
+  };
+
+  const archiveThread = async (): Promise<void> => {
+    const thread = threadMenu?.thread;
+    if (!thread) return;
+    setThreadMenu(null);
+    if (!confirm(`Archive “${thread.name}”?\n\nIts workspaces will be hidden from active views. Running terminal sessions will continue.`)) return;
+    setThreadMenuBusy(true);
+    try {
+      await window.desktop.archiveWorkThread(thread.id);
+      toast.success(`${thread.name} archived`);
+    } catch (error) {
+      toast.error(cleanError(error));
+    } finally {
+      setThreadMenuBusy(false);
+    }
+  };
 
   if (sidebarCollapsed) return null;
 
@@ -62,12 +143,11 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
             const isSelected = scope.type === "work-thread" && scope.id === thread.id;
             return (
               <div className="thread-tree" key={thread.id}>
-                <div className={`thread-row ${isSelected ? "selected" : ""}`} onContextMenu={(event) => { event.preventDefault(); openWorkThreadPriorityMenu(thread.id); }}>
+                <div className={`thread-row ${isSelected ? "selected" : ""}`} onContextMenu={(event) => openThreadMenu(event, thread)}>
                   <button className="thread-disclosure" onClick={() => toggleThreadExpanded(thread.id)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${thread.name}`}>
                     {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
                   <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}>{thread.priority === "normal" ? <MessagesSquare size={14} /> : <span className={`thread-priority-indicator ${thread.priority}`} title={`${thread.priority} priority`}><WorkThreadPriorityIcon priority={thread.priority} /></span>}<em>{thread.name}</em></button>
-                  <WorkThreadPriorityMenu id={thread.id} priority={thread.priority} compact />
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
@@ -82,6 +162,29 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
           })}
         </div>
       </nav>
+      {threadMenu && <div
+        ref={threadMenuRef}
+        className="work-thread-context-menu no-drag"
+        role="menu"
+        aria-label={`${threadMenu.thread.name} actions`}
+        style={{ left: threadMenu.x, top: threadMenu.y }}
+      >
+        <div className="context-menu-label">Priority</div>
+        {priorities.map((item) => <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={threadMenu.thread.priority === item.value}
+          disabled={threadMenuBusy}
+          key={item.value}
+          onClick={() => void setPriority(item.value)}
+        >
+          <WorkThreadPriorityIcon priority={item.value} />
+          <span>{item.label}</span>
+          {threadMenu.thread.priority === item.value && <Check size={13} />}
+        </button>)}
+        <div className="context-menu-separator" />
+        <button type="button" disabled={threadMenuBusy} onClick={() => void archiveThread()}><Archive size={13} /><span>Archive work thread</span></button>
+      </div>}
       <div className="sidebar-resize no-drag" onPointerDown={(event) => { resizing.current = true; event.currentTarget.setPointerCapture(event.pointerId); }} />
     </aside>
   );

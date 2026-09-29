@@ -982,7 +982,7 @@ Work Threads
 ▸ Benchmarks
 ```
 
-Project 和单个 WorkThread 都是 Workspace filter。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
+Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：
 
