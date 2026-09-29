@@ -21,9 +21,15 @@ export interface ExternalTerminalRuntime {
   open(command: string): Promise<void>;
 }
 
-export function itermTmuxCommand(workspace: Workspace, device: Device, connection: DeviceConnection, tmuxSessionName: string): string {
-  const attach = `cd ${quoteShellArgument(workspace.path)} && exec tmux attach-session -t ${quoteShellArgument(tmuxSessionName)}`;
-  if (device.type === "local") return attach;
+export function itermTmuxCommand(
+  workspace: Workspace,
+  device: Device,
+  connection: DeviceConnection,
+  tmuxSessionName: string,
+  tmuxExecutable: string
+): string {
+  const attach = `cd ${quoteShellArgument(workspace.path)} && exec ${quoteShellArgument(tmuxExecutable)} attach-session -t ${quoteShellArgument(tmuxSessionName)}`;
+  if (device.type === "local") return ["/bin/sh", "-c", attach].map(quoteShellArgument).join(" ");
   return ["ssh", ...sshTerminalArgs(connection, attach)].map(quoteShellArgument).join(" ");
 }
 

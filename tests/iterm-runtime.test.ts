@@ -13,23 +13,27 @@ test("iTerm opens a local workspace tmux session without loading an interactive 
   const device: Device = { id: "dev_local", name: "Local", type: "local", status: "online", createdAt: "now" };
   const connection: DeviceConnection = { deviceId: device.id, transport: "local", config: {} };
 
-  const command = itermTmuxCommand(workspace, device, connection, "demo-session");
+  const command = itermTmuxCommand(workspace, device, connection, "demo-session", "/opt/homebrew/bin/tmux");
 
+  assert.match(command, /^'\/bin\/sh' '-c'/);
   assert.doesNotMatch(command, /\$\{SHELL:-\/bin\/sh\}|-lic/);
   assert.match(command, /cd .*demo worktree/);
-  assert.match(command, /tmux attach-session -t .*demo-session/);
+  assert.match(command, /opt\/homebrew\/bin\/tmux/);
+  assert.match(command, /attach-session -t/);
+  assert.match(command, /demo-session/);
 });
 
 test("iTerm opens a remote workspace tmux session without loading the remote interactive shell", () => {
   const device: Device = { id: "dev_remote", name: "GPU", type: "remote", status: "online", createdAt: "now" };
   const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "gpu.example", user: "builder", port: 2222 } };
 
-  const command = itermTmuxCommand({ ...workspace, deviceId: device.id, path: "/srv/demo worktree" }, device, connection, "demo-session");
+  const command = itermTmuxCommand({ ...workspace, deviceId: device.id, path: "/srv/demo worktree" }, device, connection, "demo-session", "/usr/bin/tmux");
 
   assert.match(command, /^'ssh' '-t'/);
   assert.match(command, /'-p' '2222' 'builder@gpu\.example'/);
   assert.match(command, /ServerAliveInterval=5/);
-  assert.match(command, /tmux attach-session/);
+  assert.match(command, /usr\/bin\/tmux/);
+  assert.match(command, /attach-session/);
   assert.match(command, /demo-session/);
   assert.doesNotMatch(command, /\$\{SHELL:-\/bin\/sh\}|-lic/);
 });

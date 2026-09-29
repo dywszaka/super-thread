@@ -493,7 +493,8 @@ test("opening tmux in iTerm reuses one workspace-level tmux session", async () =
   assert.equal(service.snapshot().sessions.length, 0);
   assert.equal(listCount, 1);
   assert.equal(opened.length, 2);
-  assert.equal(opened.every((command) => command.includes("tmux attach-session") && command.includes("demo-3")), true);
+  assert.equal(opened.every((command) => command.includes("attach-session") && command.includes("demo-3")), true);
+  assert.equal(opened.every((command) => command.includes("/usr/bin/tmux")), true);
 });
 
 test("concurrent iTerm opens share one tmux setup", async () => {

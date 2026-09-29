@@ -797,6 +797,8 @@ Codex 必须基于最近的累计终端输出判断，不能让输入框之后�
 - `codex`：在 Workspace 当前目录启动 Codex CLI；缺少 Codex CLI 时回退为 `shell` 并提示。
 - `tmux` 不创建 SuperThread Session 或内嵌 Terminal。每个 Workspace 只拥有一个 tmux session；首次选择 `tmux in iTerm` 时按 Workspace 名称分配并持久化 session 名称，若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字。Runtime 在 Workspace 所属 Device 上确保该 session 存在，然后让 iTerm 通过本地命令或 SSH 直接 attach，不加载可能截断命令的交互式登录 shell。已有 iTerm terminal window 时在当前窗口新建并选中 tab；没有 terminal window 时才新建 window。重复打开必须复用同一个 tmux session，不得创建额外 tmux window 或 SuperThread Session 记录。缺少 tmux 或 iTerm 时直接提示错误，不回退为内嵌 shell。
 
+iTerm attach 必须使用可用性探测得到的 tmux 绝对路径。Local Device 通过非交互式 `/bin/sh -c` 解释 `cd` 与 `exec`，不得依赖 iTerm profile 的 PATH 或把 shell 语法直接作为 profile command；Remote Device 则把相同的绝对路径和 attach 命令交给 SSH 执行。
+
 Codex 与 Workspace tmux 的可用性探测、创建必须使用 Device 用户的交互式登录 shell，使 SSH
 设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致；iTerm attach
 是例外，必须直接执行，避免有 TTY 时的 shell 初始化逻辑替换 attach 命令。

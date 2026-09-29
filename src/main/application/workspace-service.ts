@@ -563,17 +563,21 @@ export class WorkspaceService extends EventEmitter {
     const device = this.device(snapshot, workspace.deviceId);
     const connection = this.connection(snapshot, device.id);
     const runner = this.commandRunnerFactory(connection);
+    let tmuxExecutable: string;
     try {
-      await runner.run(
+      const probe = await runner.run(
         "sh",
         ["-lc", interactiveLoginShellCommand("command -v tmux")],
         { cwd: workspace.path, timeoutMs: 8_000 }
       );
+      tmuxExecutable = probe.stdout.split(/\r?\n/).map((line) => line.trim()).findLast((line) => line.startsWith("/")) ?? "";
+      if (!tmuxExecutable) throw new Error("tmux did not resolve to an absolute path");
     } catch {
       throw new Error(`tmux is not available on ${device.name}`);
     }
     const tmuxSessionName = await this.resolveTmuxSessionName(snapshot, workspace, device);
-    const ensureSession = `tmux has-session -t ${quoteShellArgument(tmuxSessionName)} 2>/dev/null || tmux new-session -d -s ${quoteShellArgument(tmuxSessionName)} -c ${quoteShellArgument(workspace.path)}`;
+    const quotedTmux = quoteShellArgument(tmuxExecutable);
+    const ensureSession = `${quotedTmux} has-session -t ${quoteShellArgument(tmuxSessionName)} 2>/dev/null || ${quotedTmux} new-session -d -s ${quoteShellArgument(tmuxSessionName)} -c ${quoteShellArgument(workspace.path)}`;
     await runner.run(
       "sh",
       ["-lc", interactiveLoginShellCommand(ensureSession)],
@@ -586,7 +590,7 @@ export class WorkspaceService extends EventEmitter {
       });
       this.changed();
     }
-    await this.externalTerminal.open(itermTmuxCommand(workspace, device, connection, tmuxSessionName));
+    await this.externalTerminal.open(itermTmuxCommand(workspace, device, connection, tmuxSessionName, tmuxExecutable));
   }
 
   async resumeSession(sessionId: string): Promise<void> {
