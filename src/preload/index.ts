@@ -23,6 +23,7 @@ const bridge: DesktopBridge = {
   createWorkspace: (input) => ipcRenderer.invoke(channels.createWorkspace, input),
   deleteWorkspace: (id, force) => ipcRenderer.invoke(channels.deleteWorkspace, id, force),
   openWorkspaceInVSCode: (id) => ipcRenderer.invoke(channels.openWorkspaceInVSCode, id),
+  openWorkspaceTmuxInIterm: (id) => ipcRenderer.invoke(channels.openWorkspaceTmuxInIterm, id),
   createSession: (input) => ipcRenderer.invoke(channels.createSession, input),
   setFocusMode: (enabled) => ipcRenderer.send(channels.setFocusMode, enabled),
   resumeSession: (id) => ipcRenderer.invoke(channels.resumeSession, id),

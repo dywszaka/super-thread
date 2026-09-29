@@ -13,12 +13,12 @@ import type {
   Device,
   DeviceConnection,
   DirectoryListing,
+  ManagedSessionKind,
   Project,
   ReorderSessionsInput,
   RenameSessionInput,
   Session,
   SessionActivityStatus,
-  SessionKind,
   SetWorkThreadPriorityInput,
   SetupProjectInput,
   TerminalReplay,
@@ -32,6 +32,7 @@ import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runn
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
+import { ItermRuntime, itermTmuxCommand, type ExternalTerminalRuntime } from "../runtime/iterm-runtime";
 import { legacyTmuxClientSessionName, TerminalRuntime, tmuxTarget, tmuxWindowLookupCommand, type TerminalActivityEvent, type TerminalCodexConversationEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
 
@@ -91,6 +92,7 @@ type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
+  private readonly pendingTmuxOpens = new Map<string, Promise<void>>();
   private readonly startingSessionIds = new Set<string>();
   private readonly exitsDuringSessionStart = new Map<string, TerminalExitEvent>();
   private readonly closingSessionIds = new Set<string>();
@@ -102,7 +104,8 @@ export class WorkspaceService extends EventEmitter {
     private readonly gitRuntimeFactory: GitRuntimeFactory = (device, connection) => new GitRuntime(device, connection),
     private readonly directoryRuntimeFactory: DirectoryRuntimeFactory = (device, connection) => new DirectoryRuntime(device, connection),
     private readonly tunnels: DeviceTunnelRuntime = new SshTunnelSupervisor(),
-    private readonly commandRunnerFactory: CommandRunnerFactory = (connection) => new DeviceCommandRunner(connection)
+    private readonly commandRunnerFactory: CommandRunnerFactory = (connection) => new DeviceCommandRunner(connection),
+    private readonly externalTerminal: ExternalTerminalRuntime = new ItermRuntime()
   ) {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
@@ -509,9 +512,6 @@ export class WorkspaceService extends EventEmitter {
     const count = snapshot.sessions.filter((item) => item.workspaceId === workspace.id).length;
     const requestedKind = input.kind ?? "shell";
     const { kind, warning } = await this.resolveSessionKind(snapshot, workspace, device, requestedKind);
-    const tmuxSessionName = kind === "tmux"
-      ? await this.resolveTmuxSessionName(snapshot, workspace, device)
-      : undefined;
     const timestamp = now();
     const sessionId = id("session");
     const session: Session = {
@@ -524,10 +524,6 @@ export class WorkspaceService extends EventEmitter {
       shell: this.sessionShellLabel(kind, device),
       cwd: workspace.path,
       activityStatus: "idle",
-      ...(kind === "tmux" ? {
-        tmuxSessionName,
-        tmuxWindowKey: sessionId
-      } : {}),
       ...(warning ? { fallbackMessage: warning } : {}),
       createdAt: timestamp
     };
@@ -544,14 +540,53 @@ export class WorkspaceService extends EventEmitter {
     await this.store.update((draft) => {
       created = { ...session, pid };
       draft.sessions.push(created);
-      if (tmuxSessionName) {
-        const currentWorkspace = draft.workspaces.find((item) => item.id === workspace.id);
-        if (currentWorkspace) currentWorkspace.tmuxSessionName = tmuxSessionName;
-      }
     });
     await this.finishSessionStart(session.id);
     this.changed();
     return { session: created ?? { ...session, pid }, warning };
+  }
+
+  openWorkspaceTmuxInIterm(workspaceId: string): Promise<void> {
+    const pending = this.pendingTmuxOpens.get(workspaceId);
+    if (pending) return pending;
+    const opening = this.openWorkspaceTmuxInItermOnce(workspaceId).finally(() => {
+      if (this.pendingTmuxOpens.get(workspaceId) === opening) this.pendingTmuxOpens.delete(workspaceId);
+    });
+    this.pendingTmuxOpens.set(workspaceId, opening);
+    return opening;
+  }
+
+  private async openWorkspaceTmuxInItermOnce(workspaceId: string): Promise<void> {
+    const snapshot = this.snapshot();
+    const workspace = this.workspace(snapshot, workspaceId);
+    if (workspace.status !== "ready") throw new Error("Workspace is not ready");
+    const device = this.device(snapshot, workspace.deviceId);
+    const connection = this.connection(snapshot, device.id);
+    const runner = this.commandRunnerFactory(connection);
+    try {
+      await runner.run(
+        "sh",
+        ["-lc", interactiveLoginShellCommand("command -v tmux")],
+        { cwd: workspace.path, timeoutMs: 8_000 }
+      );
+    } catch {
+      throw new Error(`tmux is not available on ${device.name}`);
+    }
+    const tmuxSessionName = await this.resolveTmuxSessionName(snapshot, workspace, device);
+    const ensureSession = `tmux has-session -t ${quoteShellArgument(tmuxSessionName)} 2>/dev/null || tmux new-session -d -s ${quoteShellArgument(tmuxSessionName)} -c ${quoteShellArgument(workspace.path)}`;
+    await runner.run(
+      "sh",
+      ["-lc", interactiveLoginShellCommand(ensureSession)],
+      { cwd: workspace.path, timeoutMs: 8_000 }
+    );
+    if (workspace.tmuxSessionName !== tmuxSessionName) {
+      await this.store.update((draft) => {
+        const current = draft.workspaces.find((item) => item.id === workspace.id);
+        if (current) current.tmuxSessionName = tmuxSessionName;
+      });
+      this.changed();
+    }
+    await this.externalTerminal.open(itermTmuxCommand(workspace, device, connection, tmuxSessionName));
   }
 
   async resumeSession(sessionId: string): Promise<void> {
@@ -838,13 +873,12 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  private async resolveSessionKind(snapshot: AppSnapshot, workspace: Workspace, device: Device, requestedKind: SessionKind): Promise<{ kind: SessionKind; warning?: string }> {
+  private async resolveSessionKind(snapshot: AppSnapshot, workspace: Workspace, device: Device, requestedKind: ManagedSessionKind): Promise<{ kind: ManagedSessionKind; warning?: string }> {
     if (requestedKind === "shell") return { kind: "shell" };
-    const program = requestedKind === "codex" ? "codex" : "tmux";
     try {
       await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
         "sh",
-        ["-lc", interactiveLoginShellCommand(`command -v ${program}`)],
+        ["-lc", interactiveLoginShellCommand("command -v codex")],
         { cwd: workspace.path, timeoutMs: 8_000 }
       );
       return { kind: requestedKind };
@@ -878,26 +912,17 @@ export class WorkspaceService extends EventEmitter {
     return nextTmuxSessionName(tmuxSessionBaseName(workspace.name), reserved);
   }
 
-  private readonly tmuxMissingWarnings = new Set<string>();
-
-  private missingToolWarning(workspaceId: string, device: Device, kind: Exclude<SessionKind, "shell">): string | undefined {
-    if (kind === "tmux" && device.type === "remote") {
-      if (this.tmuxMissingWarnings.has(workspaceId)) return undefined;
-      this.tmuxMissingWarnings.add(workspaceId);
-    }
-    const tool = kind === "codex" ? "Codex CLI" : "tmux";
-    return `${tool} is not available on ${device.name}; opened a normal terminal instead.`;
+  private missingToolWarning(_workspaceId: string, device: Device, _kind: "codex"): string {
+    return `Codex CLI is not available on ${device.name}; opened a normal terminal instead.`;
   }
 
-  private defaultSessionName(kind: SessionKind, index: number): string {
+  private defaultSessionName(kind: ManagedSessionKind, index: number): string {
     if (kind === "codex") return `Codex ${index}`;
-    if (kind === "tmux") return `tmux ${index}`;
     return `Terminal ${index}`;
   }
 
-  private sessionShellLabel(kind: SessionKind, device: Device): string {
+  private sessionShellLabel(kind: ManagedSessionKind, device: Device): string {
     if (kind === "codex") return "codex";
-    if (kind === "tmux") return "tmux";
     return device.type === "remote" ? "ssh" : process.env.SHELL || "/bin/zsh";
   }
 

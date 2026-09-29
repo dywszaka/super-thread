@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { WorkspaceScope } from "../features/workspace/selection";
-import type { SessionKind } from "@/shared/domain";
+import type { ManagedSessionKind } from "@/shared/domain";
 
 type DialogName = "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
@@ -21,7 +21,7 @@ interface WorkbenchState {
   sidebarWidth: number;
   focusMode: boolean;
   expandedThreadIds: string[];
-  sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: SessionKind }>;
+  sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: ManagedSessionKind }>;
   dialog: DialogName;
   setupProjectTarget: { projectId: string; deviceId: string } | null;
   showAllWorkspaces(): void;
@@ -37,7 +37,7 @@ interface WorkbenchState {
   enterFocusMode(): void;
   exitFocusMode(): void;
   toggleThreadExpanded(id: string): void;
-  requestSessionCreate(workspaceId: string, kind: SessionKind): void;
+  requestSessionCreate(workspaceId: string, kind: ManagedSessionKind): void;
   acknowledgeSessionCreateRequest(id: string): void;
   openDialog(name: Exclude<DialogName, null>): void;
   openSetupProject(projectId: string, deviceId: string): void;

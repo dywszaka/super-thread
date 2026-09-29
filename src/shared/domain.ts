@@ -4,11 +4,13 @@ export type WorkThreadPriority = "high" | "normal" | "low";
 export type WorkspaceStatus = "creating" | "ready" | "error";
 export type WorkspaceKind = "main" | "worktree";
 export type SessionStatus = "running" | "exited" | "restore-failed";
-export type SessionKind = "shell" | "codex" | "tmux";
+export type ManagedSessionKind = "shell" | "codex";
+/** tmux is retained only to migrate snapshots created by older releases. */
+export type SessionKind = ManagedSessionKind | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export interface WorkThread {
   id: string;
@@ -196,7 +198,7 @@ export type CreateWorkspaceInput =
 export interface CreateSessionInput {
   workspaceId: string;
   name?: string;
-  kind?: SessionKind;
+  kind?: ManagedSessionKind;
 }
 
 export interface RenameSessionInput {

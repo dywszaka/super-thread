@@ -44,3 +44,25 @@ test("JsonStore migrates older snapshots without clearing user data", async () =
   assert.equal(snapshot.sessions[0]?.resultUnread, true);
   assert.equal(snapshot.sessions[0]?.codexResultUnread, undefined);
 });
+
+test("JsonStore migrates legacy embedded tmux terminals to one workspace session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-tmux-store-"));
+  const path = join(directory, "state.json");
+  await writeFile(path, JSON.stringify({
+    schemaVersion: CURRENT_SCHEMA_VERSION - 1,
+    workspaces: [{
+      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/tmp/demo", branch: "work/demo", baseBranch: "main", status: "ready",
+      createdAt: "then", updatedAt: "then"
+    }],
+    sessions: [
+      { id: "tmux-1", workspaceId: "workspace-1", name: "tmux 1", status: "running", kind: "tmux", shell: "tmux", tmuxSessionName: "demo", createdAt: "then" },
+      { id: "shell-1", workspaceId: "workspace-1", name: "Terminal 1", status: "running", kind: "shell", shell: "/bin/zsh", createdAt: "then" }
+    ]
+  }), "utf8");
+
+  const snapshot = await new JsonStore(path).load();
+
+  assert.equal(snapshot.workspaces[0]?.tmuxSessionName, "demo");
+  assert.deepEqual(snapshot.sessions.map((session) => session.id), ["shell-1"]);
+});

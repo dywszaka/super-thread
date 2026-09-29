@@ -7,13 +7,14 @@ import test from "node:test";
 import { nextTmuxSessionName, tmuxSessionBaseName, WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
 import type { CommandRunner } from "../src/main/runtime/command-runner";
+import type { ExternalTerminalRuntime } from "../src/main/runtime/iterm-runtime";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot, type Session } from "../src/shared/domain";
 
-async function setup(gitRuntime?: WorkspaceGitRuntime, terminals?: TerminalRuntime, commandRunner?: CommandRunner): Promise<{ service: WorkspaceService; store: JsonStore }> {
+async function setup(gitRuntime?: WorkspaceGitRuntime, terminals?: TerminalRuntime, commandRunner?: CommandRunner, externalTerminal?: ExternalTerminalRuntime): Promise<{ service: WorkspaceService; store: JsonStore }> {
   const directory = await mkdtemp(join(tmpdir(), "superthread-work-thread-"));
   const store = new JsonStore(join(directory, "state.json"));
-  const service = new WorkspaceService(store, terminals, gitRuntime ? () => gitRuntime : undefined, undefined, undefined, commandRunner ? () => commandRunner : undefined);
+  const service = new WorkspaceService(store, terminals, gitRuntime ? () => gitRuntime : undefined, undefined, undefined, commandRunner ? () => commandRunner : undefined, externalTerminal);
   await service.initialize();
   return { service, store };
 }
@@ -308,83 +309,6 @@ test("terminal close cannot be resurrected by its PTY exit event", async () => {
   assert.deepEqual(service.snapshot().sessions, []);
 });
 
-test("renaming a tmux terminal renames its tagged tmux window", async () => {
-  const commands: string[] = [];
-  const commandRunner: CommandRunner = {
-    run: async (_program, args) => { commands.push(args.join(" ")); return { stdout: "", stderr: "", exitCode: 0 }; }
-  };
-  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
-  await store.update((draft) => {
-    addReadyWorkspace(draft);
-    draft.sessions.push({
-      id: "tmux-rename", workspaceId: "workspace-dev_local", name: "tmux 1", status: "running", kind: "tmux",
-      shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowKey: "tmux-rename", createdAt: "now"
-    });
-  });
-
-  await service.renameSession({ id: "tmux-rename", name: "build logs" });
-
-  assert.equal(service.snapshot().sessions[0]?.name, "build logs");
-  assert.match(commands[0] ?? "", /@superthread_terminal_id/);
-  assert.match(commands[0] ?? "", /rename-window -t .*'build logs'/);
-  assert.equal(commands.length, 1);
-});
-
-test("closing a busy tmux terminal requires confirmation and deletes its tmux resources", async () => {
-  const commands: string[] = [];
-  const commandRunner: CommandRunner = {
-    run: async (_program, args) => {
-      commands.push(args.join(" "));
-      return { stdout: "", stderr: "", exitCode: 0 };
-    }
-  };
-  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
-  await store.update((draft) => {
-    addReadyWorkspace(draft);
-    const workspace = draft.workspaces[0];
-    if (workspace) workspace.tmuxSessionName = "demo";
-    draft.sessions.push({
-      id: "session-tmux", workspaceId: "workspace-dev_local", name: "build", status: "running", kind: "tmux",
-      shell: "tmux", activityStatus: "busy", tmuxSessionName: "demo", tmuxWindowKey: "session-tmux", createdAt: "now"
-    });
-  });
-
-  await assert.rejects(() => service.killSession("session-tmux"), /running a task/);
-  assert.equal(service.snapshot().sessions.length, 1);
-  assert.equal(commands.length, 0);
-
-  await service.killSession("session-tmux", true);
-  assert.equal(service.snapshot().sessions.length, 0);
-  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, undefined);
-  assert.equal(commands.length, 1);
-  assert.match(commands[0] ?? "", /kill-session.*superthread-client-session-tmux/);
-  assert.match(commands[0] ?? "", /@superthread_terminal_id/);
-  assert.match(commands[0] ?? "", /kill-window/);
-  assert.equal(commands[0]?.match(/kill-session/g)?.length, 1);
-});
-
-test("closing one tmux window preserves the workspace session while other windows remain", async () => {
-  const commands: string[] = [];
-  const commandRunner: CommandRunner = { run: async (_program, args) => { commands.push(args.join(" ")); return { stdout: "", stderr: "", exitCode: 0 }; } };
-  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
-  await store.update((draft) => {
-    addReadyWorkspace(draft);
-    const workspace = draft.workspaces[0];
-    if (workspace) workspace.tmuxSessionName = "demo";
-    draft.sessions.push(
-      { id: "tmux-1", workspaceId: "workspace-dev_local", name: "one", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowKey: "tmux-1", createdAt: "now" },
-      { id: "tmux-2", workspaceId: "workspace-dev_local", name: "two", status: "running", kind: "tmux", shell: "tmux", activityStatus: "idle", tmuxSessionName: "demo", tmuxWindowKey: "tmux-2", createdAt: "now" }
-    );
-  });
-
-  await service.killSession("tmux-1");
-
-  assert.deepEqual(service.snapshot().sessions.map((session) => session.id), ["tmux-2"]);
-  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo");
-  assert.match(commands[0] ?? "", /kill-window/);
-  assert.equal(commands[0]?.match(/kill-session/g)?.length, 1);
-});
-
 test("running session summaries include only terminals actively doing work", async () => {
   const { service, store } = await setup();
   await store.update((draft) => {
@@ -448,33 +372,25 @@ test("shell command completion also waits until the result is viewed", async () 
   assert.equal(service.snapshot().sessions[0]?.resultUnread, false);
 });
 
-test("managed terminal creation records kind metadata and falls back when a tool is missing", async () => {
+test("Codex creation falls back to a shell when the managed tool is missing", async () => {
   const created: Session[] = [];
   const probes: Array<{ program: string; args: string[] }> = [];
   const commandRunner: CommandRunner = {
     run: async (program, args) => {
       probes.push({ program, args });
       if (args.join(" ").includes("codex")) throw new Error("missing codex");
-      return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
     }
   };
   const { service, store } = await setup(undefined, fakeTerminals(created), commandRunner);
   await store.update((draft) => addReadyWorkspace(draft));
 
   const codex = await service.createSession({ workspaceId: "workspace-dev_local", kind: "codex" });
-  const tmux = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
-  const secondTmux = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
 
   assert.match(codex.warning ?? "", /Codex CLI.*normal terminal/);
   assert.equal(codex.session.kind, "shell");
-  assert.equal(tmux.session.kind, "tmux");
-  assert.equal(tmux.session.tmuxSessionName, "demo");
-  assert.equal(secondTmux.session.tmuxSessionName, tmux.session.tmuxSessionName);
-  assert.equal(tmux.session.tmuxWindowKey, tmux.session.id);
-  assert.equal(secondTmux.session.tmuxWindowKey, secondTmux.session.id);
-  assert.equal(service.snapshot().workspaces.find((workspace) => workspace.id === "workspace-dev_local")?.tmuxSessionName, "demo");
-  assert.deepEqual(created.map((session) => session.kind), ["shell", "tmux", "tmux"]);
-  assert.deepEqual(probes.map((probe) => probe.program), ["sh", "sh", "sh", "sh"]);
+  assert.deepEqual(created.map((session) => session.kind), ["shell"]);
+  assert.deepEqual(probes.map((probe) => probe.program), ["sh"]);
   assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
 });
 
@@ -552,10 +468,11 @@ test("Codex sessions with saved conversation ids auto-restore after abnormal exi
   assert.equal(service.snapshot().sessions[0]?.status, "running");
 });
 
-test("tmux session names use the workspace name and increment around collisions", async () => {
+test("opening tmux in iTerm reuses one workspace-level tmux session", async () => {
   assert.equal(tmuxSessionBaseName(" release.1:fix "), "release-1-fix");
   assert.equal(nextTmuxSessionName("demo", ["demo", "demo-2", "other"]), "demo-3");
   let listCount = 0;
+  const opened: string[] = [];
   const commandRunner: CommandRunner = {
     run: async (_program, args) => {
       if (args.join(" ").includes("list-sessions")) {
@@ -565,24 +482,24 @@ test("tmux session names use the workspace name and increment around collisions"
       return { stdout: "/usr/bin/tmux", stderr: "", exitCode: 0 };
     }
   };
-  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
+  const externalTerminal: ExternalTerminalRuntime = { open: async (command) => { opened.push(command); } };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner, externalTerminal);
   await store.update((draft) => addReadyWorkspace(draft));
 
-  const first = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
-  const second = await service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+  await service.openWorkspaceTmuxInIterm("workspace-dev_local");
+  await service.openWorkspaceTmuxInIterm("workspace-dev_local");
 
-  assert.equal(first.session.tmuxSessionName, "demo-3");
-  assert.equal(second.session.tmuxSessionName, "demo-3");
-  assert.equal(first.session.tmuxWindowKey, first.session.id);
-  assert.equal(second.session.tmuxWindowKey, second.session.id);
   assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo-3");
+  assert.equal(service.snapshot().sessions.length, 0);
   assert.equal(listCount, 1);
+  assert.equal(opened.length, 2);
+  assert.equal(opened.every((command) => command.includes("tmux attach-session") && command.includes("demo-3")), true);
 });
 
-test("concurrent duplicate terminal creation requests share one result", async () => {
-  const created: Session[] = [];
+test("concurrent iTerm opens share one tmux setup", async () => {
   let releaseProbe!: () => void;
   let probeCount = 0;
+  const opened: string[] = [];
   const commandRunner: CommandRunner = {
     run: async (_program, args) => {
       probeCount += 1;
@@ -590,20 +507,20 @@ test("concurrent duplicate terminal creation requests share one result", async (
       return { stdout: args.join(" ").includes("list-sessions") ? "" : "/usr/bin/tmux", stderr: "", exitCode: 0 };
     }
   };
-  const { service, store } = await setup(undefined, fakeTerminals(created), commandRunner);
+  const externalTerminal: ExternalTerminalRuntime = { open: async (command) => { opened.push(command); } };
+  const { service, store } = await setup(undefined, fakeTerminals(), commandRunner, externalTerminal);
   await store.update((draft) => addReadyWorkspace(draft));
 
-  const first = service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
-  const duplicate = service.createSession({ workspaceId: "workspace-dev_local", kind: "tmux" });
+  const first = service.openWorkspaceTmuxInIterm("workspace-dev_local");
+  const duplicate = service.openWorkspaceTmuxInIterm("workspace-dev_local");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(probeCount, 1);
   releaseProbe();
 
-  const [firstResult, duplicateResult] = await Promise.all([first, duplicate]);
-  assert.equal(firstResult.session.id, duplicateResult.session.id);
-  assert.equal(probeCount, 2);
-  assert.equal(created.length, 1);
-  assert.equal(service.snapshot().sessions.length, 1);
+  await Promise.all([first, duplicate]);
+  assert.equal(probeCount, 3);
+  assert.equal(opened.length, 1);
+  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, "demo");
 });
 
 test("a remote session that exits during startup remains retryable in place", async () => {
@@ -639,25 +556,21 @@ test("a remote session that exits during startup remains retryable in place", as
     });
   });
 
-  const result = await service.createSession({ workspaceId: "workspace-1", kind: "tmux" });
+  const result = await service.createSession({ workspaceId: "workspace-1", kind: "shell" });
   const failed = service.snapshot().sessions.find((session) => session.id === result.session.id);
 
   assert.equal(failed?.status, "exited");
   assert.equal(failed?.exitCode, 255);
-  assert.ok(failed?.tmuxSessionName);
-  assert.equal(failed?.tmuxWindowKey, result.session.id);
 
   failImmediately = false;
   await service.resumeSession(result.session.id);
 
   const resumed = service.snapshot().sessions.find((session) => session.id === result.session.id);
   assert.equal(resumed?.status, "running");
-  assert.equal(resumed?.tmuxSessionName, failed?.tmuxSessionName);
-  assert.equal(resumed?.tmuxWindowKey, failed?.tmuxWindowKey);
   assert.deepEqual(created.map((session) => session.id), [result.session.id, result.session.id]);
 });
 
-test("remote tmux fallback warning is shown once per workspace", async () => {
+test("opening workspace tmux reports when tmux is missing", async () => {
   const commandRunner: CommandRunner = { run: async () => { throw new Error("missing tmux"); } };
   const { service, store } = await setup(undefined, fakeTerminals(), commandRunner);
   await store.update((draft) => {
@@ -673,12 +586,9 @@ test("remote tmux fallback warning is shown once per workspace", async () => {
     });
   });
 
-  const first = await service.createSession({ workspaceId: "workspace-1", kind: "tmux" });
-  const second = await service.createSession({ workspaceId: "workspace-1", kind: "tmux" });
-
-  assert.match(first.warning ?? "", /tmux.*normal terminal/);
-  assert.equal(second.warning, undefined);
-  assert.deepEqual(service.snapshot().sessions.map((session) => session.kind), ["shell", "shell"]);
+  await assert.rejects(() => service.openWorkspaceTmuxInIterm("workspace-1"), /tmux is not available on GPU host/);
+  assert.equal(service.snapshot().sessions.length, 0);
+  assert.equal(service.snapshot().workspaces[0]?.tmuxSessionName, undefined);
 });
 
 test("terminal order persists when sessions are reordered", async () => {
@@ -713,7 +623,7 @@ test("startup restores interrupted sessions and isolates restore failures", asyn
   addReadyWorkspace(snapshot);
   snapshot.sessions.push(
     { id: "session-ok", workspaceId: "workspace-dev_local", name: "ok", status: "running", kind: "shell", shell: "/bin/zsh", pid: 111, cwd: "/tmp/demo-worktree/subdir", createdAt: "now" },
-    { id: "session-fail", workspaceId: "workspace-dev_local", name: "bad", status: "running", kind: "tmux", shell: "tmux", pid: 222, createdAt: "now" }
+    { id: "session-fail", workspaceId: "workspace-dev_local", name: "bad", status: "running", kind: "codex", shell: "codex", pid: 222, createdAt: "now" }
   );
   snapshot.schemaVersion = CURRENT_SCHEMA_VERSION;
   await writeFile(path, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");

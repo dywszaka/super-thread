@@ -39,6 +39,7 @@ export const channels = {
   createWorkspace: "workspace:create",
   deleteWorkspace: "workspace:delete",
   openWorkspaceInVSCode: "workspace:open-in-vscode",
+  openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
   createSession: "session:create",
   setFocusMode: "window:set-focus-mode",
   resumeSession: "session:resume",
@@ -158,7 +159,7 @@ export const createWorkspaceSchema = z.discriminatedUnion("kind", [
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().trim().min(1).max(80).optional(),
-  kind: z.enum(["shell", "codex", "tmux"]).optional()
+  kind: z.enum(["shell", "codex"]).optional()
 }).strict();
 
 export const renameSessionSchema = z.object({
@@ -194,6 +195,7 @@ export interface DesktopBridge {
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   openWorkspaceInVSCode(id: string): Promise<void>;
+  openWorkspaceTmuxInIterm(id: string): Promise<void>;
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
   setFocusMode(enabled: boolean): void;
   resumeSession(id: string): Promise<void>;

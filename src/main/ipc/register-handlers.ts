@@ -49,6 +49,7 @@ export function registerIpcHandlers(service: WorkspaceService): void {
     const url = vscodeWorkspaceUrl(service.snapshot(), sessionIdSchema.parse(workspaceId));
     await shell.openExternal(url);
   });
+  ipcMain.handle(channels.openWorkspaceTmuxInIterm, (_event, workspaceId) => service.openWorkspaceTmuxInIterm(sessionIdSchema.parse(workspaceId)));
   ipcMain.handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
   ipcMain.on(channels.setFocusMode, (event, enabled) => {
     const owner = BrowserWindow.fromWebContents(event.sender);

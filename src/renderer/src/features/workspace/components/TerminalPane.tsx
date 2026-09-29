@@ -1,33 +1,32 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
-import { AlertTriangle, Bot, Layers3, LoaderCircle, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
+import { AlertTriangle, Bot, ExternalLink, LoaderCircle, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, Session, SessionKind, TerminalOutput, Workspace } from "@/shared/domain";
+import type { AppSnapshot, ManagedSessionKind, Session, SessionKind, TerminalOutput, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { terminalInputForKeyEvent } from "../terminal-keyboard";
 
 interface PendingSession {
   id: string;
   workspaceId: string;
-  kind: SessionKind;
+  kind: ManagedSessionKind;
   name: string;
   status: "creating" | "failed";
   error?: string;
 }
 
-const pendingName = (kind: SessionKind): string => {
+const pendingName = (kind: ManagedSessionKind): string => {
   if (kind === "codex") return "Codex";
-  if (kind === "tmux") return "tmux";
   return "Terminal";
 };
 
 const sessionIcon = (kind?: SessionKind, size = 13): React.ReactNode => (
-  kind === "codex" ? <Bot size={size} /> : kind === "tmux" ? <Layers3 size={size} /> : <TerminalSquare size={size} />
+  kind === "codex" ? <Bot size={size} /> : <TerminalSquare size={size} />
 );
 
-function TerminalView({ session, active, resuming, onResume, onCreate }: { session: Session; active: boolean; resuming: boolean; onResume: () => void; onCreate: (kind: SessionKind) => void }): React.ReactNode {
+function TerminalView({ session, active, resuming, onResume, onCreate }: { session: Session; active: boolean; resuming: boolean; onResume: () => void; onCreate: (kind: ManagedSessionKind) => void }): React.ReactNode {
   const container = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -120,7 +119,10 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
     });
     return () => cancelAnimationFrame(frame);
   }, [active, session.id, session.status]);
-  if (session.status === "exited" || session.status === "restore-failed") return <div className={`terminal-view terminal-exited ${active ? "active" : ""}`} aria-hidden={!active}>{sessionIcon(session.kind, 28)}<h3>{session.status === "restore-failed" ? "Restore failed" : "Session exited"}</h3><p>{session.restoreError || "The workspace is intact. Resume this session to continue."}</p><div className="terminal-empty-actions"><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button>{session.status === "restore-failed" && <button className="button" onClick={() => onCreate(session.kind ?? "shell")}><Plus size={14} /> New {pendingName(session.kind ?? "shell")}</button>}</div></div>;
+  if (session.status === "exited" || session.status === "restore-failed") {
+    const replacementKind: ManagedSessionKind = session.kind === "codex" ? "codex" : "shell";
+    return <div className={`terminal-view terminal-exited ${active ? "active" : ""}`} aria-hidden={!active}>{sessionIcon(session.kind, 28)}<h3>{session.status === "restore-failed" ? "Restore failed" : "Session exited"}</h3><p>{session.restoreError || "The workspace is intact. Resume this session to continue."}</p><div className="terminal-empty-actions"><button className="button primary" disabled={resuming} onClick={onResume}><RotateCcw size={14} /> {resuming ? "Resuming…" : "Resume"}</button>{session.status === "restore-failed" && <button className="button" onClick={() => onCreate(replacementKind)}><Plus size={14} /> New {pendingName(replacementKind)}</button>}</div></div>;
+  }
   return <div ref={container} className={`terminal-view terminal-host selectable ${active ? "active" : ""}`} aria-hidden={!active} />;
 }
 
@@ -144,6 +146,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [createMenu, setCreateMenu] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [openingTmux, setOpeningTmux] = useState(false);
   const [pendingSessions, setPendingSessions] = useState<PendingSession[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const createMenuAnchor = useRef<HTMLDivElement>(null);
@@ -183,7 +186,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     setPendingSessions((items) => items.filter((item) => item.id !== pendingId));
     if (activeSessionIds[workspace.id] === pendingId) setActiveSession(workspace.id, null);
   }, [activeSessionIds, setActiveSession, workspace.id]);
-  const create = useCallback(async (kind: SessionKind, pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`): Promise<void> => {
+  const create = useCallback(async (kind: ManagedSessionKind, pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`): Promise<void> => {
     if (creatingRef.current) return;
     creatingRef.current = true;
     setCreating(true);
@@ -208,6 +211,19 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     }
     finally { creatingRef.current = false; setCreating(false); }
   }, [client, setActiveSession, workspace.id]);
+  const openTmuxInIterm = async (): Promise<void> => {
+    setCreateMenu(false);
+    setOpeningTmux(true);
+    try {
+      await window.desktop.openWorkspaceTmuxInIterm(workspace.id);
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      toast.success("Opened workspace tmux session in iTerm");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpeningTmux(false);
+    }
+  };
   useEffect(() => {
     for (const request of sessionCreateRequests.filter((item) => item.workspaceId === workspace.id)) {
       acknowledgeSessionCreateRequest(request.id);
@@ -215,20 +231,10 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     }
   }, [acknowledgeSessionCreateRequest, create, sessionCreateRequests, workspace.id]);
   const close = async (sessionId: string): Promise<void> => {
-    const session = sessions.find((item) => item.id === sessionId);
-    let force = false;
-    if (session?.kind === "tmux" && session.status === "running" && session.activityStatus === "busy") {
-      const resource = sessions.some((item) => item.id !== session.id && item.kind === "tmux") ? "window" : "session";
-      force = confirm(`“${session.name}” is running a task.\n\nClosing it will stop the task and delete its tmux ${resource}. Continue?`);
-      if (!force) return;
-    }
-    try { await window.desktop.killSession(sessionId, force); }
+    try { await window.desktop.killSession(sessionId); }
     catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!force && message.includes("This tmux terminal is running a task") && confirm(`${message}\n\nContinue?`)) {
-        try { await window.desktop.killSession(sessionId, true); }
-        catch (retryError) { toast.error(retryError instanceof Error ? retryError.message : String(retryError)); }
-      } else toast.error(message);
+      toast.error(message);
     }
   };
   const resume = async (sessionId: string): Promise<void> => {
@@ -266,10 +272,10 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
         <div className="terminal-tab-scroll">{sessions.map((session) => <div key={session.id} role="button" tabIndex={0} draggable className={`terminal-tab ${active?.id === session.id ? "active" : ""} ${session.resultUnread ? "unread" : ""}`} onDragStart={(event) => { setDraggingId(session.id); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => { if (draggingId) event.preventDefault(); }} onDrop={() => void reorder(session.id)} onDragEnd={() => setDraggingId(null)} onClick={() => setActiveSession(workspace.id, session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, session.id); }}>{sessionIcon(session.kind)}{editingId === session.id ? <input className="terminal-tab-name-input" value={draftName} onChange={(event) => setDraftName(event.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => void saveRename()} onKeyDown={(event) => { if (event.key === "Enter") void saveRename(); if (event.key === "Escape") { setEditingId(null); setDraftName(""); } }} autoFocus maxLength={80} required /> : <span onDoubleClick={(event) => { event.stopPropagation(); beginRename(session); }}>{session.name}</span>}<i className={session.status === "running" ? session.activityStatus ?? "running" : session.status} />{active?.id === session.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); void close(session.id); }}><X size={12} /></button>}</div>)}{pendingForWorkspace.map((pending) => <div key={pending.id} role="button" tabIndex={0} className={`terminal-tab pending ${active?.id === pending.id ? "active" : ""}`} onClick={() => setActiveSession(workspace.id, pending.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setActiveSession(workspace.id, pending.id); }}>{sessionIcon(pending.kind)}<span>{pending.name}</span><i className={pending.status} />{active?.id === pending.id && <button type="button" className="tab-close" title="Close terminal" onClick={(event) => { event.stopPropagation(); closePending(pending.id); }}><X size={12} /></button>}</div>)}</div>
         <div ref={createMenuAnchor} className="terminal-add-menu">
           <button className="icon-button terminal-add" disabled={creating} onClick={() => setCreateMenu(!createMenu)} title="New terminal"><Plus size={15} /></button>
-          {createMenu && <div className="terminal-kind-menu"><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div>}
+          {createMenu && <div className="terminal-kind-menu"><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><button disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button disabled={openingTmux} onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> tmux in iTerm</button></div>}
         </div>
       </div>
-      <div className="terminal-stage">{sessions.length + pendingForWorkspace.length > 0 ? <>{sessions.map((session) => <TerminalView key={session.id} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />)}{pendingForWorkspace.map((pending) => <PendingTerminalView key={pending.id} pending={pending} active={visible && active?.id === pending.id} onRetry={() => void create(pending.kind, pending.id)} onClose={() => closePending(pending.id)} />)}</> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={creating} onClick={() => void create("tmux")}><Layers3 size={14} /> tmux</button></div></div>}</div>
+      <div className="terminal-stage">{sessions.length + pendingForWorkspace.length > 0 ? <>{sessions.map((session) => <TerminalView key={session.id} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />)}{pendingForWorkspace.map((pending) => <PendingTerminalView key={pending.id} pending={pending} active={visible && active?.id === pending.id} onRetry={() => void create(pending.kind, pending.id)} onClose={() => closePending(pending.id)} />)}</> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button><button className="button" disabled={creating} onClick={() => void create("codex")}><Bot size={14} /> Codex</button><button className="button" disabled={openingTmux} onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> {openingTmux ? "Opening…" : "tmux in iTerm"}</button></div></div>}</div>
     </section>
   );
 }

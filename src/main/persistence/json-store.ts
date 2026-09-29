@@ -42,6 +42,10 @@ export class JsonStore {
 
 function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
   const base = emptySnapshot();
+  const storedSessions = stored.sessions ?? base.sessions;
+  const tmuxSessionNames = new Map(storedSessions
+    .filter((session) => session.kind === "tmux" && session.tmuxSessionName)
+    .map((session) => [session.workspaceId, session.tmuxSessionName!]));
   const data: AppSnapshot = {
     ...base,
     ...stored,
@@ -51,14 +55,14 @@ function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
     devices: stored.devices ?? base.devices,
     connections: stored.connections ?? base.connections,
     checkouts: stored.checkouts ?? base.checkouts,
-    workspaces: (stored.workspaces ?? base.workspaces).map(normalizeWorkspace),
-    sessions: (stored.sessions ?? base.sessions).map(normalizeSession)
+    workspaces: (stored.workspaces ?? base.workspaces).map((workspace) => normalizeWorkspace(workspace, tmuxSessionNames.get(workspace.id))),
+    sessions: storedSessions.filter((session) => session.kind !== "tmux").map(normalizeSession)
   };
   return data;
 }
 
-function normalizeWorkspace(workspace: Workspace): Workspace {
-  return { ...workspace, kind: workspace.kind ?? "worktree" };
+function normalizeWorkspace(workspace: Workspace, legacyTmuxSessionName?: string): Workspace {
+  return { ...workspace, kind: workspace.kind ?? "worktree", tmuxSessionName: workspace.tmuxSessionName ?? legacyTmuxSessionName };
 }
 
 function normalizeWorkThread(workThread: WorkThread): WorkThread {

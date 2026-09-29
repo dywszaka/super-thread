@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { SessionKind } from "../src/shared/domain";
 import { terminalInputForKeyEvent, type TerminalKeyEvent } from "../src/renderer/src/features/workspace/terminal-keyboard";
 
 const keyEvent = (overrides: Partial<TerminalKeyEvent> = {}): TerminalKeyEvent => ({
@@ -19,10 +18,8 @@ test("Shift+Enter sends LF to insert a newline in a Codex prompt", () => {
   assert.equal(terminalInputForKeyEvent("codex", keyEvent()), "\n");
 });
 
-test("Shift+Enter keeps the terminal default outside Codex sessions", () => {
-  for (const kind of ["shell", "tmux"] satisfies SessionKind[]) {
-    assert.equal(terminalInputForKeyEvent(kind, keyEvent()), undefined);
-  }
+test("Shift+Enter keeps the terminal default in shell sessions", () => {
+  assert.equal(terminalInputForKeyEvent("shell", keyEvent()), undefined);
 });
 
 test("ordinary Enter and modified shortcuts keep the terminal default", () => {
