@@ -1069,7 +1069,7 @@ Path
 ~/.superthread/workspaces/llama.cpp/nvfp4-kernel
 ```
 
-右上角提供 `Open in VS Code`：本地 Workspace 通过 VS Code 的本地文件 URI 打开；Remote Device 上的 Workspace 通过 VS Code Remote-SSH URI 打开，并使用该 Device 已保存的 SSH user、host 和非默认 port。Workspace 尚未 ready 时禁用此操作。
+右上角并列提供 `Open in VS Code` 与 `tmux in iTerm`。前者对本地 Workspace 使用 VS Code 的本地文件 URI，对 Remote Device 上的 Workspace 使用 VS Code Remote-SSH URI，并使用该 Device 已保存的 SSH user、host 和非默认 port；后者在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用这两个操作。
 
 Header 在有状态需要注意时显示紧凑 Session 汇总：正在执行、Codex 等待输入、Codex 已完成但未读、恢复失败。切换到带未读 Codex 结果的 Terminal 后清除未读标记。
 
@@ -1088,7 +1088,6 @@ Terminal 1
 ```text
 + New Terminal
 + New Codex
-+ tmux in iTerm
 Double-click Terminal name to rename
 Drag Terminal tabs to reorder
 ```
