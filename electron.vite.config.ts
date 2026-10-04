@@ -10,6 +10,7 @@ export default defineConfig({
   preload: { plugins: [externalizeDepsPlugin()], resolve: { alias } },
   renderer: {
     resolve: { alias },
+    server: { port: 5194 },
     plugins: [react(), tailwindcss()]
   }
 });
