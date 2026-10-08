@@ -5,12 +5,14 @@ import {
   addRemoteDeviceSchema,
   browseDirectorySchema,
   channels,
+  documentLinkSchema,
   createSessionSchema,
   createWorkThreadSchema,
   createWorkspaceSchema,
   reorderSessionsSchema,
   renameSessionSchema,
   setWorkThreadPrioritySchema,
+  saveWorkThreadDocumentSchema,
   setupProjectSchema,
   updateProjectSchema,
   updateRemoteDeviceSchema
@@ -20,7 +22,12 @@ import { vscodeWorkspaceUrl } from "../runtime/vscode-workspace";
 
 const sessionIdSchema = z.string().min(1);
 
-export function registerIpcHandlers(service: WorkspaceService): void {
+export function registerIpcHandlers(service: WorkspaceService, finishDocumentClose: (window: BrowserWindow) => void): void {
+  ipcMain.handle(channels.openDocumentLink, (_event, url) => shell.openExternal(documentLinkSchema.parse(url)));
+  ipcMain.on(channels.finishDocumentClose, (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (owner) finishDocumentClose(owner);
+  });
   ipcMain.handle(channels.snapshot, () => service.snapshot());
   ipcMain.handle(channels.selectDirectory, async () => {
     const owner = BrowserWindow.getFocusedWindow() ?? undefined;
@@ -39,6 +46,7 @@ export function registerIpcHandlers(service: WorkspaceService): void {
   ipcMain.handle(channels.deleteProject, (_event, id) => service.deleteProject(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.setupProject, (_event, input) => service.setupProject(setupProjectSchema.parse(input)));
   ipcMain.handle(channels.createWorkThread, (_event, input) => service.createWorkThread(createWorkThreadSchema.parse(input)));
+  ipcMain.handle(channels.saveWorkThreadDocument, (_event, input) => service.saveWorkThreadDocument(saveWorkThreadDocumentSchema.parse(input)));
   ipcMain.handle(channels.setWorkThreadPriority, (_event, input) => service.setWorkThreadPriority(setWorkThreadPrioritySchema.parse(input)));
   ipcMain.handle(channels.archiveWorkThread, (_event, id) => service.archiveWorkThread(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.restoreWorkThread, (_event, id) => service.restoreWorkThread(sessionIdSchema.parse(id)));

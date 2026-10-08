@@ -1,3 +1,4 @@
+import { documentLinkSchema, saveWorkThreadDocumentSchema, MAX_WORK_THREAD_DOCUMENT_LENGTH } from "../src/shared/contract";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
@@ -61,4 +62,24 @@ test("remote device tunnels validate both forwarding directions and reject dupli
   assert.equal(updateRemoteDeviceSchema.safeParse({ ...base, id: "dev_remote", tunnels }).success, true);
   assert.equal(addRemoteDeviceSchema.safeParse({ ...base, tunnels: [...tunnels, tunnels[0]] }).success, false);
   assert.equal(addRemoteDeviceSchema.safeParse({ ...base, tunnels: [{ ...tunnels[0], sourcePort: 0 }] }).success, false);
+});
+
+
+test("document IPC preserves whitespace and rejects invalid or oversized content", () => {
+  const content = "  # Notes\n\n";
+  assert.deepEqual(saveWorkThreadDocumentSchema.parse({ id: "thread", content }), { id: "thread", content });
+  assert.equal(saveWorkThreadDocumentSchema.safeParse({ id: "thread", content: "" }).success, true);
+  for (const input of [{ id: "", content }, { id: "thread", content: null }, { id: "thread", content, path: "/tmp/notes.md" }, { id: "thread", content: "x".repeat(MAX_WORK_THREAD_DOCUMENT_LENGTH + 1) }]) {
+    assert.equal(saveWorkThreadDocumentSchema.safeParse(input).success, false);
+  }
+});
+
+
+test("document links allow web/email URLs and reject local or executable protocols", () => {
+  for (const url of ["https://example.com/docs", "http://localhost:3000", "mailto:hello@example.com"]) {
+    assert.equal(documentLinkSchema.safeParse(url).success, true);
+  }
+  for (const url of ["file:///etc/passwd", "javascript:alert(1)", "vscode://file/tmp", "./relative.md"]) {
+    assert.equal(documentLinkSchema.safeParse(url).success, false);
+  }
 });

@@ -4,6 +4,7 @@ import type { AppSnapshot, Session, Workspace, WorkThread } from "../../shared/d
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../../shared/domain";
 
 export class JsonStore {
+  private writes: Promise<unknown> = Promise.resolve();
   private data: AppSnapshot = emptySnapshot();
 
   constructor(private readonly filePath: string) {}
@@ -24,12 +25,17 @@ export class JsonStore {
     return structuredClone(this.data);
   }
 
-  async update(mutator: (draft: AppSnapshot) => void): Promise<AppSnapshot> {
-    const next = this.snapshot();
-    mutator(next);
-    await this.save(next);
-    this.data = next;
-    return this.snapshot();
+  update(mutator: (draft: AppSnapshot) => void): Promise<AppSnapshot> {
+    // Autosave and runtime updates must mutate the latest committed snapshot in order.
+    const write = this.writes.then(async () => {
+      const next = this.snapshot();
+      mutator(next);
+      await this.save(next);
+      this.data = next;
+      return this.snapshot();
+    });
+    this.writes = write.catch(() => {});
+    return write;
   }
 
   private async save(data: AppSnapshot): Promise<void> {
@@ -66,7 +72,7 @@ function normalizeWorkspace(workspace: Workspace, legacyTmuxSessionName?: string
 }
 
 function normalizeWorkThread(workThread: WorkThread): WorkThread {
-  return { ...workThread, priority: workThread.priority ?? "normal" };
+  return { ...workThread, priority: workThread.priority ?? "normal", document: workThread.document ?? "" };
 }
 
 function normalizeSession(session: Session): Session {

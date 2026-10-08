@@ -4,6 +4,8 @@ import type { TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
   platform: process.platform,
+  openDocumentLink: (url) => ipcRenderer.invoke(channels.openDocumentLink, url),
+  finishDocumentClose: () => ipcRenderer.send(channels.finishDocumentClose),
   snapshot: () => ipcRenderer.invoke(channels.snapshot),
   selectDirectory: () => ipcRenderer.invoke(channels.selectDirectory),
   browseDirectory: (input) => ipcRenderer.invoke(channels.browseDirectory, input),
@@ -16,6 +18,7 @@ const bridge: DesktopBridge = {
   deleteProject: (id) => ipcRenderer.invoke(channels.deleteProject, id),
   setupProject: (input) => ipcRenderer.invoke(channels.setupProject, input),
   createWorkThread: (input) => ipcRenderer.invoke(channels.createWorkThread, input),
+  saveWorkThreadDocument: (input) => ipcRenderer.invoke(channels.saveWorkThreadDocument, input),
   setWorkThreadPriority: (input) => ipcRenderer.invoke(channels.setWorkThreadPriority, input),
   archiveWorkThread: (id) => ipcRenderer.invoke(channels.archiveWorkThread, id),
   restoreWorkThread: (id) => ipcRenderer.invoke(channels.restoreWorkThread, id),

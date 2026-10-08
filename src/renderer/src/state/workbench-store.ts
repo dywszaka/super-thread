@@ -69,6 +69,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     }),
     setWorkThreadFilter: (workThreadFilter) => set((state) => ({
       scope: { type: "work-thread", id: workThreadFilter },
+      activeWorkspaceId: null,
       projectFilter: null,
       workThreadFilter,
       expandedThreadIds: state.expandedThreadIds.includes(workThreadFilter) ? state.expandedThreadIds : [...state.expandedThreadIds, workThreadFilter]

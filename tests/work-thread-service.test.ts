@@ -667,3 +667,24 @@ test("resuming an exited session restarts it in place", async () => {
   assert.equal(resumed?.name, "logs");
   await assert.rejects(() => service.resumeSession("session-1"), /Only an exited or failed terminal session/);
 });
+
+test("work thread Markdown is isolated, persists across restart and survives archive/restore", async () => {
+  const { service, store } = await setup();
+  await service.createWorkThread({ name: "Document A" });
+  await service.createWorkThread({ name: "Document B" });
+  const [a, b] = service.snapshot().workThreads;
+  assert.equal(a?.document, "");
+  const content = "# 中文标题\n\n- [ ] TODO\n\n```ts\nconst x = 1;\n```\n  ";
+  await service.saveWorkThreadDocument({ id: a!.id, content });
+  await service.archiveWorkThread(a!.id);
+  await service.restoreWorkThread(a!.id);
+  const restarted = new WorkspaceService(store);
+  await restarted.initialize();
+  assert.equal(restarted.snapshot().workThreads.find((thread) => thread.id === a!.id)?.document, content);
+  assert.equal(restarted.snapshot().workThreads.find((thread) => thread.id === b!.id)?.document, "");
+  assert.ok(service.snapshot().workThreads[0]?.documentUpdatedAt);
+  await service.saveWorkThreadDocument({ id: a!.id, content: "" });
+  assert.equal(service.snapshot().workThreads[0]?.document, "");
+  await service.deleteWorkThread(a!.id);
+  await assert.rejects(service.saveWorkThreadDocument({ id: a!.id, content: "stale" }), /Work thread not found/);
+});

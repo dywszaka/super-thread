@@ -10,13 +10,15 @@ export type SessionKind = ManagedSessionKind | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export interface WorkThread {
   id: string;
   name: string;
   status: WorkThreadStatus;
   priority: WorkThreadPriority;
+  document?: string;
+  documentUpdatedAt?: string;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
@@ -147,6 +149,11 @@ export const emptySnapshot = (): AppSnapshot => ({
 export interface CreateWorkThreadInput {
   name: string;
   priority?: WorkThreadPriority;
+}
+
+export interface SaveWorkThreadDocumentInput {
+  id: string;
+  content: string;
 }
 
 export interface SetWorkThreadPriorityInput {

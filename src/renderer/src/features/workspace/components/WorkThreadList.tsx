@@ -36,7 +36,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   };
 
   const remove = async (id: string, name: string): Promise<void> => {
-    if (!confirm(`Permanently delete the empty work thread “${name}”?`)) return;
+    if (!confirm(`Permanently delete work thread “${name}”?\n\nIts document will also be deleted. This cannot be undone.`)) return;
     setBusyId(id);
     try {
       await window.desktop.deleteWorkThread(id);

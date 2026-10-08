@@ -49,3 +49,14 @@ test("focus mode is excluded from persisted workbench state", () => {
   assert.equal(persisted.activeWorkspaceId, "workspace-a");
   assert.equal("focusMode" in persisted, false);
 });
+
+test("selecting a work thread opens its document and workspace selection remains explicit", () => {
+  useWorkbenchStore.setState({ activeWorkspaceId: "workspace-a", expandedThreadIds: [] });
+  useWorkbenchStore.getState().setWorkThreadFilter("thread-b");
+  assert.deepEqual(useWorkbenchStore.getState().scope, { type: "work-thread", id: "thread-b" });
+  assert.equal(useWorkbenchStore.getState().activeWorkspaceId, null);
+  useWorkbenchStore.getState().setActiveWorkspace("workspace-b");
+  assert.equal(useWorkbenchStore.getState().activeWorkspaceId, "workspace-b");
+  useWorkbenchStore.getState().setWorkThreadFilter("thread-b");
+  assert.equal(useWorkbenchStore.getState().activeWorkspaceId, null);
+});

@@ -483,6 +483,8 @@ interface WorkThread {
   name: string
   status: "active" | "archived"
   priority: "high" | "normal" | "low"
+  document?: string
+  documentUpdatedAt?: Date
   createdAt: Date
   updatedAt: Date
   archivedAt?: Date
@@ -494,9 +496,14 @@ interface WorkThread {
 - 名称在 active 与 archived 范围内忽略大小写唯一。
 - 一个 Workspace 必须且只能属于一个 WorkThread。
 - WorkThread 可以暂时为空，也可以包含多个 Workspace。
+- 点击 WorkThread 默认打开 Document 页；即使还没有 Workspace，也可以独立写文档。侧栏每个 WorkThread 下固定显示 Document 入口，Workspace 入口继续打开终端。
+- 每个 WorkThread 拥有一份 Markdown 文档，使用 Markdown 编辑插件提供格式工具栏、源码编辑、分栏预览和纯预览。文档不属于任何 Project 或 Device 的仓库文件。
+- 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。
+- 文档随 WorkThread 本地持久化，归档、恢复和应用重启不清除文档；永久删除 WorkThread 同时删除文档。文档上限为 2,000,000 个字符，IPC 不裁剪 Markdown 空白。
+- 关闭窗口前等待未完成的文档保存；保存失败时保留窗口和草稿。
 - WorkThread 优先级由用户手动设置，默认为 `normal`；列表按 `high`、`normal`、`low` 排序，同级保持创建顺序。
 - 归档只隐藏整组内容，不停止 Session 或删除 Git Worktree。
-- 只有空 WorkThread 可以永久删除。
+- 只有没有 Workspace 的 WorkThread 可以永久删除；删除确认必须说明其文档也将永久删除。
 
 ---
 
@@ -1366,7 +1373,7 @@ sessions
 
 推荐 SQLite。
 
-当前 JSON MVP 快照带有 `schemaVersion`。WorkThread 模型启用时不迁移旧快照；缺少版本或版本不匹配的数据会被清空，并由启动流程重新创建 Local Device。
+当前 JSON MVP 快照带有 `schemaVersion`。旧快照通过迁移保留数据；缺少文档的 WorkThread 使用空文档。文档自动保存与终端 runtime 更新串行写入同一份原子快照，避免并发覆盖。
 
 关系：
 

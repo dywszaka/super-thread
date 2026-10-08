@@ -39,6 +39,7 @@ test("JsonStore migrates older snapshots without clearing user data", async () =
   assert.equal(snapshot.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(snapshot.projects[0]?.id, "legacy-project");
   assert.equal(snapshot.workThreads[0]?.priority, "normal");
+  assert.equal(snapshot.workThreads[0]?.document, "");
   assert.equal(snapshot.sessions[0]?.kind, "shell");
   assert.equal(snapshot.sessions[0]?.activityStatus, "waiting-input");
   assert.equal(snapshot.sessions[0]?.resultUnread, true);
@@ -65,4 +66,28 @@ test("JsonStore migrates legacy embedded tmux terminals to one workspace session
 
   assert.equal(snapshot.workspaces[0]?.tmuxSessionName, "demo");
   assert.deepEqual(snapshot.sessions.map((session) => session.id), ["shell-1"]);
+});
+
+test("concurrent autosave and runtime updates preserve both changes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-concurrent-store-"));
+  const path = join(directory, "state.json");
+  const store = new JsonStore(path);
+  await store.load();
+  await Promise.all([
+    store.update((draft) => { draft.workThreads.push({ id: "thread", name: "Notes", status: "active", priority: "normal", document: "# Notes", createdAt: "now", updatedAt: "now" }); }),
+    store.update((draft) => { draft.devices.push({ id: "local", name: "Mac", type: "local", status: "online", createdAt: "now" }); }),
+    store.update((draft) => { draft.workThreads[0]!.document = "# Latest notes"; })
+  ]);
+  const persisted = await new JsonStore(path).load();
+  assert.equal(persisted.workThreads[0]?.document, "# Latest notes");
+  assert.equal(persisted.devices[0]?.id, "local");
+});
+
+test("a rejected mutation does not poison subsequent saves", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-retry-store-"));
+  const store = new JsonStore(join(directory, "state.json"));
+  await store.load();
+  await assert.rejects(store.update(() => { throw new Error("Invalid update"); }), /Invalid update/);
+  await store.update((draft) => { draft.devices.push({ id: "local", name: "Mac", type: "local", status: "online", createdAt: "now" }); });
+  assert.equal(store.snapshot().devices[0]?.id, "local");
 });

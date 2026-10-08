@@ -21,14 +21,19 @@ app.whenReady().then(async () => {
 
   const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")));
   await service.initialize();
-  registerIpcHandlers(service);
+  let quitRequested = false;
+  registerIpcHandlers(service, (owner) => {
+    if (quitRequested) app.quit();
+    else owner.close();
+  });
   powerMonitor.on("resume", () => service.reconnectTunnels());
   app.once("will-quit", () => service.shutdown());
   let quitConfirmed = false;
   app.on("before-quit", (event) => {
-    if (quitConfirmed) return;
+    if (quitConfirmed) { quitRequested = true; return; }
     const running = service.runningSessionSummaries();
-    if (running.length === 0) return;
+    if (running.length === 0) { quitRequested = true; return; }
+    quitRequested = false;
     event.preventDefault();
     const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
     const options: MessageBoxOptions = {

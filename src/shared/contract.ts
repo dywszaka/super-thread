@@ -12,6 +12,7 @@ import type {
   ReorderSessionsInput,
   RenameSessionInput,
   SetWorkThreadPriorityInput,
+  SaveWorkThreadDocumentInput,
   SetupProjectInput,
   TerminalOutput,
   TerminalReplay,
@@ -21,6 +22,8 @@ import type {
 
 export const channels = {
   snapshot: "app:snapshot",
+  finishDocumentClose: "window:finish-document-close",
+  openDocumentLink: "document:open-link",
   selectDirectory: "dialog:select-directory",
   browseDirectory: "directory:browse",
   addDevice: "device:add",
@@ -33,6 +36,7 @@ export const channels = {
   setupProject: "project:setup",
   createWorkThread: "work-thread:create",
   setWorkThreadPriority: "work-thread:set-priority",
+  saveWorkThreadDocument: "work-thread:save-document",
   archiveWorkThread: "work-thread:archive",
   restoreWorkThread: "work-thread:restore",
   deleteWorkThread: "work-thread:delete",
@@ -135,6 +139,18 @@ export const createWorkThreadSchema = z.object({
   priority: z.enum(["high", "normal", "low"]).optional()
 }).strict();
 
+export const documentLinkSchema = z.string().url().refine((url) => {
+  try { return ["http:", "https:", "mailto:"].includes(new URL(url).protocol); }
+  catch { return false; }
+}, "Unsupported document link");
+
+export const MAX_WORK_THREAD_DOCUMENT_LENGTH = 2_000_000;
+
+export const saveWorkThreadDocumentSchema = z.object({
+  id: z.string().min(1),
+  content: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH)
+}).strict();
+
 export const setWorkThreadPrioritySchema = z.object({
   id: z.string().min(1),
   priority: z.enum(["high", "normal", "low"])
@@ -177,6 +193,8 @@ export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "
 export interface DesktopBridge {
   platform: NodeJS.Platform;
   snapshot(): Promise<AppSnapshot>;
+  finishDocumentClose(): void;
+  openDocumentLink(url: string): Promise<void>;
   selectDirectory(): Promise<string | null>;
   browseDirectory(input: BrowseDirectoryInput): Promise<DirectoryListing>;
   addDevice(input: AddRemoteDeviceInput): Promise<void>;
@@ -188,6 +206,7 @@ export interface DesktopBridge {
   deleteProject(id: string): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;
   createWorkThread(input: CreateWorkThreadInput): Promise<void>;
+  saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
   setWorkThreadPriority(input: SetWorkThreadPriorityInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;
   restoreWorkThread(id: string): Promise<void>;
