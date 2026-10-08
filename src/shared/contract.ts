@@ -16,7 +16,7 @@ import type {
   DeleteTerminalPresetInput,
   ReorderSessionsInput,
   RenameSessionInput,
-  SetWorkThreadPriorityInput,
+  SetWorkThreadPinnedInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
   TerminalOutput,
@@ -40,7 +40,7 @@ export const channels = {
   deleteProject: "project:delete",
   setupProject: "project:setup",
   createWorkThread: "work-thread:create",
-  setWorkThreadPriority: "work-thread:set-priority",
+  setWorkThreadPinned: "work-thread:set-pinned",
   saveWorkThreadDocument: "work-thread:save-document",
   archiveWorkThread: "work-thread:archive",
   restoreWorkThread: "work-thread:restore",
@@ -143,8 +143,7 @@ export const browseDirectorySchema = z.object({
 }).strict();
 
 export const createWorkThreadSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  priority: z.enum(["high", "normal", "low"]).optional()
+  name: z.string().trim().min(1).max(80)
 }).strict();
 
 export const documentLinkSchema = z.string().url().refine((url) => {
@@ -159,9 +158,9 @@ export const saveWorkThreadDocumentSchema = z.object({
   content: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH)
 }).strict();
 
-export const setWorkThreadPrioritySchema = z.object({
+export const setWorkThreadPinnedSchema = z.object({
   id: z.string().min(1),
-  priority: z.enum(["high", "normal", "low"])
+  pinned: z.boolean()
 }).strict();
 
 const createWorkspaceBaseSchema = {
@@ -235,7 +234,7 @@ export interface DesktopBridge {
   setupProject(input: SetupProjectInput): Promise<void>;
   createWorkThread(input: CreateWorkThreadInput): Promise<void>;
   saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
-  setWorkThreadPriority(input: SetWorkThreadPriorityInput): Promise<void>;
+  setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;
   restoreWorkThread(id: string): Promise<void>;
   deleteWorkThread(id: string): Promise<void>;

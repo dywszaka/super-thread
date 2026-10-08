@@ -71,8 +71,12 @@ function normalizeWorkspace(workspace: Workspace, legacyTmuxSessionName?: string
   return { ...workspace, kind: workspace.kind ?? "worktree", tmuxSessionName: workspace.tmuxSessionName ?? legacyTmuxSessionName };
 }
 
-function normalizeWorkThread(workThread: WorkThread): WorkThread {
-  return { ...workThread, priority: workThread.priority ?? "normal", document: workThread.document ?? "" };
+/** Legacy persisted threads may carry a priority ("high" | "normal" | "low") instead of pinned. */
+type StoredWorkThread = Omit<WorkThread, "pinned"> & { pinned?: boolean; priority?: unknown };
+
+function normalizeWorkThread(workThread: StoredWorkThread): WorkThread {
+  const { priority, ...rest } = workThread;
+  return { ...rest, pinned: rest.pinned ?? priority === "high", document: workThread.document ?? "" };
 }
 
 function normalizeSession(session: Session): Session {

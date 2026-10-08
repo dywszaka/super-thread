@@ -23,7 +23,7 @@ import type {
   RenameSessionInput,
   Session,
   SessionActivityStatus,
-  SetWorkThreadPriorityInput,
+  SetWorkThreadPinnedInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
   TerminalReplay,
@@ -340,7 +340,7 @@ export class WorkspaceService extends EventEmitter {
         id: id("thread"),
         name,
         status: "active",
-        priority: input.priority ?? "normal",
+        pinned: false,
         document: "",
         createdAt: timestamp,
         updatedAt: timestamp
@@ -360,13 +360,13 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  async setWorkThreadPriority(input: SetWorkThreadPriorityInput): Promise<void> {
+  async setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void> {
     const workThread = this.workThread(this.snapshot(), input.id);
-    if (workThread.priority === input.priority) return;
+    if (workThread.pinned === input.pinned) return;
     await this.store.update((draft) => {
       const item = draft.workThreads.find((candidate) => candidate.id === input.id);
       if (item) {
-        item.priority = input.priority;
+        item.pinned = input.pinned;
         item.updatedAt = now();
       }
     });

@@ -29,7 +29,10 @@ test("JsonStore migrates older snapshots without clearing user data", async () =
   const path = join(directory, "state.json");
   await writeFile(path, JSON.stringify({
     schemaVersion: CURRENT_SCHEMA_VERSION - 1,
-    workThreads: [{ id: "legacy-thread", name: "Legacy", status: "active", createdAt: "then", updatedAt: "then" }],
+    workThreads: [
+      { id: "legacy-thread", name: "Legacy", status: "active", createdAt: "then", updatedAt: "then" },
+      { id: "legacy-high-thread", name: "Legacy High", status: "active", priority: "high", createdAt: "then", updatedAt: "then" }
+    ],
     projects: [{ id: "legacy-project", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "then", updatedAt: "then" }],
     sessions: [{ id: "session-1", workspaceId: "workspace-1", name: "Terminal 1", status: "running", shell: "/bin/zsh", codexResultUnread: true, createdAt: "then" }]
   }), "utf8");
@@ -38,7 +41,8 @@ test("JsonStore migrates older snapshots without clearing user data", async () =
 
   assert.equal(snapshot.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(snapshot.projects[0]?.id, "legacy-project");
-  assert.equal(snapshot.workThreads[0]?.priority, "normal");
+  assert.equal(snapshot.workThreads[0]?.pinned, false);
+  assert.equal(snapshot.workThreads[1]?.pinned, true);
   assert.equal(snapshot.workThreads[0]?.document, "");
   assert.equal(snapshot.sessions[0]?.kind, "shell");
   assert.equal(snapshot.sessions[0]?.activityStatus, "waiting-input");
@@ -74,7 +78,7 @@ test("concurrent autosave and runtime updates preserve both changes", async () =
   const store = new JsonStore(path);
   await store.load();
   await Promise.all([
-    store.update((draft) => { draft.workThreads.push({ id: "thread", name: "Notes", status: "active", priority: "normal", document: "# Notes", createdAt: "now", updatedAt: "now" }); }),
+    store.update((draft) => { draft.workThreads.push({ id: "thread", name: "Notes", status: "active", pinned: false, document: "# Notes", createdAt: "now", updatedAt: "now" }); }),
     store.update((draft) => { draft.devices.push({ id: "local", name: "Mac", type: "local", status: "online", createdAt: "now" }); }),
     store.update((draft) => { draft.workThreads[0]!.document = "# Latest notes"; })
   ]);

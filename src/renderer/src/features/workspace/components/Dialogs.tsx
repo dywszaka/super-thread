@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, MessagesSquare, Network, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, DirectoryListing, SshTunnelConfig, WorkThreadPriority } from "@/shared/domain";
+import type { AppSnapshot, DirectoryListing, SshTunnelConfig } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { resolveSelectionId, sortedWorkThreads } from "../selection";
 import { Field, Modal } from "./Modal";
@@ -180,23 +180,21 @@ export function NewWorkThreadDialog(): ReactNode {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
-  const [priority, setPriority] = useState<WorkThreadPriority>("normal");
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
-      await window.desktop.createWorkThread({ name, priority });
+      await window.desktop.createWorkThread({ name });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       const fresh = await window.desktop.snapshot();
       const created = fresh.workThreads.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
       if (created) setWorkThreadFilter(created.id);
-      toast.success(`${name.trim()} created`); closeDialog(); setName(""); setPriority("normal");
+      toast.success(`${name.trim()} created`); closeDialog(); setName("");
     } catch (error) { toast.error(message(error)); }
     finally { setBusy(false); }
   };
   return (
     <Modal open={dialog === "workThread"} title="New work thread" description="Group one or more related workspaces." busy={busy} submitLabel="Create Work Thread" onClose={closeDialog} onSubmit={submit}>
       <Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Improve terminal workflow" required maxLength={80} autoFocus /></Field>
-      <Field label="Priority"><div className="segmented priority-segmented">{(["high", "normal", "low"] as const).map((value) => <button type="button" key={value} className={priority === value ? "active" : ""} onClick={() => setPriority(value)}>{value === "high" ? "High" : value === "normal" ? "Normal" : "Low"}</button>)}</div></Field>
       <div className="callout"><MessagesSquare size={16} /><span>You can create the first workspace after the work thread is created.</span></div>
     </Modal>
   );

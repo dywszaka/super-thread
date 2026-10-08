@@ -1,9 +1,7 @@
-import type { AppSnapshot, WorkThread, WorkThreadPriority, Workspace } from "@/shared/domain";
-
-const workThreadPriorityOrder: Record<WorkThreadPriority, number> = { high: 0, normal: 1, low: 2 };
+import type { AppSnapshot, WorkThread, Workspace } from "@/shared/domain";
 
 export function compareWorkThreads(left: WorkThread, right: WorkThread): number {
-  return workThreadPriorityOrder[left.priority] - workThreadPriorityOrder[right.priority]
+  return Number(right.pinned) - Number(left.pinned)
     || left.createdAt.localeCompare(right.createdAt)
     || left.id.localeCompare(right.id);
 }

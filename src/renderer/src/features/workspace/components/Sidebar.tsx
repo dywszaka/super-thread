@@ -1,23 +1,16 @@
-import { Archive, Check, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Plus, Server } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pin, Plus, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, WorkThread, WorkThreadPriority } from "@/shared/domain";
+import type { AppSnapshot, WorkThread } from "@/shared/domain";
 import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
-import { WorkThreadPriorityIcon } from "./WorkThreadPriorityMenu";
 
 interface WorkThreadMenuState {
   thread: WorkThread;
   x: number;
   y: number;
 }
-
-const priorities: ReadonlyArray<{ value: WorkThreadPriority; label: string }> = [
-  { value: "high", label: "High priority" },
-  { value: "normal", label: "Normal priority" },
-  { value: "low", label: "Low priority" }
-];
 
 const cleanError = (error: unknown): string => error instanceof Error
   ? error.message.replace(/^Error invoking remote method '[^']+': /, "")
@@ -81,7 +74,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   const openThreadMenu = (event: React.MouseEvent, thread: WorkThread): void => {
     event.preventDefault();
     const width = 184;
-    const height = 158;
+    const height = 92;
     setThreadMenu({
       thread,
       x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
@@ -89,14 +82,14 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     });
   };
 
-  const setPriority = async (priority: WorkThreadPriority): Promise<void> => {
+  const setPinned = async (pinned: boolean): Promise<void> => {
     const thread = threadMenu?.thread;
     if (!thread) return;
     setThreadMenu(null);
-    if (thread.priority === priority) return;
+    if (thread.pinned === pinned) return;
     setThreadMenuBusy(true);
     try {
-      await window.desktop.setWorkThreadPriority({ id: thread.id, priority });
+      await window.desktop.setWorkThreadPinned({ id: thread.id, pinned });
     } catch (error) {
       toast.error(cleanError(error));
     } finally {
@@ -147,7 +140,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                   <button className="thread-disclosure" onClick={() => toggleThreadExpanded(thread.id)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${thread.name}`}>
                     {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
-                  <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}>{thread.priority === "normal" ? <MessagesSquare size={14} /> : <span className={`thread-priority-indicator ${thread.priority}`} title={`${thread.priority} priority`}><WorkThreadPriorityIcon priority={thread.priority} /></span>}<em>{thread.name}</em></button>
+                  <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}>{thread.pinned ? <span className="thread-pinned-indicator" title="Pinned"><Pin size={14} /></span> : <MessagesSquare size={14} />}<em>{thread.name}</em></button>
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
@@ -169,19 +162,10 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
         aria-label={`${threadMenu.thread.name} actions`}
         style={{ left: threadMenu.x, top: threadMenu.y }}
       >
-        <div className="context-menu-label">Priority</div>
-        {priorities.map((item) => <button
-          type="button"
-          role="menuitemradio"
-          aria-checked={threadMenu.thread.priority === item.value}
-          disabled={threadMenuBusy}
-          key={item.value}
-          onClick={() => void setPriority(item.value)}
-        >
-          <WorkThreadPriorityIcon priority={item.value} />
-          <span>{item.label}</span>
-          {threadMenu.thread.priority === item.value && <Check size={13} />}
-        </button>)}
+        <button type="button" disabled={threadMenuBusy} onClick={() => void setPinned(!threadMenu.thread.pinned)}>
+          <Pin size={13} />
+          <span>{threadMenu.thread.pinned ? "Unpin work thread" : "Pin work thread"}</span>
+        </button>
         <div className="context-menu-separator" />
         <button type="button" disabled={threadMenuBusy} onClick={() => void archiveThread()}><Archive size={13} /><span>Archive work thread</span></button>
       </div>}
