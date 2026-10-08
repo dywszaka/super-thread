@@ -1,5 +1,5 @@
 import { Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -12,12 +12,21 @@ const cleanError = (error: unknown): string => error instanceof Error ? error.me
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const [status, setStatus] = useState<WorkThreadStatus>("active");
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [documentOpen, setDocumentOpen] = useState(false);
   const documentTrigger = useRef<HTMLButtonElement | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const setWorkThreadFilter = useWorkbenchStore((state) => state.setWorkThreadFilter);
   const documentThread = snapshot.workThreads.find((thread) => thread.id === documentId);
-  const closeDocument = (): void => { setDocumentId(null); documentTrigger.current?.focus(); };
+  const drawerOpen = documentOpen && Boolean(documentThread);
+  const closeDocument = (): void => { setDocumentOpen(false); documentTrigger.current?.focus(); };
+
+  useEffect(() => {
+    if (drawerOpen || !documentId) return;
+    // Keep the editor mounted through the closing transition; reopening cancels cleanup.
+    const timer = window.setTimeout(() => setDocumentId(null), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320);
+    return () => window.clearTimeout(timer);
+  }, [drawerOpen, documentId]);
   const threads = workThreadsByDocumentUpdate(snapshot.workThreads.filter((thread) => thread.status === status));
 
   const archive = async (id: string, name: string): Promise<void> => {
@@ -69,7 +78,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                 const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
                 const busy = busyId === thread.id;
                 return (
-                  <article className={`work-thread-card ${documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
+                  <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
                     <button className="work-thread-card-main" disabled={status === "archived"} onClick={() => setWorkThreadFilter(thread.id)}>
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
                       <span><strong>{thread.name}</strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small></span>
@@ -78,7 +87,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                       {status === "active"
                         ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
                         : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
-                      <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => { documentTrigger.current = event.currentTarget; setDocumentId(thread.id); }}><FileText size={14} /> Doc</button>
+                      <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => { documentTrigger.current = event.currentTarget; setDocumentId(thread.id); setDocumentOpen(true); }}><FileText size={14} /> Doc</button>
                       <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this work thread" : "Delete work thread"} onClick={() => void remove(thread.id, thread.name)}><Trash2 size={14} /></button>
                     </div>
                   </article>
@@ -87,11 +96,15 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
             </div>
           </section>
         </div>
-        {documentThread && <aside id="work-thread-document-drawer" className="work-thread-document-drawer no-drag" role="dialog" aria-modal="false" aria-label={`Document for ${documentThread.name}`} onKeyDown={(event) => {
-          if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeDocument(); }
+        <div className={`work-thread-document-slot ${drawerOpen ? "is-open" : ""}`} inert={!drawerOpen} aria-hidden={!drawerOpen} onTransitionEnd={(event) => {
+          if (event.target === event.currentTarget && event.propertyName === "width" && !drawerOpen) setDocumentId(null);
         }}>
-          <WorkThreadDocument key={documentThread.id} thread={documentThread} onClose={closeDocument} />
-        </aside>}
+          {documentThread && <aside id="work-thread-document-drawer" className="work-thread-document-drawer no-drag" role="dialog" aria-modal="false" aria-label={`Document for ${documentThread.name}`} onKeyDown={(event) => {
+            if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeDocument(); }
+          }}>
+            <WorkThreadDocument key={documentThread.id} thread={documentThread} onClose={closeDocument} />
+          </aside>}
+        </div>
       </div>
     </main>
   );
