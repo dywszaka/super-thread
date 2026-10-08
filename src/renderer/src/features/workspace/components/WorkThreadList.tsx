@@ -1,13 +1,26 @@
-import { Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Trash2 } from "lucide-react";
+import { AppWindowMac, Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, WorkThreadStatus } from "@/shared/domain";
+import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate } from "../selection";
 import { SidebarReopenButton } from "./Sidebar";
 import { WorkThreadDocument } from "./WorkThreadDocument";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
+
+/** First terminal (running preferred) of a work thread, or null when it has none. */
+const firstTerminalTarget = (snapshot: AppSnapshot, threadId: string): { workspaceId: string; sessionId: string } | null => {
+  for (const workspace of snapshot.workspaces) {
+    if (workspace.workThreadId !== threadId || workspace.status !== "ready") continue;
+    const sessions = snapshot.sessions
+      .filter((session) => session.workspaceId === workspace.id)
+      .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+    const session = sessions.find((item) => item.status === "running") ?? sessions[0];
+    if (session) return { workspaceId: workspace.id, sessionId: session.id };
+  }
+  return null;
+};
 
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const [status, setStatus] = useState<WorkThreadStatus>("active");
@@ -17,6 +30,8 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   const [busyId, setBusyId] = useState<string | null>(null);
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const setWorkThreadFilter = useWorkbenchStore((state) => state.setWorkThreadFilter);
+  const setActiveWorkspace = useWorkbenchStore((state) => state.setActiveWorkspace);
+  const setActiveSession = useWorkbenchStore((state) => state.setActiveSession);
   const documentThread = snapshot.workThreads.find((thread) => thread.id === documentId);
   const drawerOpen = documentOpen && Boolean(documentThread);
   const closeDocument = (): void => { setDocumentOpen(false); documentTrigger.current?.focus(); };
@@ -58,6 +73,15 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
     finally { setBusyId(null); }
   };
 
+  const openWorkThread = (thread: WorkThread): void => {
+    const target = firstTerminalTarget(snapshot, thread.id);
+    setWorkThreadFilter(thread.id);
+    if (target) {
+      setActiveWorkspace(target.workspaceId);
+      setActiveSession(target.workspaceId, target.sessionId);
+    }
+  };
+
   return (
     <main className="work-thread-page">
       <header className="work-thread-page-header drag">
@@ -77,13 +101,15 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
               {threads.map((thread) => {
                 const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
                 const busy = busyId === thread.id;
+                const terminalTarget = firstTerminalTarget(snapshot, thread.id);
                 return (
                   <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
-                    <button className="work-thread-card-main" disabled={status === "archived"} onClick={() => setWorkThreadFilter(thread.id)}>
+                    <div className="work-thread-card-main">
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
                       <span><strong>{thread.name}</strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small></span>
-                    </button>
+                    </div>
                     <div className="work-thread-card-actions">
+                      <button className="icon-button" disabled={status === "archived"} title={terminalTarget ? "Open first terminal" : "Open document"} aria-label={`Open ${terminalTarget ? "first terminal" : "document"} for ${thread.name}`} onClick={() => openWorkThread(thread)}><AppWindowMac size={14} /></button>
                       {status === "active"
                         ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
                         : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
