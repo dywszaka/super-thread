@@ -16,6 +16,7 @@ import type {
   DeleteTerminalPresetInput,
   ReorderSessionsInput,
   RenameSessionInput,
+  RenameWorkspaceInput,
   SetWorkThreadPinnedInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
@@ -47,6 +48,7 @@ export const channels = {
   deleteWorkThread: "work-thread:delete",
   createWorkspace: "workspace:create",
   listWorkspaceLinkCandidates: "workspace:list-link-candidates",
+  renameWorkspace: "workspace:rename",
   deleteWorkspace: "workspace:delete",
   openWorkspaceInVSCode: "workspace:open-in-vscode",
   openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
@@ -163,11 +165,14 @@ export const setWorkThreadPinnedSchema = z.object({
   pinned: z.boolean()
 }).strict();
 
+/** Workspace names become worktree directory and branch segments, so they stay path-safe. */
+export const workspaceNameSchema = z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/);
+
 const createWorkspaceBaseSchema = {
   workThreadId: z.string().min(1),
   projectId: z.string().min(1),
   deviceId: z.string().min(1),
-  name: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/)
+  name: workspaceNameSchema
 };
 
 export const createWorkspaceSchema = z.discriminatedUnion("kind", [
@@ -184,6 +189,11 @@ export const createWorkspaceSchema = z.discriminatedUnion("kind", [
 export const workspaceLinkInputSchema = z.object({
   projectId: z.string().min(1),
   deviceId: z.string().min(1)
+}).strict();
+
+export const renameWorkspaceSchema = z.object({
+  id: z.string().min(1),
+  name: workspaceNameSchema
 }).strict();
 
 export const createSessionSchema = z.object({
@@ -240,6 +250,7 @@ export interface DesktopBridge {
   deleteWorkThread(id: string): Promise<void>;
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
   listWorkspaceLinkCandidates(input: WorkspaceLinkInput): Promise<WorkspaceLinkCandidate[]>;
+  renameWorkspace(input: RenameWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   openWorkspaceInVSCode(id: string): Promise<void>;
   openWorkspaceTmuxInIterm(id: string): Promise<void>;

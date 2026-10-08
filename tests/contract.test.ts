@@ -1,7 +1,7 @@
 import { documentLinkSchema, saveWorkThreadDocumentSchema, MAX_WORK_THREAD_DOCUMENT_LENGTH } from "../src/shared/contract";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
+import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
   assert.equal(addProjectSchema.safeParse({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
@@ -52,6 +52,14 @@ test("RenameSession requires a bounded non-empty name", () => {
   assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "logs" }).success, true);
   assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "" }).success, false);
   assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "x".repeat(81) }).success, false);
+});
+
+test("RenameWorkspace keeps workspace names path-safe and trims whitespace", () => {
+  assert.deepEqual(renameWorkspaceSchema.parse({ id: "workspace-1", name: "  nvfp4-kernel  " }), { id: "workspace-1", name: "nvfp4-kernel" });
+  for (const name of ["", "x".repeat(81), "a/b", "a\\b", "spaced name", "日本語"]) {
+    assert.equal(renameWorkspaceSchema.safeParse({ id: "workspace-1", name }).success, false, name);
+  }
+  assert.equal(renameWorkspaceSchema.safeParse({ id: "workspace-1", name: "demo", kind: "main" }).success, false);
 });
 
 test("CreateSession supports managed terminal kinds and reorder validates workspace ownership input", () => {

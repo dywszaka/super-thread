@@ -14,6 +14,7 @@ import {
   workspaceLinkInputSchema,
   reorderSessionsSchema,
   renameSessionSchema,
+  renameWorkspaceSchema,
   setWorkThreadPinnedSchema,
   saveWorkThreadDocumentSchema,
   setupProjectSchema,
@@ -56,6 +57,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   ipcMain.handle(channels.deleteWorkThread, (_event, id) => service.deleteWorkThread(sessionIdSchema.parse(id)));
   ipcMain.handle(channels.createWorkspace, (_event, input) => service.createWorkspace(createWorkspaceSchema.parse(input)));
   ipcMain.handle(channels.listWorkspaceLinkCandidates, (_event, input) => service.listWorkspaceLinkCandidates(workspaceLinkInputSchema.parse(input)));
+  ipcMain.handle(channels.renameWorkspace, (_event, input) => service.renameWorkspace(renameWorkspaceSchema.parse(input)));
   ipcMain.handle(channels.deleteWorkspace, (_event, workspaceId, force) => service.deleteWorkspace(sessionIdSchema.parse(workspaceId), Boolean(force)));
   ipcMain.handle(channels.openWorkspaceInVSCode, async (_event, workspaceId) => {
     const url = vscodeWorkspaceUrl(service.snapshot(), sessionIdSchema.parse(workspaceId));

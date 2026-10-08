@@ -21,6 +21,7 @@ import type {
   Project,
   ReorderSessionsInput,
   RenameSessionInput,
+  RenameWorkspaceInput,
   Session,
   SessionActivityStatus,
   SetWorkThreadPinnedInput,
@@ -494,6 +495,26 @@ export class WorkspaceService extends EventEmitter {
       }
       throw error;
     }
+  }
+
+  /**
+   * Renames a workspace for display only. The worktree path, `work/*` branch, and tmux session
+   * name were fixed at creation, so renaming keeps every runtime identity intact.
+   */
+  async renameWorkspace(input: RenameWorkspaceInput): Promise<void> {
+    const snapshot = this.snapshot();
+    const workspace = this.workspace(snapshot, input.id);
+    const name = input.name.trim();
+    if (!name) throw new Error("Workspace name is required");
+    if (name === workspace.name) return;
+    if (snapshot.workspaces.some((item) => item.id !== workspace.id && item.deviceId === workspace.deviceId && item.name === name)) {
+      throw new Error(`A workspace named ${name} already exists on ${this.device(snapshot, workspace.deviceId).name}`);
+    }
+    await this.store.update((draft) => {
+      const item = draft.workspaces.find((candidate) => candidate.id === workspace.id);
+      if (item) Object.assign(item, { name, updatedAt: now() });
+    });
+    this.changed();
   }
 
   async deleteWorkspace(workspaceId: string, force = false): Promise<void> {

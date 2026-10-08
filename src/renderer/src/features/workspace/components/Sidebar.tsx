@@ -1,13 +1,20 @@
-import { Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pin, Plus, Server } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, WorkThread } from "@/shared/domain";
+import type { AppSnapshot, WorkThread, Workspace } from "@/shared/domain";
 import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
+import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
 
 interface WorkThreadMenuState {
   thread: WorkThread;
+  x: number;
+  y: number;
+}
+
+interface WorkspaceMenuState {
+  workspace: Workspace;
   x: number;
   y: number;
 }
@@ -36,10 +43,14 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   } = useWorkbenchStore();
   const resizing = useRef(false);
   const threadMenuRef = useRef<HTMLDivElement>(null);
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const [threadMenu, setThreadMenu] = useState<WorkThreadMenuState | null>(null);
+  const [workspaceMenu, setWorkspaceMenu] = useState<WorkspaceMenuState | null>(null);
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
   const [threadMenuBusy, setThreadMenuBusy] = useState(false);
   const activeThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
   const allActiveWorkspaces = useMemo(() => visibleWorkspaces(snapshot, { type: "all-workspaces" }), [snapshot]);
+  const editingWorkspace = snapshot.workspaces.find((workspace) => workspace.id === editingWorkspaceId);
 
   useEffect(() => {
     const move = (event: PointerEvent): void => { if (resizing.current) setSidebarWidth(event.clientX); };
@@ -53,14 +64,16 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   }, [setSidebarWidth]);
 
   useEffect(() => {
-    if (!threadMenu) return;
+    if (!threadMenu && !workspaceMenu) return;
     const close = (event: PointerEvent): void => {
-      if (!threadMenuRef.current?.contains(event.target as Node)) setThreadMenu(null);
+      const target = event.target as Node;
+      if (!threadMenuRef.current?.contains(target)) setThreadMenu(null);
+      if (!workspaceMenuRef.current?.contains(target)) setWorkspaceMenu(null);
     };
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setThreadMenu(null);
+      if (event.key === "Escape") { setThreadMenu(null); setWorkspaceMenu(null); }
     };
-    const closeOnBlur = (): void => setThreadMenu(null);
+    const closeOnBlur = (): void => { setThreadMenu(null); setWorkspaceMenu(null); };
     window.addEventListener("pointerdown", close);
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("blur", closeOnBlur);
@@ -69,17 +82,37 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
       window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("blur", closeOnBlur);
     };
-  }, [threadMenu]);
+  }, [threadMenu, workspaceMenu]);
 
   const openThreadMenu = (event: React.MouseEvent, thread: WorkThread): void => {
     event.preventDefault();
     const width = 184;
     const height = 92;
+    setWorkspaceMenu(null);
     setThreadMenu({
       thread,
       x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
       y: Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6))
     });
+  };
+
+  const openWorkspaceMenu = (event: React.MouseEvent, workspace: Workspace): void => {
+    event.preventDefault();
+    const width = 184;
+    const height = 44;
+    setThreadMenu(null);
+    setWorkspaceMenu({
+      workspace,
+      x: Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6)),
+      y: Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6))
+    });
+  };
+
+  const editWorkspace = (): void => {
+    const workspace = workspaceMenu?.workspace;
+    if (!workspace) return;
+    setWorkspaceMenu(null);
+    setEditingWorkspaceId(workspace.id);
   };
 
   const setPinned = async (pinned: boolean): Promise<void> => {
@@ -147,7 +180,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                   {workspaces.map((workspace) => {
                     const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
                     const Icon = device?.type === "remote" ? Server : Laptop;
-                    return <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><Icon size={13} /><span><strong>{workspace.name}</strong><small>{workspaceProjectName(snapshot, workspace)}</small></span></button>;
+                    return <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><Icon size={13} /><span><strong>{workspace.name}</strong><small>{workspaceProjectName(snapshot, workspace)}</small></span></button>;
                   })}
                 </div>}
               </div>
@@ -169,7 +202,17 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
         <div className="context-menu-separator" />
         <button type="button" disabled={threadMenuBusy} onClick={() => void archiveThread()}><Archive size={13} /><span>Archive work thread</span></button>
       </div>}
+      {workspaceMenu && <div
+        ref={workspaceMenuRef}
+        className="work-thread-context-menu no-drag"
+        role="menu"
+        aria-label={`${workspaceMenu.workspace.name} actions`}
+        style={{ left: workspaceMenu.x, top: workspaceMenu.y }}
+      >
+        <button type="button" onClick={editWorkspace}><Pencil size={13} /><span>Edit workspace…</span></button>
+      </div>}
       <div className="sidebar-resize no-drag" onPointerDown={(event) => { resizing.current = true; event.currentTarget.setPointerCapture(event.pointerId); }} />
+      <EditWorkspaceDialog snapshot={snapshot} workspace={editingWorkspace} onClose={() => setEditingWorkspaceId(null)} />
     </aside>
   );
 }

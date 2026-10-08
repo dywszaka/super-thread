@@ -566,6 +566,13 @@ interface Workspace {
 }
 ```
 
+规则：
+
+- Workspace 名称在创建时决定 worktree 路径与 `work/{workspace-name}` 分支，且在同一 Device 上唯一。
+- 侧栏右键 Workspace 可编辑 Workspace 信息；只有名称可以修改，Project、Device、路径、分支与 Base branch 均只读。
+- 重命名只更新展示名称与 `updatedAt`，不重命名目录、不改分支、不改 tmux session 名称，也不影响已存在的 Session 与其工作目录。
+- 重命名后的名称仍受与创建相同的约束：去除首尾空格、不能为空、不超过 80 个字符，只允许字母、数字、`.`、`_`、`-`，且不能与同一 Device 上其他 Workspace 重名。
+
 ---
 
 # 11. Workspace Creation
@@ -999,7 +1006,7 @@ Work Threads
 ▸ Benchmarks
 ```
 
-Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
+Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档；展开后的 Workspace 提供右键菜单，用于编辑 Workspace 信息，其中只有名称可以修改。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：
 
@@ -1331,6 +1338,7 @@ project.status()
 ```text
 workspace.list()
 workspace.create()
+workspace.rename()
 workspace.delete()
 workspace.status()
 ```
@@ -1546,6 +1554,7 @@ automatic tunnel reconnect after network loss or system wake
 ```text
 create
 list
+rename
 switch
 delete
 open in VS Code (local and Remote-SSH)

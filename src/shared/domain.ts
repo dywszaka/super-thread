@@ -223,6 +223,12 @@ export type CreateWorkspaceInput =
 export interface WorkspaceLinkInput { projectId: string; deviceId: string; }
 export interface WorkspaceLinkCandidate { path: string; kind: "file" | "directory"; }
 
+/** Renames a workspace for display only; path, branch, and tmux session identity stay unchanged. */
+export interface RenameWorkspaceInput {
+  id: string;
+  name: string;
+}
+
 export interface CreateSessionInput {
   workspaceId: string;
   name?: string;

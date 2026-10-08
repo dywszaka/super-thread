@@ -151,6 +151,41 @@ test("deleting the final workspace leaves its WorkThread intact", async () => {
   assert.equal(service.snapshot().workThreads[0]?.id, threadId);
 });
 
+test("renaming a workspace changes only its display name", async () => {
+  const { service, store } = await setup();
+  await store.update((draft) => {
+    addReadyWorkspace(draft);
+    const workspace = draft.workspaces.find((item) => item.id === "workspace-dev_local");
+    if (workspace) workspace.tmuxSessionName = "demo";
+  });
+
+  await service.renameWorkspace({ id: "workspace-dev_local", name: "  nvfp4-kernel  " });
+
+  const workspace = service.snapshot().workspaces[0];
+  assert.equal(workspace?.name, "nvfp4-kernel");
+  assert.equal(workspace?.path, "/tmp/demo-worktree");
+  assert.equal(workspace?.branch, "work/demo");
+  assert.equal(workspace?.baseBranch, "main");
+  assert.equal(workspace?.tmuxSessionName, "demo");
+});
+
+test("renaming a workspace rejects an empty, unknown, or device-duplicate name", async () => {
+  const { service, store } = await setup();
+  await store.update((draft) => {
+    addReadyWorkspace(draft);
+    draft.workspaces.push({
+      id: "workspace-2", name: "benchmark", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
+      checkoutId: "checkout-1", path: "/tmp/benchmark", branch: "work/benchmark", baseBranch: "main",
+      status: "ready", createdAt: "now", updatedAt: "now"
+    });
+  });
+
+  await assert.rejects(() => service.renameWorkspace({ id: "workspace-dev_local", name: "   " }), /name is required/);
+  await assert.rejects(() => service.renameWorkspace({ id: "workspace-missing", name: "other" }), /Workspace not found/);
+  await assert.rejects(() => service.renameWorkspace({ id: "workspace-dev_local", name: "benchmark" }), /already exists on/);
+  assert.equal(service.snapshot().workspaces.map((workspace) => workspace.name).join(","), "demo,benchmark");
+});
+
 test("failed workspace creation removes the pending workspace record", async () => {
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),

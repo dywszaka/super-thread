@@ -32,7 +32,7 @@ Work Thread
 | 项目管理 | 导入 Git 仓库、本机 Clone、项目重命名与删除 | 已实现 |
 | 设备管理 | 本机自动注册、SSH 远程设备增删改、连接检测 | 已实现 |
 | SSH 隧道 | 本地转发、反向转发、断线重连、唤醒重连 | 已实现 |
-| Workspace | 按 Work Thread × Project × Device 创建隔离 worktree | 已实现 |
+| Workspace | 按 Work Thread × Project × Device 创建隔离 worktree，侧栏右键重命名 | 已实现 |
 | Workspace 安全删除 | 脏文件、未跟踪文件、未合并提交检查及强制删除确认 | 已实现 |
 | 终端 | shell / Codex / tmux 会话创建、切换、恢复、关闭 | 已实现 |
 | 会话管理 | 重命名、拖拽排序、状态提示、输出回放、未读结果 | 已实现 |
@@ -159,7 +159,16 @@ Project 按规范化后的 Git remote 去重。同一个逻辑 Project 可以在
 - 可从 All workspaces、指定 Work Thread 或指定 Project 范围筛选 Workspace。
 - 已归档 Work Thread 下的 Workspace 不出现在活跃 Workspace 视图中。
 
-### 6.3 失败回滚与安全删除
+### 6.3 重命名与信息查看
+
+- 侧栏展开某个 Work Thread 后，可右键 Workspace 打开右键菜单。
+- 右键菜单提供 Edit workspace…，打开 Workspace 信息弹窗。
+- 弹窗中只有 Name 可编辑，Work Thread、Project、Device、Branch 与 Path 均为只读展示。
+- 名称校验与创建一致：去除首尾空格、不能为空、最长 80 个字符，仅允许字母、数字、`.`、`_`、`-`。
+- 同一 Device 上不允许出现重名 Workspace。
+- 重命名只更新展示名称，不重命名 worktree 目录、不修改 `work/*` 分支、不改变 tmux session 名称，也不影响已有 Session 及其工作目录。
+
+### 6.4 失败回滚与安全删除
 
 - worktree 或首个终端创建失败时，会尝试自动回滚已创建的 worktree、分支和元数据。
 - 若自动回滚也失败，会保留 `error` 状态及错误详情，避免静默丢失现场。
@@ -170,7 +179,7 @@ Project 按规范化后的 Git remote 去重。同一个逻辑 Project 可以在
 - 存在风险时默认阻止删除，并列出原因；用户二次确认后可强制删除。
 - 删除会移除 worktree、`work/*` 分支及其 Session 记录。
 
-### 6.4 外部打开
+### 6.5 外部打开
 
 - 支持一键在 Visual Studio Code 中打开 Workspace。
 - 本机 Workspace 使用 `vscode://file`。
@@ -226,6 +235,7 @@ Project 按规范化后的 Git remote 去重。同一个逻辑 Project 可以在
 
 - 左侧栏提供 All workspaces、All projects、All work threads、All devices 四个一级入口。
 - Work Thread 树可展开 Workspace，并同时显示所属 Project 名称和本地/远程设备图标。
+- 右键展开的 Workspace 可打开信息弹窗，其中仅名称可修改。
 - 侧栏支持拖动调整宽度，范围为 184–340 px；也可折叠和重新展开。
 - 侧栏范围、宽度、展开节点、当前 Workspace 和各 Workspace 当前 Session 会保存在本地 UI 状态中。
 - Workspace 之间切换时，各终端视图保持挂载，减少重复 attach 和界面状态丢失。
@@ -325,7 +335,7 @@ Add Device（SSH）
 - 由应用在远程设备上执行 Git Clone；远程项目需先有可导入的仓库目录。
 - Project checkout 的独立删除 UI；目前 checkout 随 Project 记录一并清理，且不会删除磁盘仓库。
 - Work Thread 重命名。
-- Workspace 重命名、跨 Work Thread 移动或跨 Device 迁移。
+- Workspace 跨 Work Thread 移动或跨 Device 迁移。
 - 普通 shell 在 App 完全退出后的进程级续接；Resume 会新建 shell。
 - 完整终端历史的长期存档；运行时只保留有限输出缓冲。
 - SSH 隧道运行状态、错误原因和重连次数的独立可视化页面。
@@ -340,4 +350,4 @@ Add Device（SSH）
 4. **“持久终端”预期**：窗口关闭可持续运行，但 App 完全退出后不同 Session 类型的恢复能力不同，产品文案需避免过度承诺。
 5. **危险操作体验**：Workspace 强制删除会同时删除 worktree 与工作分支，二次确认和风险信息是否足够明确。
 6. **状态可见性**：Session 的 busy / waiting / unread 已落地，但 SSH 隧道健康度仍不可见。
-7. **对象管理完整性**：Work Thread、Project、Device 已有列表页；checkout 与 Workspace 的编辑/迁移能力仍有限。
+7. **对象管理完整性**：Work Thread、Project、Device 已有列表页；Workspace 已支持侧栏右键重命名，checkout 删除与 Workspace 迁移能力仍有限。
