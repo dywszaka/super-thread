@@ -62,3 +62,14 @@ test("GitRuntime reports workspace deletion risk and removes worktree plus branc
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("worktree remove --force /work/demo")));
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("branch -D work/feature-x")));
 });
+
+for (const [device, deviceConnection] of [[local, connection], [remote, remoteConnection]] as const) {
+  test(`GitRuntime refuses to remove the base checkout on ${device.type} devices`, async () => {
+    const runner = new FakeRunner();
+    const runtime = new GitRuntime(device, deviceConnection, runner);
+    for (const force of [false, true]) {
+      await assert.rejects(() => runtime.deleteWorktree("/code/demo", "/code/demo/./", "main", force), /Cannot delete the base checkout/);
+    }
+    assert.deepEqual(runner.calls, []);
+  });
+}

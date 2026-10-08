@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
+import { posix } from "node:path";
 import type {
   AddProjectInput,
   AddRemoteDeviceInput,
@@ -546,14 +547,15 @@ export class WorkspaceService extends EventEmitter {
       await this.removeWorkspaceMetadata(workspaceId, workspace.workThreadId);
       return;
     }
-    if (workspace.kind === "main") {
+    const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
+    // Older or inconsistent records must never send the base checkout through worktree deletion.
+    if (workspace.kind === "main" || (checkout && posix.resolve(workspace.path) === posix.resolve(checkout.path))) {
       for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
         this.terminals.kill(session.id);
       }
       await this.removeWorkspaceMetadata(workspaceId, workspace.workThreadId);
       return;
     }
-    const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
     if (!checkout) throw new Error("Base checkout no longer exists");
     const device = this.device(snapshot, workspace.deviceId);
     const runtime = this.git(snapshot, device);

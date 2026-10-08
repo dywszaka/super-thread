@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { nextTmuxSessionName, tmuxSessionBaseName, WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
-import type { CommandRunner } from "../src/main/runtime/command-runner";
+import { ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
 import type { ExternalTerminalRuntime } from "../src/main/runtime/iterm-runtime";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot, type Session } from "../src/shared/domain";
@@ -299,6 +299,68 @@ test("deleting a legacy failed workspace only removes its metadata", async () =>
 
   assert.equal(gitCalled, false);
   assert.deepEqual(service.snapshot().workspaces, []);
+});
+
+for (const kind of [undefined, "worktree"] as const) {
+  for (const force of [false, true]) {
+    test(`deleting a base-checkout workspace preserves Git when kind=${kind}, force=${force}`, async () => {
+      const killed: string[] = [];
+      const terminals = fakeTerminals();
+      terminals.kill = (id) => { killed.push(id); };
+      const fakeGit: WorkspaceGitRuntime = {
+        inspect: async () => { throw new Error("Must not inspect the base checkout"); },
+        clone: async () => { throw new Error("Must not clone"); },
+        listWorkspaceLinkCandidates: async () => [],
+        linkWorktreePaths: async () => {},
+        createWorktree: async () => { throw new Error("Must not create a worktree"); },
+        inspectWorkspaceDeleteRisk: async () => { throw new Error("Must not inspect deletion risk"); },
+        deleteWorktree: async () => { throw new Error("Must not delete the base checkout or its branch"); }
+      };
+      const { service, store } = await setup(fakeGit, terminals);
+      const ids = workspaceFixture();
+      await store.update((draft) => {
+        addReadyWorkspace(draft, ids);
+        Object.assign(draft.workspaces[0]!, { kind, path: "/tmp/demo/./", branch: "main" });
+        draft.sessions.push({ id: "main-session", workspaceId: ids.workspaceId, name: "Terminal 1", status: "running", shell: "/bin/zsh", createdAt: "now" });
+        draft.sessions.push({ id: "other-session", workspaceId: "other-workspace", name: "Terminal 2", status: "running", shell: "/bin/zsh", createdAt: "now" });
+      });
+      const checkout = service.snapshot().checkouts[0];
+      const project = service.snapshot().projects[0];
+
+      await service.deleteWorkspace(ids.workspaceId, force);
+
+      assert.deepEqual(killed, ["main-session"]);
+      assert.deepEqual(service.snapshot().workspaces, []);
+      assert.deepEqual(service.snapshot().sessions.map((item) => item.id), ["other-session"]);
+      assert.deepEqual(service.snapshot().checkouts, [checkout]);
+      assert.deepEqual(service.snapshot().projects, [project]);
+    });
+  }
+}
+
+test("deleting main and legacy base-checkout workspaces preserves a real repository and its files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-main-delete-"));
+  const runner = new ProcessCommandRunner();
+  await runner.run("git", ["init", "-b", "main", directory]);
+  await writeFile(join(directory, "local-work.txt"), "keep my work", "utf8");
+  for (const kind of ["main", undefined] as const) {
+    for (const force of [false, true]) {
+      const { service, store } = await setup(undefined, fakeTerminals());
+      const ids = workspaceFixture();
+      await store.update((draft) => {
+        addReadyWorkspace(draft, ids);
+        draft.checkouts[0]!.path = directory;
+        Object.assign(draft.workspaces[0]!, { kind, path: directory, branch: "main" });
+      });
+
+      await service.deleteWorkspace(ids.workspaceId, force);
+
+      assert.deepEqual(service.snapshot().workspaces, []);
+      assert.equal(service.snapshot().checkouts[0]?.path, directory);
+      assert.equal(await readFile(join(directory, "local-work.txt"), "utf8"), "keep my work");
+      assert.equal((await runner.run("git", ["-C", directory, "branch", "--show-current"])).stdout, "main");
+    }
+  }
 });
 
 test("worktree links are created before its first session", async () => {

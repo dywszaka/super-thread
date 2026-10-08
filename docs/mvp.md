@@ -706,7 +706,9 @@ Done
 
 # 13. Workspace Delete
 
-删除 Workspace：
+删除 `main` Workspace 只停止其 Session 并删除 Workspace 与 Session metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
+
+删除 `worktree` Workspace：
 
 1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）
 2. 停止所有 Session
@@ -835,6 +837,12 @@ Codex 与 Workspace tmux 的可用性探测、创建必须使用 Device 用户�
 Terminal 输入必须保留 xterm 的原生 IME composition 处理，以支持中文输入法的全角标点等
 非 ASCII 字符。Codex Session 中 `Shift+Enter` 插入换行而不提交 prompt；普通 `Enter`
 继续提交，shell Session 的按键行为保持终端默认语义。
+
+普通 shell Session 的周期性活动检查只查询进程组；本地不得启动登录 shell，远端通过 SSH
+直接执行 `ps`，不得反复加载交互式登录 shell 的初始化文件，避免触发自动 tmux attach
+或重复创建长期存活的 SSH agent。
+Codex conversation 查询只在首次检查时解析一次登录 shell 中的 `CODEX_HOME`，后续直接读取
+同一路径的 session index；查询不得并发重叠，解析失败后也不得周期性重跑 shell 初始化。
 
 创建普通 Session：
 

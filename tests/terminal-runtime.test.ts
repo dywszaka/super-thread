@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { codexActivityFromOutput, codexConversationIdFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, latestCodexConversationIdFromSessionIndex, sshTerminalArgs, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
-import type { Session } from "../src/shared/domain";
+import type { Device, DeviceConnection, Session } from "../src/shared/domain";
 
 test("managed tools run through the user's interactive login shell", () => {
   assert.equal(quoteShellArgument("it's here"), `'it'\\''s here'`);
@@ -34,6 +34,40 @@ test("foreground process groups distinguish an idle shell from an occupying comm
   assert.equal(foregroundProcessIsBusy(" 123 123\n"), false);
   assert.equal(foregroundProcessIsBusy(" 123 456\n"), true);
   assert.equal(foregroundProcessIsBusy(""), false);
+});
+
+test("remote shell polling bypasses interactive startup and tracks foreground work", async () => {
+  const calls: Array<{ program: string; args: string[] }> = [];
+  let output = "123 456\n";
+  const runtime = new TerminalRuntime(async (program, args) => {
+    calls.push({ program, args });
+    return output;
+  });
+  const internal = runtime as unknown as {
+    sessions: Map<string, unknown>;
+    probeActivity(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
+  };
+  const session: Session = { id: "remote-shell", workspaceId: "workspace-1", name: "Terminal", status: "running", kind: "shell", shell: "zsh", createdAt: "now" };
+  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example", user: "builder", port: 2222 } };
+  const live = { pty: { pid: 999 }, remotePid: 123, activityStatus: "idle", probing: false };
+  internal.sessions.set(session.id, live);
+  const events: unknown[] = [];
+  runtime.on("activity", (event) => events.push(event));
+
+  await internal.probeActivity(session, live, device, connection);
+  output = "123 123\n";
+  await internal.probeActivity(session, live, device, connection);
+
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.program, "ssh");
+    assert.deepEqual(call.args.slice(-4), ["-p", "2222", "builder@example", "ps -o pgid= -o tpgid= -p 123"]);
+  }
+  assert.deepEqual(events, [
+    { sessionId: session.id, activityStatus: "busy", resultReady: false },
+    { sessionId: session.id, activityStatus: "idle", resultReady: true }
+  ]);
 });
 
 test("tmux pane commands distinguish a shell prompt from an occupying command", () => {
@@ -150,4 +184,56 @@ test("a foreground command returning to idle marks a generic terminal result rea
   internal.setActivity("shell-1", { activityStatus: "busy" }, "idle");
 
   assert.deepEqual(events, [{ sessionId: "shell-1", activityStatus: "idle", resultReady: true }]);
+});
+
+test("Codex index polling resolves custom CODEX_HOME once and prevents overlapping probes", async () => {
+  const calls: string[] = [];
+  let release: (value: string) => void = () => {};
+  const resolving = new Promise<string>((resolve) => { release = resolve; });
+  const runtime = new TerminalRuntime(async (_program, args) => {
+    calls.push(args.at(-1)!);
+    return calls.length === 1 ? resolving : "";
+  });
+  const internal = runtime as unknown as {
+    sessions: Map<string, unknown>;
+    probeCodexConversationId(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
+  };
+  const session: Session = { id: "codex-probe", workspaceId: "workspace-1", name: "Codex", status: "running", kind: "codex", shell: "zsh", createdAt: "now" };
+  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example" } };
+  const live = {};
+  internal.sessions.set(session.id, live);
+  const probe = () => internal.probeCodexConversationId(session, live, device, connection);
+  const first = probe();
+  await probe();
+  assert.equal(calls.length, 1);
+  release("startup notice\n/custom codex/session_index.jsonl\n");
+  await first;
+  await probe();
+  assert.equal(calls.length, 3);
+  assert.match(calls[0]!, /-lic/);
+  for (const command of calls.slice(1)) {
+    assert.match(command, /file='\/custom codex\/session_index.jsonl'/);
+    assert.doesNotMatch(command, /-lic/);
+  }
+});
+
+test("failed Codex path resolution does not repeat login startup on later polls", async () => {
+  const calls: string[] = [];
+  const runtime = new TerminalRuntime(async (_program, args) => {
+    calls.push(args.at(-1)!);
+    throw new Error("connection interrupted");
+  });
+  const internal = runtime as unknown as {
+    sessions: Map<string, unknown>;
+    probeCodexConversationId(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
+  };
+  const session: Session = { id: "codex-failed-probe", workspaceId: "workspace-1", name: "Codex", status: "running", kind: "codex", shell: "zsh", createdAt: "now" };
+  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example" } };
+  const live = {};
+  internal.sessions.set(session.id, live);
+  for (let i = 0; i < 3; i++) await internal.probeCodexConversationId(session, live, device, connection);
+  assert.equal(calls.filter((command) => command.includes("-lic")).length, 1);
+  assert.equal(calls.length, 3);
 });
