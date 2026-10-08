@@ -9,6 +9,8 @@ import type {
   CreateWorkThreadInput,
   CreateWorkspaceInput,
   DirectoryListing,
+  SaveTerminalPresetInput,
+  DeleteTerminalPresetInput,
   ReorderSessionsInput,
   RenameSessionInput,
   SetWorkThreadPriorityInput,
@@ -45,6 +47,8 @@ export const channels = {
   openWorkspaceInVSCode: "workspace:open-in-vscode",
   openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
   createSession: "session:create",
+  saveTerminalPreset: "device:save-terminal-preset",
+  deleteTerminalPreset: "device:delete-terminal-preset",
   setFocusMode: "window:set-focus-mode",
   resumeSession: "session:resume",
   reorderSessions: "session:reorder",
@@ -175,7 +179,20 @@ export const createWorkspaceSchema = z.discriminatedUnion("kind", [
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().trim().min(1).max(80).optional(),
-  kind: z.enum(["shell", "codex"]).optional()
+  kind: z.enum(["shell", "codex"]).optional(),
+  terminalPresetId: z.string().min(1).optional()
+}).strict().refine((input) => !input.terminalPresetId || !input.kind || input.kind === "shell", "Custom terminals must use a shell");
+
+export const saveTerminalPresetSchema = z.object({
+  deviceId: z.string().min(1),
+  id: z.string().min(1).optional(),
+  name: z.string().trim().min(1).max(80),
+  path: z.string().trim().min(1).max(4096).refine((path) => !/[\u0000\r\n]/.test(path), "Invalid directory path")
+}).strict();
+
+export const deleteTerminalPresetSchema = z.object({
+  deviceId: z.string().min(1),
+  id: z.string().min(1)
 }).strict();
 
 export const renameSessionSchema = z.object({
@@ -216,6 +233,8 @@ export interface DesktopBridge {
   openWorkspaceInVSCode(id: string): Promise<void>;
   openWorkspaceTmuxInIterm(id: string): Promise<void>;
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
+  saveTerminalPreset(input: SaveTerminalPresetInput): Promise<void>;
+  deleteTerminalPreset(input: DeleteTerminalPresetInput): Promise<void>;
   setFocusMode(enabled: boolean): void;
   resumeSession(id: string): Promise<void>;
   reorderSessions(input: ReorderSessionsInput): Promise<void>;

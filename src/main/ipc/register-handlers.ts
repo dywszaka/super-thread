@@ -7,6 +7,8 @@ import {
   channels,
   documentLinkSchema,
   createSessionSchema,
+  saveTerminalPresetSchema,
+  deleteTerminalPresetSchema,
   createWorkThreadSchema,
   createWorkspaceSchema,
   reorderSessionsSchema,
@@ -59,6 +61,8 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   });
   ipcMain.handle(channels.openWorkspaceTmuxInIterm, (_event, workspaceId) => service.openWorkspaceTmuxInIterm(sessionIdSchema.parse(workspaceId)));
   ipcMain.handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
+  ipcMain.handle(channels.saveTerminalPreset, (_event, input) => service.saveTerminalPreset(saveTerminalPresetSchema.parse(input)));
+  ipcMain.handle(channels.deleteTerminalPreset, (_event, input) => service.deleteTerminalPreset(deleteTerminalPresetSchema.parse(input)));
   ipcMain.on(channels.setFocusMode, (event, enabled) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     owner?.setWindowButtonPosition({ x: 16, y: z.boolean().parse(enabled) ? 13 : 18 });

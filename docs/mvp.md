@@ -798,6 +798,10 @@ Codex 必须基于最近的累计终端输出判断，不能让输入框之后�
 
 # 15. Terminal Runtime
 
+Workspace 的新建 Terminal 菜单提供 `Custom…`，可创建、编辑和删除 Device 下的自定义终端入口。每个入口包含名称和启动目录，名称在同一 Device 下忽略大小写唯一；不同 Device 可使用相同名称。入口作为 Device 配置持久化，不引入新的顶级领域对象。Workspace 菜单只显示其所属 Device 的入口，同一 Device 的多个 Workspace 复用同一组入口。
+
+点击入口会在该 Workspace 中新建普通 shell Session，由 Workspace 所属 Device 在指定目录启动。保存和启动时均验证目录存在并可访问，`~` 按所属 Device 的用户 home 解析；目录不存在、Device 不可用或入口不属于当前 Device 时显示错误，不回退到 Workspace 目录。Session 保存实际启动目录，恢复时继续使用该目录。编辑或删除入口不影响已创建的 Session，也不修改 Workspace 的路径、worktree 或 Git 分支。
+
 创建 Session 可以选择两种 managed Terminal 类型：
 
 - `shell`：普通 Terminal，在 Workspace 当前目录启动 shell。

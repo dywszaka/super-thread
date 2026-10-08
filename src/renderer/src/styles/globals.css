@@ -284,3 +284,10 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .thread-document-editor .w-md-editor-text { padding: 20px; }
 .thread-document-editor textarea { -webkit-app-region: no-drag; }
 @media (max-width: 1000px) { .thread-document-toolbar > span { display: none; }.thread-document-toolbar { justify-content: flex-end; }.thread-document-actions { gap: 8px; }.document-save-status { max-width: 110px; } }
+
+.custom-terminal-selection { display: flex; gap: 7px; min-width: 0; }
+.custom-terminal-selection select { min-width: 0; flex: 1; }
+.custom-terminal-fields { display: grid; gap: 14px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.terminal-kind-menu { width: 220px; max-width: calc(100vw - 40px); max-height: min(420px, 60vh); overflow-y: auto; }
+.terminal-kind-menu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-kind-menu button svg { flex: none; }

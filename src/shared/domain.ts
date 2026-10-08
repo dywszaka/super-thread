@@ -10,7 +10,7 @@ export type SessionKind = ManagedSessionKind | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export interface WorkThread {
   id: string;
@@ -39,6 +39,26 @@ export interface Device {
   type: "local" | "remote";
   status: DeviceStatus;
   createdAt: string;
+  terminalPresets?: TerminalPreset[];
+}
+
+/** Reusable shell launch configuration owned by a device. */
+export interface TerminalPreset {
+  id: string;
+  name: string;
+  path: string;
+}
+
+export interface SaveTerminalPresetInput {
+  deviceId: string;
+  id?: string;
+  name: string;
+  path: string;
+}
+
+export interface DeleteTerminalPresetInput {
+  deviceId: string;
+  id: string;
 }
 
 export type SshTunnelDirection = "local-to-remote" | "remote-to-local";
@@ -206,6 +226,7 @@ export interface CreateSessionInput {
   workspaceId: string;
   name?: string;
   kind?: ManagedSessionKind;
+  terminalPresetId?: string;
 }
 
 export interface RenameSessionInput {

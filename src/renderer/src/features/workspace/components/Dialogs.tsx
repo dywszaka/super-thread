@@ -10,7 +10,7 @@ import { SshTunnelFields } from "./SshTunnelFields";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
-function DirectoryField({ value, onChange, remote, deviceId, placeholder }: { value: string; onChange(value: string): void; remote?: boolean; deviceId?: string; placeholder: string }): ReactNode {
+export function DirectoryField({ value, onChange, remote, deviceId, placeholder }: { value: string; onChange(value: string): void; remote?: boolean; deviceId?: string; placeholder: string }): ReactNode {
   const [open, setOpen] = useState(false);
   const [listing, setListing] = useState<DirectoryListing | null>(null);
   const [loading, setLoading] = useState(false);

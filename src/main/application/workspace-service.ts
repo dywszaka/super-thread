@@ -13,6 +13,8 @@ import type {
   Device,
   DeviceConnection,
   DirectoryListing,
+  SaveTerminalPresetInput,
+  DeleteTerminalPresetInput,
   ManagedSessionKind,
   Project,
   ReorderSessionsInput,
@@ -226,6 +228,32 @@ export class WorkspaceService extends EventEmitter {
     } catch (error) {
       throw new Error(`Unable to list directories on ${device.name}: ${this.message(error)}`);
     }
+  }
+
+  async saveTerminalPreset(input: SaveTerminalPresetInput): Promise<void> {
+    const name = input.name.trim();
+    const directory = await this.browseDirectory({ deviceId: input.deviceId, path: input.path });
+    await this.store.update((draft) => {
+      const device = this.device(draft, input.deviceId);
+      const presets = device.terminalPresets ?? [];
+      const existing = input.id ? presets.find((preset) => preset.id === input.id) : undefined;
+      if (input.id && !existing) throw new Error("Custom terminal entry no longer exists on this device");
+      if (presets.some((preset) => preset.id !== input.id && canonicalName(preset.name) === canonicalName(name))) {
+        throw new Error(`A custom terminal named ${name} already exists on ${device.name}`);
+      }
+      if (existing) Object.assign(existing, { name, path: directory.path });
+      else presets.push({ id: id("terminal"), name, path: directory.path });
+      device.terminalPresets = presets;
+    });
+    this.changed();
+  }
+
+  async deleteTerminalPreset(input: DeleteTerminalPresetInput): Promise<void> {
+    await this.store.update((draft) => {
+      const device = this.device(draft, input.deviceId);
+      device.terminalPresets = device.terminalPresets?.filter((preset) => preset.id !== input.id);
+    });
+    this.changed();
   }
 
   async addProject(input: AddProjectInput): Promise<void> {
@@ -506,7 +534,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
-    const key = `${input.workspaceId}:${input.kind ?? "shell"}:${input.name?.trim() ?? ""}`;
+    const key = JSON.stringify([input.workspaceId, input.kind ?? "shell", input.name?.trim() ?? "", input.terminalPresetId]);
     const pending = this.pendingSessionCreations.get(key);
     if (pending) return pending;
     const creation = this.createSessionOnce(input).finally(() => {
@@ -523,6 +551,10 @@ export class WorkspaceService extends EventEmitter {
     const device = this.device(snapshot, workspace.deviceId);
     const connection = this.connection(snapshot, device.id);
     const count = snapshot.sessions.filter((item) => item.workspaceId === workspace.id).length;
+    const preset = input.terminalPresetId ? device.terminalPresets?.find((item) => item.id === input.terminalPresetId) : undefined;
+    if (input.terminalPresetId && !preset) throw new Error("Custom terminal entry does not exist on this workspace’s device");
+    if (preset && input.kind && input.kind !== "shell") throw new Error("Custom terminals must use a shell");
+    const cwd = preset ? (await this.browseDirectory({ deviceId: device.id, path: preset.path })).path : workspace.path;
     const requestedKind = input.kind ?? "shell";
     const { kind, warning } = await this.resolveSessionKind(snapshot, workspace, device, requestedKind);
     const timestamp = now();
@@ -530,12 +562,12 @@ export class WorkspaceService extends EventEmitter {
     const session: Session = {
       id: sessionId,
       workspaceId: workspace.id,
-      name: input.name || this.defaultSessionName(kind, count + 1),
+      name: preset?.name || input.name || this.defaultSessionName(kind, count + 1),
       status: "running",
       kind,
       order: this.nextSessionOrder(snapshot, workspace.id),
       shell: this.sessionShellLabel(kind, device),
-      cwd: workspace.path,
+      cwd,
       activityStatus: "idle",
       ...(warning ? { fallbackMessage: warning } : {}),
       createdAt: timestamp
