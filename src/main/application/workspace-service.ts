@@ -22,6 +22,7 @@ import type {
   ReorderSessionsInput,
   RenameSessionInput,
   RenameWorkspaceInput,
+  RenameWorkThreadInput,
   Session,
   SessionActivityStatus,
   SetWorkThreadPinnedInput,
@@ -346,6 +347,24 @@ export class WorkspaceService extends EventEmitter {
         createdAt: timestamp,
         updatedAt: timestamp
       });
+    });
+    this.changed();
+  }
+
+  async renameWorkThread(input: RenameWorkThreadInput): Promise<void> {
+    const name = input.name.trim();
+    if (!name) throw new Error("Work thread name is required");
+    if (name.length > 80) throw new Error("Work thread name must be 80 characters or fewer");
+    const snapshot = this.snapshot();
+    const thread = this.workThread(snapshot, input.id);
+    if (thread.name === name) return;
+    if (snapshot.workThreads.some((item) => item.id !== input.id && canonicalName(item.name) === canonicalName(name))) {
+      throw new Error(`A work thread named ${name} already exists`);
+    }
+    await this.store.update((draft) => {
+      const item = this.workThread(draft, input.id);
+      item.name = name;
+      item.updatedAt = now();
     });
     this.changed();
   }

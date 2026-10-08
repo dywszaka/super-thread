@@ -17,6 +17,7 @@ import type {
   ReorderSessionsInput,
   RenameSessionInput,
   RenameWorkspaceInput,
+  RenameWorkThreadInput,
   SetWorkThreadPinnedInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
@@ -41,6 +42,7 @@ export const channels = {
   deleteProject: "project:delete",
   setupProject: "project:setup",
   createWorkThread: "work-thread:create",
+  renameWorkThread: "work-thread:rename",
   setWorkThreadPinned: "work-thread:set-pinned",
   saveWorkThreadDocument: "work-thread:save-document",
   archiveWorkThread: "work-thread:archive",
@@ -148,6 +150,11 @@ export const createWorkThreadSchema = z.object({
   name: z.string().trim().min(1).max(80)
 }).strict();
 
+export const renameWorkThreadSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(80)
+}).strict();
+
 export const documentLinkSchema = z.string().url().refine((url) => {
   try { return ["http:", "https:", "mailto:"].includes(new URL(url).protocol); }
   catch { return false; }
@@ -243,6 +250,7 @@ export interface DesktopBridge {
   deleteProject(id: string): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;
   createWorkThread(input: CreateWorkThreadInput): Promise<void>;
+  renameWorkThread(input: RenameWorkThreadInput): Promise<void>;
   saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
   setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;

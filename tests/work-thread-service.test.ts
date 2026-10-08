@@ -60,6 +60,24 @@ test("WorkThread names are globally unique ignoring case and whitespace", async 
   await assert.rejects(() => service.createWorkThread({ name: "terminal POLISH" }), /already exists/);
 });
 
+test("renaming a WorkThread preserves its identity, document, and workspaces", async () => {
+  const { service, store } = await setup();
+  const snapshot = service.snapshot();
+  addReadyWorkspace(snapshot);
+  snapshot.workThreads[0]!.document = "# Notes";
+  await store.update((draft) => { Object.assign(draft, snapshot); });
+  await service.createWorkThread({ name: "Other" });
+
+  await service.renameWorkThread({ id: "thread-1", name: "  New runtime  " });
+  const renamed = service.snapshot().workThreads.find((thread) => thread.id === "thread-1");
+  assert.equal(renamed?.name, "New runtime");
+  assert.equal(renamed?.document, "# Notes");
+  assert.equal(service.snapshot().workspaces[0]?.workThreadId, "thread-1");
+  await assert.rejects(() => service.renameWorkThread({ id: "thread-1", name: "other" }), /already exists/);
+  await assert.rejects(() => service.renameWorkThread({ id: "missing", name: "Unused" }), /not found/);
+  assert.equal(service.snapshot().workThreads.find((thread) => thread.id === "thread-1")?.name, "New runtime");
+});
+
 test("WorkThread can be pinned and unpinned", async () => {
   const { service } = await setup();
   await service.createWorkThread({ name: "Important work" });

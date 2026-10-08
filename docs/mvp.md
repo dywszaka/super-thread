@@ -494,6 +494,7 @@ interface WorkThread {
 规则：
 
 - 名称在 active 与 archived 范围内忽略大小写唯一。
+- 侧栏右键 WorkThread 可重命名；名称去除首尾空格后须为 1–80 个字符，且不得与 active 或 archived 的其他 WorkThread 重名。重命名只更新名称和 `updatedAt`，保留文档、Workspace 和 Session。
 - 一个 Workspace 必须且只能属于一个 WorkThread。
 - WorkThread 可以暂时为空，也可以包含多个 Workspace。
 - 点击 WorkThread 默认打开 Document 页；即使还没有 Workspace，也可以独立写文档。Document 不在侧栏单独显示，点击 WorkThread 名称即可进入；其下只显示 Workspace 入口，继续打开终端。

@@ -1,7 +1,7 @@
 import { documentLinkSchema, saveWorkThreadDocumentSchema, MAX_WORK_THREAD_DOCUMENT_LENGTH } from "../src/shared/contract";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
+import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkThreadSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
   assert.equal(addProjectSchema.safeParse({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
@@ -52,6 +52,14 @@ test("RenameSession requires a bounded non-empty name", () => {
   assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "logs" }).success, true);
   assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "" }).success, false);
   assert.equal(renameSessionSchema.safeParse({ id: "session-1", name: "x".repeat(81) }).success, false);
+});
+
+test("RenameWorkThread trims and bounds the name", () => {
+  assert.deepEqual(renameWorkThreadSchema.parse({ id: "thread-1", name: "  Runtime work  " }), { id: "thread-1", name: "Runtime work" });
+  for (const name of [" ", "x".repeat(81)]) {
+    assert.equal(renameWorkThreadSchema.safeParse({ id: "thread-1", name }).success, false);
+  }
+  assert.equal(renameWorkThreadSchema.safeParse({ id: "thread-1", name: "Runtime", pinned: true }).success, false);
 });
 
 test("RenameWorkspace keeps workspace names path-safe and trims whitespace", () => {

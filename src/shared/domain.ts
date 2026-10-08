@@ -169,6 +169,11 @@ export interface CreateWorkThreadInput {
   name: string;
 }
 
+export interface RenameWorkThreadInput {
+  id: string;
+  name: string;
+}
+
 export interface SaveWorkThreadDocumentInput {
   id: string;
   content: string;
