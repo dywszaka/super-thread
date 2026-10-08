@@ -82,6 +82,14 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
     }
   };
 
+  // Clicking anywhere on the card body behaves like the Doc action: open the document drawer and
+  // restore focus to the element that opened it on close.
+  const openDocument = (trigger: HTMLButtonElement | null, thread: WorkThread): void => {
+    documentTrigger.current = trigger;
+    setDocumentId(thread.id);
+    setDocumentOpen(true);
+  };
+
   return (
     <main className="work-thread-page">
       <header className="work-thread-page-header drag">
@@ -104,16 +112,16 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                 const terminalTarget = firstTerminalTarget(snapshot, thread.id);
                 return (
                   <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
-                    <div className="work-thread-card-main">
+                    <button type="button" className="work-thread-card-main" aria-label={`Open document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" title="Open document" onClick={(event) => openDocument(event.currentTarget, thread)}>
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
                       <span><strong>{thread.name}</strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small></span>
-                    </div>
+                    </button>
                     <div className="work-thread-card-actions">
                       <button className="icon-button" disabled={status === "archived"} title={terminalTarget ? "Open first terminal" : "Open document"} aria-label={`Open ${terminalTarget ? "first terminal" : "document"} for ${thread.name}`} onClick={() => openWorkThread(thread)}><AppWindowMac size={14} /></button>
                       {status === "active"
                         ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
                         : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
-                      <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => { documentTrigger.current = event.currentTarget; setDocumentId(thread.id); setDocumentOpen(true); }}><FileText size={14} /> Doc</button>
+                      <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => openDocument(event.currentTarget, thread)}><FileText size={14} /> Doc</button>
                       <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this work thread" : "Delete work thread"} onClick={() => void remove(thread.id, thread.name)}><Trash2 size={14} /></button>
                     </div>
                   </article>

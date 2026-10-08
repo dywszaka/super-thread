@@ -48,6 +48,7 @@ Work Thread
 - 名称会自动去除首尾空格，并在忽略大小写后保持全局唯一。
 - 侧栏以树形结构展示所有活跃 Work Thread，可展开查看其 Workspace。
 - “All work threads” 页面显示 Work Thread 列表和每个 Work Thread 的 Workspace 数量。
+- 点击 Work Thread 卡片主体或卡片上的 Doc 按钮，会在右侧抽屉中打开该 Work Thread 的 Markdown 文档。
 - 点击活跃 Work Thread 可进入其 Workspace 范围视图。
 
 ### 3.2 生命周期管理

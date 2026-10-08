@@ -169,7 +169,9 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .thread-status-filter { width: 260px; margin-bottom: 14px; }
 .work-thread-cards { display: grid; gap: 8px; max-width: 780px; }
 .work-thread-card { min-height: 66px; display: flex; align-items: center; gap: 12px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
-.work-thread-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
+.work-thread-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.work-thread-card-main:hover strong { color: var(--primary); }
+.work-thread-card-main:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .work-thread-card-icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: var(--muted-foreground); }
 .work-thread-card-main > span:last-child { min-width: 0; display: grid; gap: 5px; }
 .work-thread-card-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
