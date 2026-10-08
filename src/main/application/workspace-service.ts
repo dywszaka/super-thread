@@ -10,6 +10,8 @@ import type {
   CreateSessionInput,
   CreateWorkThreadInput,
   CreateWorkspaceInput,
+  WorkspaceLinkInput,
+  WorkspaceLinkCandidate,
   Device,
   DeviceConnection,
   DirectoryListing,
@@ -69,6 +71,8 @@ export interface WorkspaceGitRuntime {
   inspect(repositoryPath: string): Promise<RepositoryInfo>;
   clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo>;
   createWorktree(checkoutPath: string, projectName: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
+  listWorkspaceLinkCandidates(checkoutPath: string): Promise<WorkspaceLinkCandidate[]>;
+  linkWorktreePaths(checkoutPath: string, workspacePath: string, paths: string[]): Promise<void>;
   inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk>;
   deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void>;
 }
@@ -406,6 +410,15 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
+  async listWorkspaceLinkCandidates(input: WorkspaceLinkInput): Promise<WorkspaceLinkCandidate[]> {
+    const snapshot = this.snapshot();
+    const device = this.device(snapshot, input.deviceId);
+    this.project(snapshot, input.projectId);
+    const checkout = snapshot.checkouts.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId);
+    if (!checkout) throw new Error("Project is not set up on the selected device");
+    return this.git(snapshot, device).listWorkspaceLinkCandidates(checkout.path);
+  }
+
   async createWorkspace(input: CreateWorkspaceInput): Promise<void> {
     const snapshot = this.snapshot();
     const workThread = this.workThread(snapshot, input.workThreadId);
@@ -458,6 +471,7 @@ export class WorkspaceService extends EventEmitter {
       throw error;
     }
     try {
+      await runtime.linkWorktreePaths(checkout.path, created.path, input.linkPaths ?? []);
       await this.store.update((draft) => {
         const workspace = draft.workspaces.find((item) => item.id === workspaceId);
         if (workspace) Object.assign(workspace, created, { status: "ready", updatedAt: now(), error: undefined });

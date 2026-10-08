@@ -7,6 +7,7 @@ import { useWorkbenchStore } from "../../../state/workbench-store";
 import { resolveSelectionId, sortedWorkThreads } from "../selection";
 import { Field, Modal } from "./Modal";
 import { SshTunnelFields } from "./SshTunnelFields";
+import { WorkspaceLinks } from "./WorkspaceLinks";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -219,6 +220,10 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   const [baseBranch, setBaseBranch] = useState(project?.defaultBranch || "main");
   const checkout = useMemo(() => snapshot.checkouts.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId), [snapshot, resolvedProjectId, resolvedDeviceId]);
   const mainWorkspace = useMemo(() => snapshot.workspaces.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId && item.kind === "main"), [snapshot, resolvedProjectId, resolvedDeviceId]);
+  const [linkSelection, setLinkSelection] = useState<{ checkoutId: string; paths: string[] }>({ checkoutId: "", paths: [] });
+  const linkPaths = linkSelection.checkoutId === checkout?.id ? linkSelection.paths : [];
+
+  useEffect(() => { setLinkSelection({ checkoutId: checkout?.id || "", paths: [] }); }, [dialog, checkout?.id]);
 
   useEffect(() => {
     setBaseBranch(project?.defaultBranch || "main");
@@ -240,7 +245,7 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
     try {
       if (!checkout) return;
       const common = { workThreadId: resolvedWorkThreadId, projectId: resolvedProjectId, deviceId: resolvedDeviceId, name };
-      await window.desktop.createWorkspace(kind === "main" ? { ...common, kind } : { ...common, kind, baseBranch });
+      await window.desktop.createWorkspace(kind === "main" ? { ...common, kind } : { ...common, kind, baseBranch, linkPaths });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       const fresh = await window.desktop.snapshot();
       const created = fresh.workspaces.find((item) => item.name === name && item.deviceId === resolvedDeviceId && item.workThreadId === resolvedWorkThreadId);
@@ -259,6 +264,7 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
           <Field label="Work Thread"><select value={resolvedWorkThreadId} onChange={(event) => setWorkThreadId(event.target.value)} required>{activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
           <div className="form-grid two"><Field label="Project"><select value={resolvedProjectId} onChange={(e) => updateProject(e.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={resolvedDeviceId} onChange={(e) => setDeviceId(e.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
           {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div><button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button></div> : <><Field label="Workspace type"><div className="segmented"><button type="button" className={kind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button><button type="button" className={kind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Main checkout</button></div></Field><Field label="Name" hint={kind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`}><input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "main" ? project?.name : "nvfp4-kernel"} pattern="[a-zA-Z0-9._-]+" required /></Field>{kind === "main" && mainWorkspace ? <div className="callout"><HardDrive size={16} /><span>The main checkout is already used by <strong>{mainWorkspace.name}</strong> in <strong>{snapshot.workThreads.find((item) => item.id === mainWorkspace.workThreadId)?.name}</strong>.</span></div> : kind === "worktree" && <Field label="Base branch"><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" required /></Field>}</>}
+          {checkout && kind === "worktree" && <WorkspaceLinks key={`${dialog}-${checkout.id}`} projectId={resolvedProjectId} deviceId={resolvedDeviceId} checkoutPath={checkout.path} selectedPaths={linkPaths} onChange={(paths) => setLinkSelection({ checkoutId: checkout.id, paths })} busy={busy} />}
         </>}
       </>}
     </Modal>

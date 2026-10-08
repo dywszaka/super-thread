@@ -27,6 +27,17 @@ test("CreateWorkspace distinguishes a main checkout from an isolated worktree", 
   assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "worktree" }).success, false);
 });
 
+test("workspace links only accept checkout-relative paths on worktrees", () => {
+  const base = { workThreadId: "thread", projectId: "project", deviceId: "local", name: "demo", kind: "worktree", baseBranch: "main" };
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, linkPaths: ["node_modules", ".env", "config/local file"] }).success, true);
+  for (const path of ["/tmp/file", "../file", "a/../file", "a//file", ".git", "a/.GIT/config", "a\\b", "file\0name"]) {
+    assert.equal(createWorkspaceSchema.safeParse({ ...base, linkPaths: [path] }).success, false, path);
+  }
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, linkPaths: [".env", ".env"] }).success, false);
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, linkPaths: Array(257).fill(".env") }).success, false);
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "main", baseBranch: undefined, linkPaths: [] }).success, false);
+});
+
 test("UpdateProject accepts safe names and rejects path-like names", () => {
   assert.equal(updateProjectSchema.safeParse({ id: "project-1", name: "Runtime Core" }).success, true);
   assert.equal(updateProjectSchema.safeParse({ id: "project-1", name: "../runtime" }).success, false);

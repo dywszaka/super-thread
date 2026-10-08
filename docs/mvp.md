@@ -627,6 +627,10 @@ git -C /data/allen/llama.cpp worktree add \
 
 Workspace 必须从 Setup/Import 时记录的 base checkout 及其本地已有 ref 创建。创建流程不隐式执行 `fetch`，也不要求 Device 拥有 origin 的网络访问或 SSH 凭据；如果需要最新远端提交，用户应先在 base checkout 中自行同步。`baseBranch` 在该 checkout 中不存在时，创建应直接报告对应的 Git 错误。
 
+新建 `worktree` Workspace 时，可以展开可选的 Link files and folders，勾选 base checkout 中未被 Git 跟踪的文件或目录（包括 ignored 内容与空目录）。完全未跟踪的目录作为整体提供选择，已包含 tracked 文件的目录只列出其未跟踪子项。默认不选；切换 Project、Device 或重新打开创建窗口时清空选择。`main` 模式不提供此选项。
+
+由所属 Device Runtime 在新 worktree 中按相同的相对路径建立 `ln -s` 软链接，指向该 Device 上 base checkout 的原始路径；嵌套条目保留相对目录结构。链接共享原文件内容，修改会作用于 base checkout 中的源文件，不复制内容或自动跟踪文件。创建前重新验证选择，拒绝越界、Git metadata、已被跟踪或消失的源路径；不覆盖新 worktree 中已有的文件、目录或软链接，也不沿目标父目录软链接写入。链接失败时回滚 worktree、branch 与 Workspace metadata，回滚失败时保留 error 记录供处理。删除 worktree 只移除链接，不删除源内容；未被新 worktree 的忽略规则排除的链接按普通未跟踪文件参与删除风险检查。
+
 得到：
 
 ```text

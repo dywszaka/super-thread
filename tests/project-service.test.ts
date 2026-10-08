@@ -31,6 +31,8 @@ function fakeGit(overrides: Partial<WorkspaceGitRuntime> = {}): WorkspaceGitRunt
   return {
     inspect: async (path) => ({ root: path, name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" }),
     clone: async (_repositoryUrl, parentDirectory) => ({ root: join(parentDirectory, "demo"), name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" }),
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
     createWorktree: async () => ({ path: "", branch: "" }),
     inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
     deleteWorktree: async () => {},

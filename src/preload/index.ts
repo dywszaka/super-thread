@@ -24,6 +24,7 @@ const bridge: DesktopBridge = {
   restoreWorkThread: (id) => ipcRenderer.invoke(channels.restoreWorkThread, id),
   deleteWorkThread: (id) => ipcRenderer.invoke(channels.deleteWorkThread, id),
   createWorkspace: (input) => ipcRenderer.invoke(channels.createWorkspace, input),
+  listWorkspaceLinkCandidates: (input) => ipcRenderer.invoke(channels.listWorkspaceLinkCandidates, input),
   deleteWorkspace: (id, force) => ipcRenderer.invoke(channels.deleteWorkspace, id, force),
   openWorkspaceInVSCode: (id) => ipcRenderer.invoke(channels.openWorkspaceInVSCode, id),
   openWorkspaceTmuxInIterm: (id) => ipcRenderer.invoke(channels.openWorkspaceTmuxInIterm, id),

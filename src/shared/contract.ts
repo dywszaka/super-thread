@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
   AddProjectInput,
   AddRemoteDeviceInput,
@@ -8,6 +9,8 @@ import type {
   CreateSessionResult,
   CreateWorkThreadInput,
   CreateWorkspaceInput,
+  WorkspaceLinkInput,
+  WorkspaceLinkCandidate,
   DirectoryListing,
   SaveTerminalPresetInput,
   DeleteTerminalPresetInput,
@@ -43,6 +46,7 @@ export const channels = {
   restoreWorkThread: "work-thread:restore",
   deleteWorkThread: "work-thread:delete",
   createWorkspace: "workspace:create",
+  listWorkspaceLinkCandidates: "workspace:list-link-candidates",
   deleteWorkspace: "workspace:delete",
   openWorkspaceInVSCode: "workspace:open-in-vscode",
   openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
@@ -172,9 +176,16 @@ export const createWorkspaceSchema = z.discriminatedUnion("kind", [
   z.object({
     ...createWorkspaceBaseSchema,
     kind: z.literal("worktree"),
-    baseBranch: z.string().trim().min(1).max(255)
+    baseBranch: z.string().trim().min(1).max(255),
+    linkPaths: z.array(z.string().refine(isWorkspaceLinkPath, "Invalid checkout-relative link path")).max(256)
+      .refine((paths) => new Set(paths).size === paths.length, "Link paths must be unique").optional()
   }).strict()
 ]);
+
+export const workspaceLinkInputSchema = z.object({
+  projectId: z.string().min(1),
+  deviceId: z.string().min(1)
+}).strict();
 
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),
@@ -229,6 +240,7 @@ export interface DesktopBridge {
   restoreWorkThread(id: string): Promise<void>;
   deleteWorkThread(id: string): Promise<void>;
   createWorkspace(input: CreateWorkspaceInput): Promise<void>;
+  listWorkspaceLinkCandidates(input: WorkspaceLinkInput): Promise<WorkspaceLinkCandidate[]>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;
   openWorkspaceInVSCode(id: string): Promise<void>;
   openWorkspaceTmuxInIterm(id: string): Promise<void>;

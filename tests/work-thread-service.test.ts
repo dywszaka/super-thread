@@ -121,6 +121,8 @@ test("deleting the final workspace leaves its WorkThread intact", async () => {
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
     clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
     createWorktree: async () => ({ path: "", branch: "" }),
     inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
     deleteWorktree: async () => { deleted = true; }
@@ -150,6 +152,8 @@ test("failed workspace creation removes the pending workspace record", async () 
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
     clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
     createWorktree: async () => { throw new Error("worktree creation failed"); },
     inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
     deleteWorktree: async () => {}
@@ -179,6 +183,8 @@ test("a Project x Device can have one main-checkout workspace", async () => {
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
     clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
     createWorktree: async () => { worktreeCalled = true; return { path: "", branch: "" }; },
     inspectWorkspaceDeleteRisk: async () => { throw new Error("Main workspace deletion must not inspect Git risk"); },
     deleteWorktree: async () => { deleteCalled = true; }
@@ -215,6 +221,8 @@ test("deleting a legacy failed workspace only removes its metadata", async () =>
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
     clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
     createWorktree: async () => ({ path: "", branch: "" }),
     inspectWorkspaceDeleteRisk: async () => { gitCalled = true; throw new Error("Git should not be called"); },
     deleteWorktree: async () => { gitCalled = true; }
@@ -237,11 +245,65 @@ test("deleting a legacy failed workspace only removes its metadata", async () =>
   assert.deepEqual(service.snapshot().workspaces, []);
 });
 
+test("worktree links are created before its first session", async () => {
+  const events: string[] = [];
+  const terminals = fakeTerminals();
+  terminals.create = () => { events.push("session"); return 123; };
+  const runtime: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    createWorktree: async () => { events.push("worktree"); return { path: "/tmp/linked", branch: "work/linked" }; },
+    listWorkspaceLinkCandidates: async (path) => { assert.equal(path, "/tmp/demo"); return [{ path: ".env", kind: "file" }]; },
+    linkWorktreePaths: async (source, target, paths) => {
+      assert.equal(source, "/tmp/demo"); assert.equal(target, "/tmp/linked"); assert.deepEqual(paths, [".env"]); events.push("links");
+    },
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
+    deleteWorktree: async () => {}
+  };
+  const { service, store } = await setup(runtime, terminals);
+  await store.update((draft) => { addReadyWorkspace(draft); draft.workspaces = []; });
+  assert.deepEqual(await service.listWorkspaceLinkCandidates({ projectId: "project-1", deviceId: "dev_local" }), [{ path: ".env", kind: "file" }]);
+  await service.createWorkspace({ workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local", name: "linked", kind: "worktree", baseBranch: "main", linkPaths: [".env"] });
+  assert.deepEqual(events, ["worktree", "links", "session"]);
+  assert.equal(service.snapshot().workspaces[0]?.status, "ready");
+});
+
+for (const rollbackFails of [false, true]) {
+  test(`failed workspace links roll back creation; rollback failure=${rollbackFails}`, async () => {
+    let deleted = false;
+    const sessions: Session[] = [];
+    const runtime: WorkspaceGitRuntime = {
+      inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+      clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+      createWorktree: async () => ({ path: "/tmp/linked", branch: "work/linked" }),
+      listWorkspaceLinkCandidates: async () => [],
+      linkWorktreePaths: async () => { throw new Error("link destination already exists"); },
+      inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
+      deleteWorktree: async (source, path, branch, force) => {
+        assert.equal(source, "/tmp/demo"); assert.equal(path, "/tmp/linked"); assert.equal(branch, "work/linked"); assert.equal(force, true);
+        deleted = true; if (rollbackFails) throw new Error("rollback failed");
+      }
+    };
+    const { service, store } = await setup(runtime, fakeTerminals(sessions));
+    await store.update((draft) => { addReadyWorkspace(draft); draft.workspaces = []; });
+    await assert.rejects(() => service.createWorkspace({ workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local", name: "linked", kind: "worktree", baseBranch: "main", linkPaths: [".env"] }), /link destination/);
+    assert.equal(deleted, true);
+    assert.deepEqual(sessions, []);
+    if (rollbackFails) {
+      assert.equal(service.snapshot().workspaces[0]?.status, "error");
+      assert.equal(service.snapshot().workspaces[0]?.path, "/tmp/linked");
+      assert.match(service.snapshot().workspaces[0]?.error ?? "", /rollback failed/);
+    } else assert.deepEqual(service.snapshot().workspaces, []);
+  });
+}
+
 test("deleting a workspace blocks dirty or unmerged work until force is confirmed", async () => {
   const deleted: Array<{ branch: string; force: boolean }> = [];
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
     clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
     createWorktree: async () => ({ path: "", branch: "" }),
     inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: true, hasUntrackedFiles: true, unmergedCommitCount: 2 }),
     deleteWorktree: async (_checkout, _path, branch, force) => { deleted.push({ branch, force }); }

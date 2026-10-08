@@ -220,7 +220,10 @@ interface CreateWorkspaceBaseInput {
 
 export type CreateWorkspaceInput =
   | (CreateWorkspaceBaseInput & { kind: "main" })
-  | (CreateWorkspaceBaseInput & { kind: "worktree"; baseBranch: string });
+  | (CreateWorkspaceBaseInput & { kind: "worktree"; baseBranch: string; linkPaths?: string[] });
+
+export interface WorkspaceLinkInput { projectId: string; deviceId: string; }
+export interface WorkspaceLinkCandidate { path: string; kind: "file" | "directory"; }
 
 export interface CreateSessionInput {
   workspaceId: string;
