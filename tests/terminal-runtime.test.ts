@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { codexActivityFromOutput, codexConversationIdFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, latestCodexConversationIdFromSessionIndex, sshTerminalArgs, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
-import type { Session } from "../src/shared/domain";
+import type { Device, DeviceConnection, Session } from "../src/shared/domain";
 
 test("managed tools run through the user's interactive login shell", () => {
   assert.equal(quoteShellArgument("it's here"), `'it'\\''s here'`);
@@ -34,6 +34,40 @@ test("foreground process groups distinguish an idle shell from an occupying comm
   assert.equal(foregroundProcessIsBusy(" 123 123\n"), false);
   assert.equal(foregroundProcessIsBusy(" 123 456\n"), true);
   assert.equal(foregroundProcessIsBusy(""), false);
+});
+
+test("remote shell polling bypasses interactive startup and tracks foreground work", async () => {
+  const calls: Array<{ program: string; args: string[] }> = [];
+  let output = "123 456\n";
+  const runtime = new TerminalRuntime(async (program, args) => {
+    calls.push({ program, args });
+    return output;
+  });
+  const internal = runtime as unknown as {
+    sessions: Map<string, unknown>;
+    probeActivity(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
+  };
+  const session: Session = { id: "remote-shell", workspaceId: "workspace-1", name: "Terminal", status: "running", kind: "shell", shell: "zsh", createdAt: "now" };
+  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example", user: "builder", port: 2222 } };
+  const live = { pty: { pid: 999 }, remotePid: 123, activityStatus: "idle", probing: false };
+  internal.sessions.set(session.id, live);
+  const events: unknown[] = [];
+  runtime.on("activity", (event) => events.push(event));
+
+  await internal.probeActivity(session, live, device, connection);
+  output = "123 123\n";
+  await internal.probeActivity(session, live, device, connection);
+
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.program, "ssh");
+    assert.deepEqual(call.args.slice(-4), ["-p", "2222", "builder@example", "ps -o pgid= -o tpgid= -p 123"]);
+  }
+  assert.deepEqual(events, [
+    { sessionId: session.id, activityStatus: "busy", resultReady: false },
+    { sessionId: session.id, activityStatus: "idle", resultReady: true }
+  ]);
 });
 
 test("tmux pane commands distinguish a shell prompt from an occupying command", () => {

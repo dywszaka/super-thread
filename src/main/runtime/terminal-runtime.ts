@@ -171,6 +171,8 @@ function run(program: string, args: string[]): Promise<string> {
 export class TerminalRuntime extends EventEmitter {
   private readonly sessions = new Map<string, LiveSession>();
 
+  constructor(private readonly runProbe: typeof run = run) { super(); }
+
   create(session: Session, workspace: Workspace, device: Device, connection: DeviceConnection): number {
     const shell = process.env.SHELL || "/bin/zsh";
     const cwd = session.cwd || workspace.path;
@@ -282,9 +284,12 @@ export class TerminalRuntime extends EventEmitter {
         command = `ps -o pgid= -o tpgid= -p ${pid}`;
         interpret = (output) => foregroundProcessIsBusy(output) ? "busy" : "idle";
       }
+      // Shell activity only needs ps. Re-running interactive startup files every
+      // second can create persistent ssh-agents or trigger automatic tmux attach.
+      const remoteProbe = kind === "tmux" ? interactiveLoginShellCommand(command) : command;
       const output = device.type === "remote"
-        ? await run("ssh", this.sshArgs(connection, interactiveLoginShellCommand(command)))
-        : await run("sh", ["-lc", command]);
+        ? await this.runProbe("ssh", this.sshArgs(connection, remoteProbe))
+        : await this.runProbe("sh", ["-c", command]);
       const activityStatus = interpret(output);
       const resultReady = kind === "tmux" && activityStatus === "waiting-input"
         ? live.activityStatus === "busy" && codexResultReadyFromOutput(output.split("\n").slice(1).join("\n"))

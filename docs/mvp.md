@@ -837,6 +837,10 @@ Terminal 输入必须保留 xterm 的原生 IME composition 处理，以支持�
 非 ASCII 字符。Codex Session 中 `Shift+Enter` 插入换行而不提交 prompt；普通 `Enter`
 继续提交，shell Session 的按键行为保持终端默认语义。
 
+普通 shell Session 的周期性活动检查只查询进程组；本地不得启动登录 shell，远端通过 SSH
+直接执行 `ps`，不得反复加载交互式登录 shell 的初始化文件，避免触发自动 tmux attach
+或重复创建长期存活的 SSH agent。
+
 创建普通 Session：
 
 ```text
