@@ -840,6 +840,8 @@ Terminal 输入必须保留 xterm 的原生 IME composition 处理，以支持�
 普通 shell Session 的周期性活动检查只查询进程组；本地不得启动登录 shell，远端通过 SSH
 直接执行 `ps`，不得反复加载交互式登录 shell 的初始化文件，避免触发自动 tmux attach
 或重复创建长期存活的 SSH agent。
+Codex conversation 查询只在首次检查时解析一次登录 shell 中的 `CODEX_HOME`，后续直接读取
+同一路径的 session index；查询不得并发重叠，解析失败后也不得周期性重跑 shell 初始化。
 
 创建普通 Session：
 

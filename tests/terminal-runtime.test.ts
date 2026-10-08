@@ -185,3 +185,55 @@ test("a foreground command returning to idle marks a generic terminal result rea
 
   assert.deepEqual(events, [{ sessionId: "shell-1", activityStatus: "idle", resultReady: true }]);
 });
+
+test("Codex index polling resolves custom CODEX_HOME once and prevents overlapping probes", async () => {
+  const calls: string[] = [];
+  let release: (value: string) => void = () => {};
+  const resolving = new Promise<string>((resolve) => { release = resolve; });
+  const runtime = new TerminalRuntime(async (_program, args) => {
+    calls.push(args.at(-1)!);
+    return calls.length === 1 ? resolving : "";
+  });
+  const internal = runtime as unknown as {
+    sessions: Map<string, unknown>;
+    probeCodexConversationId(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
+  };
+  const session: Session = { id: "codex-probe", workspaceId: "workspace-1", name: "Codex", status: "running", kind: "codex", shell: "zsh", createdAt: "now" };
+  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example" } };
+  const live = {};
+  internal.sessions.set(session.id, live);
+  const probe = () => internal.probeCodexConversationId(session, live, device, connection);
+  const first = probe();
+  await probe();
+  assert.equal(calls.length, 1);
+  release("startup notice\n/custom codex/session_index.jsonl\n");
+  await first;
+  await probe();
+  assert.equal(calls.length, 3);
+  assert.match(calls[0]!, /-lic/);
+  for (const command of calls.slice(1)) {
+    assert.match(command, /file='\/custom codex\/session_index.jsonl'/);
+    assert.doesNotMatch(command, /-lic/);
+  }
+});
+
+test("failed Codex path resolution does not repeat login startup on later polls", async () => {
+  const calls: string[] = [];
+  const runtime = new TerminalRuntime(async (_program, args) => {
+    calls.push(args.at(-1)!);
+    throw new Error("connection interrupted");
+  });
+  const internal = runtime as unknown as {
+    sessions: Map<string, unknown>;
+    probeCodexConversationId(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
+  };
+  const session: Session = { id: "codex-failed-probe", workspaceId: "workspace-1", name: "Codex", status: "running", kind: "codex", shell: "zsh", createdAt: "now" };
+  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example" } };
+  const live = {};
+  internal.sessions.set(session.id, live);
+  for (let i = 0; i < 3; i++) await internal.probeCodexConversationId(session, live, device, connection);
+  assert.equal(calls.filter((command) => command.includes("-lic")).length, 1);
+  assert.equal(calls.length, 3);
+});

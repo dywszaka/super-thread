@@ -18,6 +18,8 @@ interface LiveSession {
   markerBuffer: string;
   codexConversationProbe?: NodeJS.Timeout;
   codexConversationId?: string;
+  codexConversationProbing?: boolean;
+  codexSessionIndexCommand?: string;
 }
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
 export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; resultReady: boolean; }
@@ -303,16 +305,30 @@ export class TerminalRuntime extends EventEmitter {
   }
 
   private async probeCodexConversationId(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
-    if (live.codexConversationId || !this.sessions.has(session.id)) return;
+    if (live.codexConversationId || live.codexConversationProbing || !this.sessions.has(session.id)) return;
+    live.codexConversationProbing = true;
     try {
-      const command = "file=\"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl\"; if [ -f \"$file\" ]; then tail -n 80 \"$file\"; fi";
+      if (!live.codexSessionIndexCommand) {
+        // Resolve shell-configured CODEX_HOME once, then read the index without
+        // re-running startup files on every timer tick, including after failure.
+        live.codexSessionIndexCommand = "file=\"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl\"; if [ -f \"$file\" ]; then tail -n 80 \"$file\"; fi";
+        const resolveIndex = "printf '\\n%s\\n' \"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl\"";
+        const resolved = device.type === "remote"
+          ? await this.runProbe("ssh", this.sshArgs(connection, interactiveLoginShellCommand(resolveIndex)))
+          : await this.runProbe("sh", ["-lc", resolveIndex]);
+        const path = resolved.split("\n").filter((line) => line.length > 0).at(-1);
+        if (path) live.codexSessionIndexCommand = `file=${quoteShellArgument(path)}; if [ -f "$file" ]; then tail -n 80 "$file"; fi`;
+      }
+      const command = live.codexSessionIndexCommand;
       const output = device.type === "remote"
-        ? await run("ssh", this.sshArgs(connection, interactiveLoginShellCommand(command)))
-        : await run("sh", ["-lc", command]);
+        ? await this.runProbe("ssh", this.sshArgs(connection, command))
+        : await this.runProbe("sh", ["-c", command]);
       const codexConversationId = latestCodexConversationIdFromSessionIndex(output, session.createdAt);
       if (codexConversationId) this.recordCodexConversationId(session.id, live, codexConversationId);
     } catch {
       // Codex may not have created its session index yet; the next probe can try again.
+    } finally {
+      live.codexConversationProbing = false;
     }
   }
 
