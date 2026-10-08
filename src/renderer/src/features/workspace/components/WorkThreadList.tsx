@@ -1,20 +1,24 @@
-import { Archive, ArchiveRestore, FolderGit2, MessagesSquare, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
-import { sortedWorkThreads } from "../selection";
+import { formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate } from "../selection";
 import { SidebarReopenButton } from "./Sidebar";
-import { WorkThreadPriorityMenu } from "./WorkThreadPriorityMenu";
+import { WorkThreadDocument } from "./WorkThreadDocument";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const [status, setStatus] = useState<WorkThreadStatus>("active");
+  const [documentId, setDocumentId] = useState<string | null>(null);
+  const documentTrigger = useRef<HTMLButtonElement | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const setWorkThreadFilter = useWorkbenchStore((state) => state.setWorkThreadFilter);
-  const threads = sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === status));
+  const documentThread = snapshot.workThreads.find((thread) => thread.id === documentId);
+  const closeDocument = (): void => { setDocumentId(null); documentTrigger.current?.focus(); };
+  const threads = workThreadsByDocumentUpdate(snapshot.workThreads.filter((thread) => thread.status === status));
 
   const archive = async (id: string, name: string): Promise<void> => {
     if (!confirm(`Archive “${name}”?\n\nIts workspaces will be hidden from active views. Running terminal sessions will continue.`)) return;
@@ -52,34 +56,43 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
         <div><h1>Work Threads</h1><p>Organize related workspaces without changing their runtime state.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("workThread")}><Plus size={14} /> New Work Thread</button>
       </header>
-      <section className="work-thread-page-body no-drag">
-        <div className="segmented thread-status-filter">
-          <button className={status === "active" ? "active" : ""} onClick={() => setStatus("active")}>Active ({snapshot.workThreads.filter((thread) => thread.status === "active").length})</button>
-          <button className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({snapshot.workThreads.filter((thread) => thread.status === "archived").length})</button>
+      <div className="work-thread-content">
+        <div className="work-thread-list-region">
+          <section className="work-thread-page-body no-drag">
+            <div className="segmented thread-status-filter">
+              <button className={status === "active" ? "active" : ""} onClick={() => setStatus("active")}>Active ({snapshot.workThreads.filter((thread) => thread.status === "active").length})</button>
+              <button className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({snapshot.workThreads.filter((thread) => thread.status === "archived").length})</button>
+            </div>
+            <div className="work-thread-cards">
+              {threads.length === 0 && <div className="work-thread-list-empty"><MessagesSquare size={28} /><h2>No {status} work threads</h2><p>{status === "active" ? "Create a work thread to group one or more workspaces." : "Archived work threads will appear here."}</p></div>}
+              {threads.map((thread) => {
+                const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
+                const busy = busyId === thread.id;
+                return (
+                  <article className={`work-thread-card ${documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
+                    <button className="work-thread-card-main" disabled={status === "archived"} onClick={() => setWorkThreadFilter(thread.id)}>
+                      <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
+                      <span><strong>{thread.name}</strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small></span>
+                    </button>
+                    <div className="work-thread-card-actions">
+                      {status === "active"
+                        ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
+                        : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
+                      <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => { documentTrigger.current = event.currentTarget; setDocumentId(thread.id); }}><FileText size={14} /> Doc</button>
+                      <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this work thread" : "Delete work thread"} onClick={() => void remove(thread.id, thread.name)}><Trash2 size={14} /></button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         </div>
-        <div className="work-thread-cards">
-          {threads.length === 0 && <div className="work-thread-list-empty"><MessagesSquare size={28} /><h2>No {status} work threads</h2><p>{status === "active" ? "Create a work thread to group one or more workspaces." : "Archived work threads will appear here."}</p></div>}
-          {threads.map((thread) => {
-            const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
-            const busy = busyId === thread.id;
-            return (
-              <article className="work-thread-card" key={thread.id}>
-                <button className="work-thread-card-main" disabled={status === "archived"} onClick={() => setWorkThreadFilter(thread.id)}>
-                  <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
-                  <span><strong>{thread.name}</strong><small><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</small></span>
-                </button>
-                <div className="work-thread-card-actions">
-                  <WorkThreadPriorityMenu id={thread.id} priority={thread.priority} />
-                  {status === "active"
-                    ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
-                    : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
-                  <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this work thread" : "Delete work thread"} onClick={() => void remove(thread.id, thread.name)}><Trash2 size={14} /></button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+        {documentThread && <aside id="work-thread-document-drawer" className="work-thread-document-drawer no-drag" role="dialog" aria-modal="false" aria-label={`Document for ${documentThread.name}`} onKeyDown={(event) => {
+          if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeDocument(); }
+        }}>
+          <WorkThreadDocument key={documentThread.id} thread={documentThread} onClose={closeDocument} />
+        </aside>}
+      </div>
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
+import { formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate, resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
 import { emptySnapshot, type Workspace } from "../src/shared/domain";
 
 test("workspace selection adopts the first project added after the dialog mounts", () => {
@@ -69,4 +69,25 @@ test("workspace sidebar labels include the owning project name", () => {
 
   assert.equal(workspaceProjectName(snapshot, item), "Runtime");
   assert.equal(workspaceProjectName(snapshot, workspace("workspace-b", "thread-active", "missing")), "Unknown project");
+});
+
+test("all work threads sort by document update, falling back to creation rather than metadata updates", () => {
+  const threads = [
+    { id: "high", name: "High", status: "active" as const, priority: "high" as const, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-10T00:00:00Z", documentUpdatedAt: "2026-10-02T00:00:00Z" },
+    { id: "low", name: "Low", status: "active" as const, priority: "low" as const, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-08T00:00:00Z", documentUpdatedAt: "2026-10-08T00:00:00Z" },
+    { id: "new", name: "Unedited", status: "active" as const, priority: "normal" as const, createdAt: "2026-10-05T00:00:00Z", updatedAt: "2026-10-11T00:00:00Z" },
+    { id: "archived", name: "Archived", status: "archived" as const, priority: "normal" as const, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-12T00:00:00Z", documentUpdatedAt: "2026-10-03T00:00:00Z" }
+  ];
+  assert.deepEqual(workThreadsByDocumentUpdate(threads).map((thread) => thread.id), ["low", "new", "archived", "high"]);
+  assert.equal(workThreadDocumentUpdate(threads[2]!), "2026-10-05T00:00:00Z");
+  assert.deepEqual(threads.map((thread) => thread.id), ["high", "low", "new", "archived"]);
+  threads[0]!.documentUpdatedAt = "2026-10-09T00:00:00Z";
+  assert.equal(workThreadsByDocumentUpdate(threads)[0]?.id, "high");
+});
+
+test("document update labels use zero-padded local MMDD HH:mm in 24-hour time", () => {
+  assert.equal(formatDocumentUpdate(new Date(2026, 9, 8, 9, 5).toISOString()), "1008 09:05");
+  assert.equal(formatDocumentUpdate(new Date(2026, 0, 2, 0, 7).toISOString()), "0102 00:07");
+  assert.equal(formatDocumentUpdate(new Date(2026, 11, 31, 23, 59).toISOString()), "1231 23:59");
+  assert.equal(formatDocumentUpdate("invalid"), "—");
 });

@@ -1,6 +1,6 @@
 import MDEditor, { commands } from "@uiw/react-md-editor";
 import rehypeSanitize from "rehype-sanitize";
-import { Check, FileText, Loader2, Plus } from "lucide-react";
+import { Check, FileText, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { WorkThread } from "@/shared/domain";
@@ -9,11 +9,11 @@ import { useWorkbenchStore } from "../../../state/workbench-store";
 import { threadDocumentAutosave } from "../document-autosave";
 import { SidebarReopenButton } from "./Sidebar";
 
-export function WorkThreadDocument({ thread }: { thread: WorkThread }): React.ReactNode {
+export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; onClose?: () => void }): React.ReactNode {
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const document = useMemo(() => threadDocumentAutosave(thread.id, thread.document ?? ""), [thread.id]);
   const state = useSyncExternalStore(document.subscribe, document.getSnapshot);
-  const [mode, setMode] = useState<"edit" | "live" | "preview">("live");
+  const [mode, setMode] = useState<"edit" | "live" | "preview">(onClose ? "edit" : "live");
   const [dark, setDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -26,15 +26,15 @@ export function WorkThreadDocument({ thread }: { thread: WorkThread }): React.Re
     return () => { void document.flush(); };
   }, [document]);
   return (
-    <main className="thread-document-page">
-      <header className="thread-document-header drag">
-        <SidebarReopenButton />
+    <section className="thread-document-page">
+      <header className={`thread-document-header ${onClose ? "no-drag" : "drag"}`}>
+        {!onClose && <SidebarReopenButton />}
         <div className="thread-document-title no-drag"><FileText size={17} /><div><h1>{thread.name}</h1><p>Document · Markdown</p></div></div>
         <div className="thread-document-actions no-drag">
           <span className={`document-save-status ${state.status}`} role="status" aria-live="polite">
             {state.status === "saved" ? <><Check size={13} /> Saved</> : state.status === "error" ? "Save failed" : <><Loader2 className="spinning" size={13} /> {state.status === "saving" ? "Saving…" : "Unsaved changes"}</>}
           </span>
-          <button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New Workspace</button>
+          {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New Workspace</button>}
         </div>
       </header>
       <div className="thread-document-toolbar no-drag">
@@ -54,6 +54,7 @@ export function WorkThreadDocument({ thread }: { thread: WorkThread }): React.Re
         } else toast.error("Use an http, https, or email link.");
       }}>
         <MDEditor
+          autoFocus={Boolean(onClose)}
           value={state.content}
           onChange={(value) => {
             const content = value ?? "";
@@ -69,6 +70,6 @@ export function WorkThreadDocument({ thread }: { thread: WorkThread }): React.Re
           previewOptions={{ rehypePlugins: [rehypeSanitize] }}
         />
       </section>
-    </main>
+    </section>
   );
 }

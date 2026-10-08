@@ -12,6 +12,22 @@ export function sortedWorkThreads(workThreads: readonly WorkThread[]): WorkThrea
   return [...workThreads].sort(compareWorkThreads);
 }
 
+export function workThreadDocumentUpdate(thread: WorkThread): string {
+  return thread.documentUpdatedAt ?? thread.createdAt;
+}
+
+export function workThreadsByDocumentUpdate(workThreads: readonly WorkThread[]): WorkThread[] {
+  const timestamp = (thread: WorkThread): number => Date.parse(workThreadDocumentUpdate(thread)) || 0;
+  return [...workThreads].sort((left, right) => timestamp(right) - timestamp(left) || left.id.localeCompare(right.id));
+}
+
+export function formatDocumentUpdate(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "—";
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export interface SelectableItem {
   id: string;
 }
