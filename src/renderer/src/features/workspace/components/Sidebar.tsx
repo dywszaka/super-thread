@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronDown, ChevronLeft, ChevronRight, FileText, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Plus, Server } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Plus, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThread, WorkThreadPriority } from "@/shared/domain";
@@ -150,7 +150,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                   <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}>{thread.priority === "normal" ? <MessagesSquare size={14} /> : <span className={`thread-priority-indicator ${thread.priority}`} title={`${thread.priority} priority`}><WorkThreadPriorityIcon priority={thread.priority} /></span>}<em>{thread.name}</em></button>
                 </div>
                 {isExpanded && <div className="thread-children">
-                  <button className={`workspace-tree-row ${isSelected && !activeWorkspaceId ? "selected" : ""}`} onClick={() => setWorkThreadFilter(thread.id)}><FileText size={13} /><span><strong>Document</strong><small>Markdown</small></span></button>
+                  {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
                   {workspaces.map((workspace) => {
                     const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
                     const Icon = device?.type === "remote" ? Server : Laptop;
