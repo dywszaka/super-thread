@@ -58,7 +58,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     sessionCreateRequests: [],
     setupProjectTarget: null,
     dialog: null,
-    showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null }),
+    showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
     showAllProjects: () => set({ scope: { type: "all-projects" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
     showAllWorkThreads: () => set({ scope: { type: "all-work-threads" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
     showAllDevices: () => set({ scope: { type: "all-devices" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),

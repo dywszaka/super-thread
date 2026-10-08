@@ -66,6 +66,9 @@ export function AddDeviceDialog(): ReactNode {
   const [user, setUser] = useState("");
   const [port, setPort] = useState("22");
   const [tunnels, setTunnels] = useState<SshTunnelConfig[]>([]);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const parsedPort = Number(port);
+  const valid = Boolean(name.trim() && host.trim() && user.trim() && Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535);
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
@@ -75,9 +78,9 @@ export function AddDeviceDialog(): ReactNode {
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   return (
-    <Modal open={dialog === "device"} title="Add remote device" description="Connect through SSH. SuperThread never stores your password." busy={busy} submitLabel="Add Device" onClose={closeDialog} onSubmit={submit}>
-      <div className="form-grid two"><Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="dev-cuda" required /></Field><Field label="Host"><input value={host} onChange={(e) => setHost(e.target.value)} placeholder="dev-cuda.local" required /></Field></div>
-      <div className="form-grid two"><Field label="SSH user"><input value={user} onChange={(e) => setUser(e.target.value)} placeholder="allen" required /></Field><Field label="Port"><input type="number" value={port} onChange={(e) => setPort(e.target.value)} min="1" max="65535" required /></Field></div>
+    <Modal open={dialog === "device"} title="Add remote device" description="Connect through SSH. SuperThread never stores your password." busy={busy} submitDisabled={!valid} submitLabel="Add Device" onClose={closeDialog} onSubmit={submit}>
+      <div className="form-grid two"><Field label="Name" error={touched.name && !name.trim() ? "Enter a device name." : undefined}><input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} placeholder="dev-cuda" /></Field><Field label="Host" error={touched.host && !host.trim() ? "Enter a host name or address." : undefined}><input value={host} onChange={(e) => setHost(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, host: true }))} placeholder="dev-cuda.local" /></Field></div>
+      <div className="form-grid two"><Field label="SSH user" error={touched.user && !user.trim() ? "Enter the SSH user." : undefined}><input value={user} onChange={(e) => setUser(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, user: true }))} placeholder="allen" /></Field><Field label="Port" error={touched.port && !(Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) ? "Use a port from 1 to 65535." : undefined}><input type="number" value={port} onChange={(e) => setPort(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, port: true }))} min="1" max="65535" /></Field></div>
       <SshTunnelFields value={tunnels} onChange={setTunnels} />
       <div className="callout"><Network size={16} /><span>SSH keys and your existing <code>~/.ssh/config</code> are used for authentication.</span></div>
     </Modal>
@@ -95,8 +98,12 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   const [parent, setParent] = useState("");
   const [projectName, setProjectName] = useState("");
   const [showProjectName, setShowProjectName] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const device = snapshot.devices.find((item) => item.id === deviceId);
   const localDevice = snapshot.devices.find((item) => item.type === "local");
+  const valid = mode === "import"
+    ? Boolean(deviceId && path.trim() && (!showProjectName || projectName.trim()))
+    : Boolean(localDevice && url.trim() && parent.trim() && (!showProjectName || projectName.trim()));
   useEffect(() => {
     if (!snapshot.devices.some((item) => item.id === deviceId)) setDeviceId(snapshot.devices[0]?.id || "");
   }, [snapshot.devices, deviceId]);
@@ -115,15 +122,15 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
     } finally { setBusy(false); }
   };
   return (
-    <Modal open={dialog === "project"} title="Add project" description="A project is identified by its canonical Git remote, not its local path." busy={busy} submitLabel={mode === "import" ? "Import Project" : "Clone Project"} onClose={closeDialog} onSubmit={submit}>
+    <Modal open={dialog === "project"} title="Add project" description="A project is identified by its canonical Git remote, not its local path." busy={busy} submitDisabled={!valid} submitLabel={mode === "import" ? "Import Project" : "Clone Project"} onClose={closeDialog} onSubmit={submit}>
       <div className="segmented"><button type="button" className={mode === "import" ? "active" : ""} onClick={() => setMode("import")}><HardDrive size={15} /> Import existing</button><button type="button" className={mode === "clone" ? "active" : ""} onClick={() => setMode("clone")}><Link size={15} /> Clone URL</button></div>
       {mode === "import" ? <>
         <Field label="Device"><select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); setPath(""); }} required>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-        <Field label="Repository directory" hint="The origin remote and current default branch will be detected."><DirectoryField value={path} onChange={setPath} remote={device?.type === "remote"} deviceId={deviceId} placeholder={device?.type === "remote" ? "~" : "/Users/you/code/project"} /></Field>
+        <Field label="Repository directory" hint="The origin remote and current default branch will be detected." error={touched.path && !path.trim() ? "Choose or enter a repository directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, path: true }))}><DirectoryField value={path} onChange={setPath} remote={device?.type === "remote"} deviceId={deviceId} placeholder={device?.type === "remote" ? "~" : "/Users/you/code/project"} /></div></Field>
       </> : <>
-        <Field label="Git repository URL"><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="git@github.com:org/repository.git" required /></Field>
+        <Field label="Git repository URL" error={touched.url && !url.trim() ? "Enter a Git repository URL." : undefined}><input value={url} onChange={(e) => setUrl(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, url: true }))} placeholder="git@github.com:org/repository.git" /></Field>
         <Field label="Device"><select value={localDevice?.id || ""} disabled required>{localDevice && <option value={localDevice.id}>{localDevice.name}</option>}</select></Field>
-        <Field label="Parent directory"><DirectoryField value={parent} onChange={setParent} placeholder="/Users/you/code" /></Field>
+        <Field label="Parent directory" error={touched.parent && !parent.trim() ? "Choose or enter a parent directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, parent: true }))}><DirectoryField value={parent} onChange={setParent} placeholder="/Users/you/code" /></div></Field>
       </>}
       {showProjectName && <Field label="Unique project name" hint="Used for display and future workspace paths."><input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="repository-name-2" required maxLength={80} autoFocus /></Field>}
     </Modal>
@@ -180,6 +187,7 @@ export function NewWorkThreadDialog(): ReactNode {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
+  const [touched, setTouched] = useState(false);
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
@@ -193,15 +201,15 @@ export function NewWorkThreadDialog(): ReactNode {
     finally { setBusy(false); }
   };
   return (
-    <Modal open={dialog === "workThread"} title="New work thread" description="Group one or more related workspaces." busy={busy} submitLabel="Create Work Thread" onClose={closeDialog} onSubmit={submit}>
-      <Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Improve terminal workflow" required maxLength={80} autoFocus /></Field>
+    <Modal open={dialog === "workThread"} title="New work thread" description="Group one or more related workspaces." busy={busy} submitDisabled={!name.trim()} submitLabel="Create Work Thread" onClose={closeDialog} onSubmit={submit}>
+      <Field label="Name" error={touched && !name.trim() ? "Enter a work thread name." : undefined}><input value={name} onChange={(event) => setName(event.target.value)} onBlur={() => setTouched(true)} placeholder="Improve terminal workflow" maxLength={80} autoFocus /></Field>
       <div className="callout"><MessagesSquare size={16} /><span>You can create the first workspace after the work thread is created.</span></div>
     </Modal>
   );
 }
 
 export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  const { dialog, closeDialog, projectFilter, workThreadFilter, setActiveWorkspace, openSetupProject } = useWorkbenchStore();
+  const { dialog, closeDialog, projectFilter, workThreadFilter, activeWorkspaceId, setActiveWorkspace, openSetupProject } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const activeWorkThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
@@ -216,6 +224,7 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   const project = snapshot.projects.find((item) => item.id === resolvedProjectId);
   const device = snapshot.devices.find((item) => item.id === resolvedDeviceId);
   const [baseBranch, setBaseBranch] = useState(project?.defaultBranch || "main");
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const checkout = useMemo(() => snapshot.checkouts.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId), [snapshot, resolvedProjectId, resolvedDeviceId]);
   const mainWorkspace = useMemo(() => snapshot.workspaces.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId && item.kind === "main"), [snapshot, resolvedProjectId, resolvedDeviceId]);
   const [linkSelection, setLinkSelection] = useState<{ checkoutId: string; paths: string[] }>({ checkoutId: "", paths: [] });
@@ -229,10 +238,13 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
 
   useEffect(() => {
     if (dialog !== "workspace") return;
-    setWorkThreadId(workThreadFilter || activeWorkThreads[0]?.id || "");
-    setProjectId(projectFilter || snapshot.projects[0]?.id || "");
+    const activeWorkspace = snapshot.workspaces.find((item) => item.id === activeWorkspaceId);
+    setWorkThreadId(workThreadFilter || activeWorkspace?.workThreadId || activeWorkThreads[0]?.id || "");
+    setProjectId(projectFilter || activeWorkspace?.projectId || snapshot.projects[0]?.id || "");
+    setDeviceId(activeWorkspace?.deviceId || snapshot.devices[0]?.id || "");
     setKind("worktree");
-  }, [dialog, workThreadFilter, projectFilter]);
+    setTouched({});
+  }, [dialog, workThreadFilter, projectFilter, activeWorkspaceId, snapshot.workspaces, snapshot.projects, snapshot.devices, activeWorkThreads]);
 
   const updateProject = (value: string): void => {
     setProjectId(value);
@@ -261,7 +273,7 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
         {noWorkThreads ? <div className="empty-dialog"><MessagesSquare size={24} /><h3>Create a work thread first</h3><p>Every workspace belongs to one active work thread.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("workThread")}><Plus size={14} /> New Work Thread</button></div> : <>
           <Field label="Work Thread"><select value={resolvedWorkThreadId} onChange={(event) => setWorkThreadId(event.target.value)} required>{activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
           <div className="form-grid two"><Field label="Project"><select value={resolvedProjectId} onChange={(e) => updateProject(e.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={resolvedDeviceId} onChange={(e) => setDeviceId(e.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
-          {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div><button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button></div> : <><Field label="Workspace type"><div className="segmented"><button type="button" className={kind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button><button type="button" className={kind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Main checkout</button></div></Field><Field label="Name" hint={kind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`}><input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "main" ? project?.name : "nvfp4-kernel"} pattern="[a-zA-Z0-9._-]+" required /></Field>{kind === "main" && mainWorkspace ? <div className="callout"><HardDrive size={16} /><span>The main checkout is already used by <strong>{mainWorkspace.name}</strong> in <strong>{snapshot.workThreads.find((item) => item.id === mainWorkspace.workThreadId)?.name}</strong>.</span></div> : kind === "worktree" && <Field label="Base branch"><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" required /></Field>}</>}
+          {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div><button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button></div> : <><Field label="Workspace type"><div className="segmented"><button type="button" className={kind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button><button type="button" className={kind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Main checkout</button></div></Field><Field label="Name" hint={kind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`} error={touched.name && !validWorkspaceName ? "Use letters, numbers, dots, dashes, or underscores." : undefined}><input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} placeholder={kind === "main" ? project?.name : "nvfp4-kernel"} /></Field>{kind === "main" && mainWorkspace ? <div className="callout"><HardDrive size={16} /><span>The main checkout is already used by <strong>{mainWorkspace.name}</strong> in <strong>{snapshot.workThreads.find((item) => item.id === mainWorkspace.workThreadId)?.name}</strong>.</span></div> : kind === "worktree" && <Field label="Base branch" error={touched.baseBranch && !baseBranch.trim() ? "Enter a base branch." : undefined}><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, baseBranch: true }))} placeholder="main" /></Field>}</>}
           {checkout && kind === "worktree" && <WorkspaceLinks key={`${dialog}-${checkout.id}`} projectId={resolvedProjectId} deviceId={resolvedDeviceId} checkoutPath={checkout.path} selectedPaths={linkPaths} onChange={(paths) => setLinkSelection({ checkoutId: checkout.id, paths })} busy={busy} />}
         </>}
       </>}

@@ -37,6 +37,6 @@ export function Modal({ open, title, description, busy, submitDisabled, submitLa
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }): ReactNode {
-  return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
+export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }): ReactNode {
+  return <label className={`field ${error ? "invalid" : ""}`}><span>{label}</span>{children}{error ? <small className="field-error">{error}</small> : hint && <small>{hint}</small>}</label>;
 }
