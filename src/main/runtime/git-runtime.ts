@@ -102,6 +102,9 @@ ln -s "$source_path" "$target_path"
   }
 
   async deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void> {
+    if (posix.resolve(checkoutPath) === posix.resolve(workspacePath)) {
+      throw new Error("Cannot delete the base checkout as a workspace worktree");
+    }
     await this.git(checkoutPath, ["worktree", "remove", ...(force ? ["--force"] : []), workspacePath]);
     await this.git(checkoutPath, ["branch", "-D", branch]);
   }

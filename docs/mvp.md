@@ -705,7 +705,9 @@ Done
 
 # 13. Workspace Delete
 
-删除 Workspace：
+删除 `main` Workspace 只停止其 Session 并删除 Workspace 与 Session metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
+
+删除 `worktree` Workspace：
 
 1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）
 2. 停止所有 Session
