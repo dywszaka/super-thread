@@ -29,6 +29,7 @@ import type {
   Session,
   SessionActivityStatus,
   SetWorkThreadPinnedInput,
+  ReorderWorkThreadsInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
   TerminalReplay,
@@ -37,6 +38,7 @@ import type {
   WorkThread,
   Workspace
 } from "../../shared/domain";
+import { sortedWorkThreads } from "../../shared/work-thread-order";
 import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runner";
 import { DirectoryRuntime } from "../runtime/directory-runtime";
@@ -346,6 +348,9 @@ export class WorkspaceService extends EventEmitter {
         name,
         status: "active",
         pinned: false,
+        sidebarOrder: draft.workThreads.some((thread) => thread.sidebarOrder !== undefined)
+          ? Math.max(...draft.workThreads.map((thread) => thread.sidebarOrder ?? -1)) + 1
+          : undefined,
         document: "",
         createdAt: timestamp,
         updatedAt: timestamp
@@ -379,6 +384,22 @@ export class WorkspaceService extends EventEmitter {
       thread.document = input.content;
       thread.documentUpdatedAt = now();
       thread.updatedAt = thread.documentUpdatedAt;
+    });
+    this.changed();
+  }
+
+  async reorderWorkThreads(input: ReorderWorkThreadsInput): Promise<void> {
+    // Resolve the move inside the serialized write, so concurrent edits cannot lose threads.
+    await this.store.update((draft) => {
+      const thread = this.workThread(draft, input.id);
+      const target = this.workThread(draft, input.targetId);
+      if (thread.status !== "active" || target.status !== "active") throw new Error("Only active work threads can be reordered");
+      if (thread.pinned !== target.pinned) throw new Error("Reorder work threads within the same pinned group");
+      if (thread.id === target.id) return;
+      const ordered = sortedWorkThreads(draft.workThreads).filter((item) => item.id !== thread.id);
+      const targetIndex = ordered.findIndex((item) => item.id === target.id);
+      ordered.splice(targetIndex + (input.placement === "after" ? 1 : 0), 0, thread);
+      ordered.forEach((item, index) => { item.sidebarOrder = index; });
     });
     this.changed();
   }

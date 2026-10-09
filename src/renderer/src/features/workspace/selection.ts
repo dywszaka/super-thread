@@ -1,14 +1,6 @@
 import type { AppSnapshot, WorkThread, Workspace } from "@/shared/domain";
 
-export function compareWorkThreads(left: WorkThread, right: WorkThread): number {
-  return Number(right.pinned) - Number(left.pinned)
-    || left.createdAt.localeCompare(right.createdAt)
-    || left.id.localeCompare(right.id);
-}
-
-export function sortedWorkThreads(workThreads: readonly WorkThread[]): WorkThread[] {
-  return [...workThreads].sort(compareWorkThreads);
-}
+export { compareWorkThreads, sortedWorkThreads } from "@/shared/work-thread-order";
 
 export function workThreadDocumentUpdate(thread: WorkThread): string {
   return thread.documentUpdatedAt ?? thread.createdAt;

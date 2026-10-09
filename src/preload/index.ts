@@ -45,6 +45,7 @@ const bridge: DesktopBridge = {
   createWorkThread: (input) => ipcRenderer.invoke(channels.createWorkThread, input),
   renameWorkThread: (input) => ipcRenderer.invoke(channels.renameWorkThread, input),
   saveWorkThreadDocument: (input) => ipcRenderer.invoke(channels.saveWorkThreadDocument, input),
+  reorderWorkThreads: (input) => ipcRenderer.invoke(channels.reorderWorkThreads, input),
   setWorkThreadPinned: (input) => ipcRenderer.invoke(channels.setWorkThreadPinned, input),
   archiveWorkThread: (id) => ipcRenderer.invoke(channels.archiveWorkThread, id),
   restoreWorkThread: (id) => ipcRenderer.invoke(channels.restoreWorkThread, id),

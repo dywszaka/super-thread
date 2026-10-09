@@ -84,7 +84,12 @@ type StoredWorkThread = Omit<WorkThread, "pinned"> & { pinned?: boolean; priorit
 
 function normalizeWorkThread(workThread: StoredWorkThread): WorkThread {
   const { priority, ...rest } = workThread;
-  return { ...rest, pinned: rest.pinned ?? priority === "high", document: workThread.document ?? "" };
+  return {
+    ...rest,
+    pinned: rest.pinned ?? priority === "high",
+    sidebarOrder: Number.isSafeInteger(rest.sidebarOrder) && rest.sidebarOrder! >= 0 ? rest.sidebarOrder : undefined,
+    document: workThread.document ?? ""
+  };
 }
 
 function normalizeSession(session: Session): Session {

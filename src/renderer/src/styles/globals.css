@@ -68,16 +68,16 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .sidebar-reopen { position: absolute; z-index: 1; top: 12px; left: 76px; width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-raised); color: var(--foreground); box-shadow: 0 1px 4px rgb(0 0 0 / 10%); }
 .sidebar-reopen:hover { background: var(--muted); }
 .sidebar-resize { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 2; width: 6px; cursor: col-resize; }
-.sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 8px; }
+.sidebar-scroll { min-width: 0; min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding: 8px; }
 .section-heading { height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 7px 7px 3px 9px; color: var(--muted-foreground); text-transform: uppercase; font-size: 10px; font-weight: 650; letter-spacing: .65px; }
 .mini-action { border: 0; background: transparent; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; opacity: .75; cursor: pointer; }
 .mini-action:hover { opacity: 1; background: var(--accent); }
-.scope-list { display: grid; gap: 2px; }
+.scope-list { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .scope-row { width: 100%; height: 31px; padding: 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 0; border-radius: 6px; background: transparent; cursor: default; text-align: left; }
 .scope-row:hover { background: color-mix(in srgb, var(--accent) 65%, transparent); }
 .scope-row.selected { background: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent); }
 .scope-row.all { margin-bottom: 2px; }
-.primary-scopes { display: grid; gap: 2px; margin-bottom: 8px; }
+.primary-scopes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin-bottom: 8px; }
 .primary-scopes .scope-row.all { margin: 0; }
 .scope-row > span { flex: 1; display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .scope-row > span svg { flex: none; }
@@ -88,8 +88,11 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .sidebar-empty { margin: 5px 9px 9px; color: var(--muted-foreground); font-size: 11px; }
 .sidebar-separator { height: 1px; background: var(--border); margin: 11px 7px 7px; }
 .thread-list { gap: 1px; }
-.thread-tree { display: grid; }
-.thread-row { height: 31px; display: flex; align-items: center; border-radius: 6px; color: var(--muted-foreground); }
+.thread-tree { position: relative; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.thread-tree.dragging { opacity: .45; }
+.thread-tree.drop-before::after, .thread-tree.drop-after::after { content: ""; position: absolute; z-index: 1; left: 8px; right: 8px; height: 2px; border-radius: 1px; background: var(--primary); pointer-events: none; }
+.thread-tree.drop-before::after { top: -1px; }.thread-tree.drop-after::after { bottom: -1px; }
+.thread-row { min-width: 0; padding-right: 8px; height: 31px; display: flex; align-items: center; border-radius: 6px; color: var(--muted-foreground); }
 .thread-row:hover { background: color-mix(in srgb, var(--accent) 46%, transparent); color: var(--sidebar-foreground); }
 .thread-row.selected { color: var(--foreground); font-weight: 650; }
 .thread-row button { border: 0; background: transparent; padding: 0; }
@@ -104,7 +107,7 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .work-thread-context-menu button:disabled { opacity: .55; }
 .work-thread-context-menu button svg:last-child { justify-self: end; color: var(--primary); }
 .context-menu-separator { height: 1px; margin: 4px 2px; background: var(--border); }
-.thread-children { position: relative; display: grid; gap: 1px; margin: 1px 0 3px 25px; padding-left: 8px; }
+.thread-children { position: relative; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 1px 0 3px 25px; padding-left: 8px; }
 .thread-children::before { content: ""; position: absolute; left: 2px; top: 4px; bottom: 5px; width: 1px; background: color-mix(in srgb, var(--border-strong) 48%, transparent); }
 .workspace-tree-row { min-width: 0; min-height: 35px; border: 0; border-radius: 5px; background: transparent; display: flex; align-items: center; gap: 7px; padding: 3px 8px; color: var(--muted-foreground); font-size: 11px; text-align: left; }
 .workspace-tree-row:hover { background: color-mix(in srgb, var(--accent) 46%, transparent); color: var(--foreground); }

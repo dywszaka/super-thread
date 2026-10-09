@@ -486,6 +486,7 @@ interface WorkThread {
   name: string
   status: "active" | "archived"
   pinned: boolean
+  sidebarOrder?: number
   document?: string
   documentUpdatedAt?: Date
   createdAt: Date
@@ -505,7 +506,8 @@ interface WorkThread {
 - 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。
 - 文档随 WorkThread 本地持久化，归档、恢复和应用重启不清除文档；永久删除 WorkThread 同时删除文档。文档上限为 2,000,000 个字符，IPC 不裁剪 Markdown 空白。
 - 关闭窗口前等待未完成的文档保存；保存失败时保留窗口和草稿。
-- WorkThread 置顶由用户手动设置，默认为非置顶；侧栏中置顶的排在前面，其余保持创建顺序。在侧栏右键 WorkThread 可选择置顶或取消置顶。
+- WorkThread 置顶由用户手动设置，默认为非置顶；侧栏中置顶的排在前面；置顶与非置顶条目分别支持拖动调整组内顺序，拖动时显示插入位置，顺序本地持久化并在应用重启后恢复。尚未手动排序时保持创建顺序，新建条目追加到非置顶组末尾。聚焦条目后也可用 Option+↑/↓ 调整组内顺序。排序不改变置顶状态、文档更新时间或 All work threads 页的排序。在侧栏右键 WorkThread 可选择置顶或取消置顶。
+- 侧栏缩到最小宽度时，菜单、WorkThread、Workspace 与 Project 名称在右侧 padding 内显示省略号，不能撑宽列表或贴到分隔边线；悬停名称可查看完整文字。
 - All work threads 页不显示置顶状态；Active 和 Archived 列表均按文档更新时间从新到旧排序，未编辑过的文档使用 WorkThread 创建时间。归档、恢复或置顶变更不改变文档排序时间。
 - 列表显示 Last update，使用用户本地时间、24 小时制及 `MMDD HH:mm` 格式（如 `1008 09:05`）。
 - Archive/Restore 按钮旁提供 Doc 按钮，左侧列表平滑收窄的同时，右侧展开非模态 Markdown 编辑抽屉，关闭时反向收回；系统开启减少动态效果时直接切换。列表始终保留可见、可滚动并可切换其他文档。抽屉复用自动保存，关闭或切换文档时保存草稿，支持关闭按钮和 Escape；Archived 文档也可编辑。

@@ -16,6 +16,7 @@ export interface WorkThread {
   name: string;
   status: WorkThreadStatus;
   pinned: boolean;
+  sidebarOrder?: number;
   document?: string;
   documentUpdatedAt?: string;
   createdAt: string;
@@ -205,6 +206,12 @@ export interface RenameWorkThreadInput {
 export interface SaveWorkThreadDocumentInput {
   id: string;
   content: string;
+}
+
+export interface ReorderWorkThreadsInput {
+  id: string;
+  targetId: string;
+  placement: "before" | "after";
 }
 
 export interface SetWorkThreadPinnedInput {

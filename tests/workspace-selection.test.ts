@@ -25,6 +25,9 @@ test("work threads sort pinned first and keep creation order otherwise", () => {
 
   assert.deepEqual(sortedWorkThreads(threads).map((thread) => thread.id), ["pinned-old", "pinned-new", "plain-old", "plain-new"]);
   assert.deepEqual(threads.map((thread) => thread.id), ["plain-new", "pinned-new", "plain-old", "pinned-old"]);
+  const custom = threads.map((thread, index) => ({ ...thread, sidebarOrder: index }));
+  assert.deepEqual(sortedWorkThreads(custom).map((thread) => thread.id), ["pinned-new", "pinned-old", "plain-new", "plain-old"]);
+  assert.deepEqual(workThreadsByDocumentUpdate(custom).map((thread) => thread.id), workThreadsByDocumentUpdate(threads).map((thread) => thread.id));
 });
 
 const workspace = (id: string, workThreadId: string, projectId: string): Workspace => ({

@@ -22,6 +22,7 @@ import type {
   RenameWorkspaceInput,
   RenameWorkThreadInput,
   SetWorkThreadPinnedInput,
+  ReorderWorkThreadsInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
   TerminalOutput,
@@ -59,6 +60,7 @@ export const channels = {
   createWorkThread: "work-thread:create",
   renameWorkThread: "work-thread:rename",
   setWorkThreadPinned: "work-thread:set-pinned",
+  reorderWorkThreads: "work-thread:reorder",
   saveWorkThreadDocument: "work-thread:save-document",
   archiveWorkThread: "work-thread:archive",
   restoreWorkThread: "work-thread:restore",
@@ -182,6 +184,12 @@ export const saveWorkThreadDocumentSchema = z.object({
   content: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH)
 }).strict();
 
+export const reorderWorkThreadsSchema = z.object({
+  id: z.string().min(1),
+  targetId: z.string().min(1),
+  placement: z.enum(["before", "after"])
+}).strict();
+
 export const setWorkThreadPinnedSchema = z.object({
   id: z.string().min(1),
   pinned: z.boolean()
@@ -293,6 +301,7 @@ export interface DesktopBridge {
   renameWorkThread(input: RenameWorkThreadInput): Promise<void>;
   saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
   setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void>;
+  reorderWorkThreads(input: ReorderWorkThreadsInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;
   restoreWorkThread(id: string): Promise<void>;
   deleteWorkThread(id: string): Promise<void>;

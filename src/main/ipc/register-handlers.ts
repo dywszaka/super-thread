@@ -20,6 +20,7 @@ import {
   renameSessionSchema,
   renameWorkspaceSchema,
   setWorkThreadPinnedSchema,
+  reorderWorkThreadsSchema,
   saveWorkThreadDocumentSchema,
   setupProjectSchema,
   updateProjectSchema,
@@ -78,6 +79,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.createWorkThread, (_event, input) => service.createWorkThread(createWorkThreadSchema.parse(input)));
   handle(channels.renameWorkThread, (_event, input) => service.renameWorkThread(renameWorkThreadSchema.parse(input)));
   handle(channels.saveWorkThreadDocument, (_event, input) => service.saveWorkThreadDocument(saveWorkThreadDocumentSchema.parse(input)));
+  handle(channels.reorderWorkThreads, (_event, input) => service.reorderWorkThreads(reorderWorkThreadsSchema.parse(input)));
   handle(channels.setWorkThreadPinned, (_event, input) => service.setWorkThreadPinned(setWorkThreadPinnedSchema.parse(input)));
   handle(channels.archiveWorkThread, (_event, id) => service.archiveWorkThread(sessionIdSchema.parse(id)));
   handle(channels.restoreWorkThread, (_event, id) => service.restoreWorkThread(sessionIdSchema.parse(id)));

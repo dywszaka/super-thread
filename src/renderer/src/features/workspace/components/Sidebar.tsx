@@ -1,7 +1,7 @@
 import { Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, WorkThread, Workspace } from "@/shared/domain";
+import type { AppSnapshot, ReorderWorkThreadsInput, WorkThread, Workspace } from "@/shared/domain";
 import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
@@ -43,6 +43,10 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     openDialog
   } = useWorkbenchStore();
   const resizing = useRef(false);
+  const draggedThreadId = useRef<string | null>(null);
+  const reorderBusy = useRef(false);
+  const [draggingThreadId, setDraggingThreadId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<ReorderWorkThreadsInput | null>(null);
   const threadMenuRef = useRef<HTMLDivElement>(null);
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const [threadMenu, setThreadMenu] = useState<WorkThreadMenuState | null>(null);
@@ -156,17 +160,49 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     }
   };
 
+  const clearDrag = (): void => {
+    draggedThreadId.current = null;
+    setDraggingThreadId(null);
+    setDropTarget(null);
+  };
+
+  const reorderThread = async (input: ReorderWorkThreadsInput): Promise<void> => {
+    if (reorderBusy.current) return;
+    reorderBusy.current = true;
+    try {
+      await window.desktop.reorderWorkThreads(input);
+    } catch (error) {
+      toast.error(cleanError(error));
+    } finally {
+      reorderBusy.current = false;
+    }
+  };
+
+  const threadDropTarget = (event: React.DragEvent<HTMLDivElement>, thread: WorkThread): ReorderWorkThreadsInput | null => {
+    const source = activeThreads.find((item) => item.id === draggedThreadId.current);
+    if (!source || source.id === thread.id || source.pinned !== thread.pinned || reorderBusy.current) return null;
+    const row = event.currentTarget.querySelector(".thread-row")!.getBoundingClientRect();
+    return { id: source.id, targetId: thread.id, placement: event.clientY < row.top + row.height / 2 ? "before" : "after" };
+  };
+
   if (sidebarCollapsed) return null;
 
   return (
     <aside className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
       <div className="sidebar-title drag"><div className="brand no-drag"><img className="brand-mark" src={appIcon} alt="Super Thread" /></div><button className="sidebar-collapse no-drag" onClick={() => setSidebarCollapsed(true)} title="Hide sidebar"><ChevronLeft size={15} /></button></div>
-      <nav className="sidebar-scroll no-drag">
+      <nav className="sidebar-scroll no-drag" onDragOver={(event) => {
+        if (!draggedThreadId.current) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientY < bounds.top + 28) event.currentTarget.scrollTop -= 10;
+        else if (event.clientY > bounds.bottom - 28) event.currentTarget.scrollTop += 10;
+      }} onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
+      }}>
         <div className="primary-scopes">
-          <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> All workspaces</span><b>{allActiveWorkspaces.length}</b></button>
-          <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> All projects</span><b>{snapshot.projects.length}</b></button>
-          <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> All work threads</span><b>{snapshot.workThreads.length}</b></button>
-          <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> All devices</span><b>{snapshot.devices.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> <em title="All workspaces">All workspaces</em></span><b>{allActiveWorkspaces.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> <em title="All projects">All projects</em></span><b>{snapshot.projects.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> <em title="All work threads">All work threads</em></span><b>{snapshot.workThreads.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> <em title="All devices">All devices</em></span><b>{snapshot.devices.length}</b></button>
         </div>
 
         <div className="sidebar-separator" />
@@ -178,19 +214,55 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
             const isExpanded = expandedThreadIds.includes(thread.id);
             const isSelected = scope.type === "work-thread" && scope.id === thread.id;
             return (
-              <div className="thread-tree" key={thread.id}>
-                <div className={`thread-row ${isSelected ? "selected" : ""}`} onContextMenu={(event) => openThreadMenu(event, thread)}>
+              <div
+                className={`thread-tree ${draggingThreadId === thread.id ? "dragging" : ""} ${dropTarget?.targetId === thread.id ? `drop-${dropTarget.placement}` : ""}`}
+                key={thread.id}
+                onDragOver={(event) => {
+                  const target = threadDropTarget(event, thread);
+                  if (target) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  } else event.dataTransfer.dropEffect = "none";
+                  setDropTarget(target);
+                }}
+                onDrop={(event) => {
+                  const target = threadDropTarget(event, thread);
+                  event.preventDefault();
+                  clearDrag();
+                  if (target) void reorderThread(target);
+                }}
+              >
+                <div className={`thread-row ${isSelected ? "selected" : ""}`} onContextMenu={(event) => openThreadMenu(event, thread)}
+                  draggable
+                  onDragStart={(event) => {
+                    if (reorderBusy.current) { event.preventDefault(); return; }
+                    setThreadMenu(null);
+                    setWorkspaceMenu(null);
+                    draggedThreadId.current = thread.id;
+                    setDraggingThreadId(thread.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("application/x-superthread-work-thread", thread.id);
+                  }}
+                  onDragEnd={clearDrag}
+                >
                   <button className="thread-disclosure" onClick={() => toggleThreadExpanded(thread.id)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${thread.name}`}>
                     {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
-                  <button className="thread-scope" onClick={() => setWorkThreadFilter(thread.id)}>{thread.pinned ? <span className="thread-pinned-indicator" title="Pinned"><Pin size={14} /></span> : <MessagesSquare size={14} />}<em>{thread.name}</em></button>
+                  <button className="thread-scope" onKeyDown={(event) => {
+                    if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                    event.preventDefault();
+                    const group = activeThreads.filter((item) => item.pinned === thread.pinned);
+                    const index = group.findIndex((item) => item.id === thread.id);
+                    const target = group[index + (event.key === "ArrowUp" ? -1 : 1)];
+                    if (target) void reorderThread({ id: thread.id, targetId: target.id, placement: event.key === "ArrowUp" ? "before" : "after" });
+                  }} onClick={() => setWorkThreadFilter(thread.id)}>{thread.pinned ? <span className="thread-pinned-indicator" title="Pinned"><Pin size={14} /></span> : <MessagesSquare size={14} />}<em title={thread.name}>{thread.name}</em></button>
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
                   {workspaces.map((workspace) => {
                     const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
                     const Icon = device?.type === "remote" ? Server : Laptop;
-                    return <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><Icon size={13} /><span><strong>{workspace.name}</strong><small>{workspaceProjectName(snapshot, workspace)}</small></span></button>;
+                    return <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><Icon size={13} /><span><strong title={workspace.name}>{workspace.name}</strong><small title={workspaceProjectName(snapshot, workspace)}>{workspaceProjectName(snapshot, workspace)}</small></span></button>;
                   })}
                 </div>}
               </div>

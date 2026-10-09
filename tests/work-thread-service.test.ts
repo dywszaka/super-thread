@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { nextTmuxSessionName, tmuxSessionBaseName, WorkspaceService, type WorkspaceGitRuntime } from "../src/main/application/workspace-service";
+import { sortedWorkThreads } from "../src/shared/work-thread-order";
 import { JsonStore } from "../src/main/persistence/json-store";
 import { ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
 import type { ExternalTerminalRuntime } from "../src/main/runtime/iterm-runtime";
@@ -867,4 +868,55 @@ test("work thread Markdown is isolated, persists across restart and survives arc
   assert.equal(service.snapshot().workThreads[0]?.document, "");
   await service.deleteWorkThread(a!.id);
   await assert.rejects(service.saveWorkThreadDocument({ id: a!.id, content: "stale" }), /Work thread not found/);
+});
+
+
+test("sidebar reordering persists without changing document order or workspace ownership", async () => {
+  const { service, store } = await setup();
+  const snapshot = service.snapshot();
+  addReadyWorkspace(snapshot);
+  snapshot.workThreads.push(
+    { id: "thread-2", name: "Second", status: "active", pinned: false, createdAt: "z2", updatedAt: "later", document: "# Second", documentUpdatedAt: "latest" },
+    { id: "thread-3", name: "Third", status: "active", pinned: false, createdAt: "z3", updatedAt: "last" },
+    { id: "pinned", name: "Pinned", status: "active", pinned: true, createdAt: "first", updatedAt: "first" }
+  );
+  await store.update((draft) => { Object.assign(draft, snapshot); });
+  const original = service.snapshot();
+  await service.reorderWorkThreads({ id: "thread-3", targetId: "thread-1", placement: "before" });
+  const order = () => sortedWorkThreads(service.snapshot().workThreads).map((thread) => thread.id);
+  assert.deepEqual(order(), ["pinned", "thread-3", "thread-1", "thread-2"]);
+  await service.reorderWorkThreads({ id: "thread-3", targetId: "thread-2", placement: "after" });
+  assert.deepEqual(order(), ["pinned", "thread-1", "thread-2", "thread-3"]);
+  for (const thread of service.snapshot().workThreads) {
+    const { sidebarOrder, ...rest } = thread;
+    assert.deepEqual(rest, original.workThreads.find((item) => item.id === thread.id));
+  }
+  assert.deepEqual(service.snapshot().workspaces, original.workspaces);
+  await service.archiveWorkThread("thread-2");
+  await service.restoreWorkThread("thread-2");
+  assert.deepEqual(order(), ["pinned", "thread-1", "thread-2", "thread-3"]);
+  // Reload the same store from disk as an application restart would.
+  await store.load();
+  assert.deepEqual(order(), ["pinned", "thread-1", "thread-2", "thread-3"]);
+  await service.createWorkThread({ name: "New" });
+  assert.equal(sortedWorkThreads(service.snapshot().workThreads).at(-1)?.name, "New");
+});
+
+test("sidebar reordering rejects missing, archived, and cross-pin targets without changing data", async () => {
+  const { service, store } = await setup();
+  await store.update((draft) => {
+    draft.workThreads = [
+      { id: "a", name: "A", status: "active", pinned: false, createdAt: "1", updatedAt: "1" },
+      { id: "b", name: "B", status: "active", pinned: true, createdAt: "2", updatedAt: "2" },
+      { id: "c", name: "C", status: "archived", pinned: false, createdAt: "3", updatedAt: "3" }
+    ];
+  });
+  const before = service.snapshot();
+  for (const targetId of ["missing", "b", "c"]) {
+    await assert.rejects(service.reorderWorkThreads({ id: "a", targetId, placement: "before" }));
+    assert.deepEqual(service.snapshot(), before);
+  }
+  await assert.rejects(service.reorderWorkThreads({ id: "c", targetId: "a", placement: "before" }), /Only active/);
+  await service.reorderWorkThreads({ id: "a", targetId: "a", placement: "after" });
+  assert.deepEqual(service.snapshot(), before);
 });

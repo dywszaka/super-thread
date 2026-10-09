@@ -1,7 +1,7 @@
 import { documentLinkSchema, saveWorkThreadDocumentSchema, MAX_WORK_THREAD_DOCUMENT_LENGTH } from "../src/shared/contract";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkThreadSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
+import { reorderWorkThreadsSchema, addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkThreadSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
   assert.equal(addProjectSchema.safeParse({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
@@ -109,4 +109,15 @@ test("document links allow web/email URLs and reject local or executable protoco
   for (const url of ["file:///etc/passwd", "javascript:alert(1)", "vscode://file/tmp", "./relative.md"]) {
     assert.equal(documentLinkSchema.safeParse(url).success, false);
   }
+});
+
+
+test("work thread moves validate identity and insertion placement", () => {
+  assert.equal(reorderWorkThreadsSchema.safeParse({ id: "a", targetId: "b", placement: "before" }).success, true);
+  for (const input of [
+    { id: "", targetId: "b", placement: "before" },
+    { id: "a", targetId: "", placement: "after" },
+    { id: "a", targetId: "b", placement: "above" },
+    { id: "a", targetId: "b", placement: "before", pinned: true }
+  ]) assert.equal(reorderWorkThreadsSchema.safeParse(input).success, false);
 });
