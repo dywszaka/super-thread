@@ -68,7 +68,7 @@ export function workspaceProjectName(snapshot: AppSnapshot, workspace: Workspace
 export function workspaceOverview(snapshot: AppSnapshot): Array<{ workspace: Workspace; terminals: number; codex: number }> {
   const counts = new Map<string, { terminals: number; codex: number }>();
   for (const session of snapshot.sessions) {
-    if (session.status !== "running") continue;
+    if (session.status !== "running" || session.activityStatus !== "busy") continue;
     const count = counts.get(session.workspaceId) ?? { terminals: 0, codex: 0 };
     if (session.kind === "codex") count.codex++;
     else count.terminals++;

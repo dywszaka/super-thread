@@ -572,7 +572,7 @@ interface Workspace {
 
 规则：
 
-- All workspaces 打开独立总览，不自动进入 Workspace；点击列表项后进入对应 Workspace。总览沿用 active 视图规则，隐藏归档 WorkThread 的 Workspace。页面上方分别显示 running Terminal 与 Codex 数量，每行显示该 Workspace 的 running 合计；只统计 runtime snapshot 中 status=running 的 Session（不包含 Browser），按 running 合计降序排列，同数量保持原顺序，并随运行状态更新。
+- All workspaces 打开独立总览，不自动进入 Workspace；点击列表项后进入对应 Workspace。总览沿用 active 视图规则，隐藏归档 WorkThread 的 Workspace。页面上方分别显示 running Terminal 与 Codex 数量，每行显示该 Workspace 的 running 合计；只统计 runtime snapshot 中 status=running 且 activityStatus=busy 的 Session（不包含 Browser、空闲 shell、等待输入或权限确认的 Codex），按 running 合计降序排列，同数量保持原顺序，并随运行状态更新。
 - Workspace 名称在创建时决定 worktree 路径与 `work/{workspace-name}` 分支，且在同一 Device 上唯一。
 - 侧栏右键 Workspace 可编辑 Workspace 信息；只有名称可以修改，Project、Device、路径、分支与 Base branch 均只读。
 - 重命名只更新展示名称与 `updatedAt`，不重命名目录、不改分支、不改 tmux session 名称，也不影响已存在的 Session 与其工作目录。

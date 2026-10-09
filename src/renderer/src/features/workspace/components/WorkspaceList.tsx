@@ -16,7 +16,7 @@ export function WorkspaceList({ snapshot }: { snapshot: AppSnapshot }): React.Re
     <main className="project-page workspace-overview">
       <header className="project-page-header drag">
         <SidebarReopenButton />
-        <div><h1>All workspaces</h1><p>Open a workspace to continue working.</p></div>
+        <div><h1>All workspaces</h1><p>Running counts sessions actively executing commands or working.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog(dialog)}><Plus size={14} /> {action}</button>
       </header>
       <section className="project-page-body no-drag">
