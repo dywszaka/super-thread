@@ -9,7 +9,7 @@ export type SessionKind = ManagedSessionKind | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 10;
+export const CURRENT_SCHEMA_VERSION = 11;
 
 export interface WorkThread {
   id: string;
@@ -143,6 +143,32 @@ export interface Session {
   exitedAt?: string;
 }
 
+export interface BrowserTab {
+  id: string;
+  workspaceId: string;
+  url: string;
+  title: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BrowserState {
+  id: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  error?: string;
+}
+
+export interface CreateBrowserInput { workspaceId: string; url?: string; }
+export interface NavigateBrowserInput { id: string; url: string; }
+export interface ReorderWorkspaceTabsInput { workspaceId: string; tabIds: string[]; }
+export interface BrowserLayoutInput {
+  id: string | null;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
 export interface AppSnapshot {
   schemaVersion: number;
   workThreads: WorkThread[];
@@ -152,6 +178,7 @@ export interface AppSnapshot {
   checkouts: ProjectCheckout[];
   workspaces: Workspace[];
   sessions: Session[];
+  browserTabs: BrowserTab[];
 }
 
 export const emptySnapshot = (): AppSnapshot => ({
@@ -162,6 +189,7 @@ export const emptySnapshot = (): AppSnapshot => ({
   connections: [],
   checkouts: [],
   workspaces: [],
+  browserTabs: [],
   sessions: []
 });
 

@@ -6,7 +6,7 @@
 
 MVP 只解决一个问题：
 
-> 用户可以用 WorkThread 组织相关工作，在不同 Device 上管理 Project，为 WorkThread 创建隔离的 Workspace，并在 Workspace 中创建和恢复持久 Terminal Session。
+> 用户可以用 WorkThread 组织相关工作，在不同 Device 上管理 Project，为 WorkThread 创建隔离的 Workspace，并在 Workspace 中创建和恢复持久 Terminal Session 与 Browser 标签。
 
 核心模型：
 
@@ -18,7 +18,7 @@ Workspace ─── Project × Device
    │
    │ contains
    ▼
-Terminal Session
+Terminal Session / BrowserTab
 ```
 
 其中：
@@ -28,6 +28,7 @@ Terminal Session
 - Device：实际执行工作的机器
 - Workspace：Project 在某个 Device 上的一份隔离 Working Copy
 - Session：Workspace 中一个持久 Terminal / PTY
+- BrowserTab：Workspace 持有的本机网页视图及其最后访问地址
 
 MVP 不包含：
 
@@ -90,7 +91,8 @@ Workspace
 ├── Working Directory
 ├── Git Worktree
 ├── Git Branch
-└── Terminal Sessions
+├── Terminal Sessions
+└── Browser Tabs
 ```
 
 而不是把：
@@ -160,7 +162,7 @@ Device Runtime
 
 # 3. Domain Model
 
-核心对象只有五个：
+核心对象包括 Workspace 所持有的 BrowserTab：
 
 ```text
 WorkThread
@@ -168,6 +170,7 @@ Project
 Device
 Workspace
 Session
+BrowserTab
 ```
 
 关系：
@@ -706,7 +709,7 @@ Done
 
 # 13. Workspace Delete
 
-删除 `main` Workspace 只停止其 Session 并删除 Workspace 与 Session metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
+删除 `main` Workspace 只停止其 Session 并删除 Workspace、Session 与 BrowserTab metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
 
 删除 `worktree` Workspace：
 
@@ -714,7 +717,7 @@ Done
 2. 停止所有 Session
 3. 删除 Git Worktree
 4. 删除对应 Branch
-5. 删除 Workspace 和 Session metadata
+5. 删除 Workspace、Session 和 BrowserTab metadata
 
 Runtime：
 
@@ -744,7 +747,7 @@ git worktree remove --force
 git branch -D <workspace-branch>
 ```
 
-只有在 PTY/连接、Git worktree 和 branch 删除成功后，才删除持久化 Workspace 与 Session 记录。失败时必须保留 metadata，避免 UI 状态与实际 Git 状态失配。
+只有在 PTY/连接、Git worktree 和 branch 删除成功后，才删除持久化 Workspace、Session 与 BrowserTab 记录。失败时必须保留 metadata，避免 UI 状态与实际 Git 状态失配。
 
 ---
 
@@ -1691,3 +1694,18 @@ Review
 这条链路本身是否足以成为一个好用的多项目、多机器开发工作台。
 
 如果成立，再在 Workspace 之上增加 Agent / Task 等高层语义，而不改变底层 Runtime Model。
+
+
+## Workspace Browser Tabs
+
+BrowserTab 是 Workspace 持有的本机网页视图记录，不复用代表 PTY 进程的 Session。它保存 `id`、`workspaceId`、`url`、`title`、`order`、`createdAt` 和 `updatedAt`；旧快照迁移为没有 Browser 的集合。地址、标题、顺序属于持久数据，加载状态、错误和前进后退能力属于运行时状态。
+
+- 现有标签栏加号可创建多个 Browser，与 Terminal 并列选择、关闭和拖拽排序；排序覆盖同一 Workspace 的全部 Terminal 与 Browser。
+- 地址栏只接受 HTTP(S)。裸域名默认 HTTPS，localhost 与本机回环地址默认 HTTP。输入地址后先保存再加载；主框架导航、重定向和站内地址变化更新最后访问地址。页面标题更新标签标题。
+- 每个 Browser 使用主进程独立创建的 WebContentsView，禁止 Node integration、preload 注入、未授权权限和下载；网页不具有应用 IPC 权限。后退、前进、刷新、加载状态和错误提示由应用地址栏提供。
+- 网页请求打开新的 HTTP(S) 窗口时，在原 Workspace 创建 Browser 标签；不允许其他协议打开新窗口或导航。
+- 标签切换保留网页状态；窗口布局变化同步网页边界，应用弹窗、覆盖菜单或拖拽时隐藏网页视图。
+- 关闭主窗口销毁网页视图；窗口重开或应用重启后，恢复全部未关闭 Browser 并自动加载各自最后访问地址。前进、后退历史不恢复。关闭标签删除其记录，删除 Workspace 一并清理 Browser 记录和视图。Terminal 的原有运行时生命周期保持独立。
+- Remote Workspace 的 Browser 仍运行于 Mac 本机，localhost 指 Mac；远程网页可使用已有 SSH 端口转发访问。
+
+验收覆盖多个 Browser 创建与地址独立保存、主框架及站内导航更新、混合排序、关闭删除、旧快照迁移、窗口重开和应用重启自动加载、Workspace 删除清理，以及真实 Electron 中网页加载、导航控件、安全隔离、弹窗遮挡、浅深色、窄窗口、交通灯间距、拖拽与 Terminal 输入输出及切换。

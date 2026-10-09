@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Box, Focus, FolderGit2, Plus, Server } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type { Workspace } from "@/shared/domain";
@@ -17,6 +17,7 @@ import { visibleWorkspaces } from "./selection";
 export function WorkspaceApp(): React.ReactNode {
   const { data: snapshot, error, isLoading } = useQuery({ queryKey: ["snapshot"], queryFn: () => window.desktop.snapshot() });
   const store = useWorkbenchStore();
+  const client = useQueryClient();
   const scope = store.scope;
   useDocumentAutosaveLifecycle(snapshot?.workThreads);
   const documentThread = scope.type === "work-thread" && !store.activeWorkspaceId
@@ -37,6 +38,12 @@ export function WorkspaceApp(): React.ReactNode {
   useEffect(() => {
     if (!showingTerminal && store.focusMode) store.exitFocusMode();
   }, [showingTerminal, store.focusMode]);
+  useEffect(() => window.desktop.onBrowserCreated((tab) => {
+    void client.invalidateQueries({ queryKey: ["snapshot"] }).then(() => {
+      store.setActiveWorkspace(tab.workspaceId);
+      store.setActiveSession(tab.workspaceId, tab.id);
+    });
+  }), [client]);
   useEffect(() => window.desktop.setFocusMode(focusMode), [focusMode]);
   useEffect(() => window.desktop.onMenuAction((action) => {
     if (action === "new-work-thread") store.openDialog("workThread");

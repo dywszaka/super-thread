@@ -319,3 +319,11 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
   .work-thread-card-icon { width: 28px; height: 28px; }
 }
 @media (prefers-reduced-motion: reduce) { .work-thread-document-slot { transition: none; } }
+
+/* Browser controls remain in the workbench; only the page rectangle is native. */
+.browser-pane { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--surface); }
+.browser-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.browser-toolbar input { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-raised); color: var(--foreground); }
+.browser-content { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.browser-message { height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: var(--muted-foreground); padding: 24px; text-align: center; }
+.browser-message p { max-width: 560px; overflow-wrap: anywhere; }

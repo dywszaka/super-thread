@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
+  BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
   AddProjectInput,
   AddRemoteDeviceInput,
   AppSnapshot,
@@ -28,6 +30,15 @@ import type {
 } from "./domain";
 
 export const channels = {
+  createBrowser: "browser:create",
+  navigateBrowser: "browser:navigate",
+  closeBrowser: "browser:close",
+  browserCommand: "browser:command",
+  browserLayout: "browser:layout",
+  browserStates: "browser:states",
+  browserStateChanged: "browser:state-changed",
+  browserCreated: "browser:created",
+  reorderWorkspaceTabs: "workspace:reorder-tabs",
   snapshot: "app:snapshot",
   finishDocumentClose: "window:finish-document-close",
   openDocumentLink: "document:open-link",
@@ -232,9 +243,31 @@ export const reorderSessionsSchema = z.object({
   sessionIds: z.array(z.string().min(1)).min(1)
 }).strict();
 
+const browserUrlSchema = z.string().max(8192).transform((value, context) => {
+  try { return normalizeBrowserUrl(value); }
+  catch (error) { context.addIssue({ code: z.ZodIssueCode.custom, message: (error as Error).message }); return z.NEVER; }
+});
+export const createBrowserSchema = z.object({ workspaceId: z.string().min(1), url: browserUrlSchema.optional() }).strict();
+export const navigateBrowserSchema = z.object({ id: z.string().min(1), url: browserUrlSchema }).strict();
+export const reorderWorkspaceTabsSchema = z.object({ workspaceId: z.string().min(1), tabIds: z.array(z.string().min(1)).max(4096).refine((ids) => new Set(ids).size === ids.length, "Tab IDs must be unique") }).strict();
+export const browserLayoutSchema = z.object({ id: z.string().min(1).nullable(), bounds: z.object({
+  x: z.number().finite().min(0).max(32768), y: z.number().finite().min(0).max(32768),
+  width: z.number().finite().min(0).max(32768), height: z.number().finite().min(0).max(32768)
+}).strict() }).strict();
+export const browserCommandSchema = z.object({ id: z.string().min(1), command: z.enum(["back", "forward", "reload"]) }).strict();
+
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
+  createBrowser(input: CreateBrowserInput): Promise<BrowserTab>;
+  navigateBrowser(input: NavigateBrowserInput): Promise<void>;
+  closeBrowser(id: string): Promise<void>;
+  reorderWorkspaceTabs(input: ReorderWorkspaceTabsInput): Promise<void>;
+  browserCommand(input: { id: string; command: "back" | "forward" | "reload" }): Promise<void>;
+  browserLayout(input: BrowserLayoutInput): Promise<void>;
+  browserStates(): Promise<BrowserState[]>;
+  onBrowserStateChanged(listener: (state: BrowserState) => void): () => void;
+  onBrowserCreated(listener: (tab: BrowserTab) => void): () => void;
   platform: NodeJS.Platform;
   snapshot(): Promise<AppSnapshot>;
   finishDocumentClose(): void;

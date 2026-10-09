@@ -1,3 +1,5 @@
+import { normalizeBrowserUrl } from "../../shared/browser-url";
+import type { BrowserTab, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput } from "../../shared/domain";
 import { EventEmitter } from "node:events";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -571,6 +573,7 @@ export class WorkspaceService extends EventEmitter {
     }
     await runtime.deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
     await this.store.update((draft) => {
+      draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
       const thread = draft.workThreads.find((item) => item.id === workspace.workThreadId);
@@ -581,10 +584,66 @@ export class WorkspaceService extends EventEmitter {
 
   private async removeWorkspaceMetadata(workspaceId: string, workThreadId: string): Promise<void> {
     await this.store.update((draft) => {
+      draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
       const thread = draft.workThreads.find((item) => item.id === workThreadId);
       if (thread) thread.updatedAt = now();
+    });
+    this.changed();
+  }
+
+  async createBrowser(input: CreateBrowserInput): Promise<BrowserTab> {
+    const url = input.url ? normalizeBrowserUrl(input.url) : "";
+    let tab!: BrowserTab;
+    await this.store.update((draft) => {
+      if (this.workspace(draft, input.workspaceId).status !== "ready") throw new Error("Workspace is not ready");
+      const timestamp = now();
+      tab = { id: id("browser"), workspaceId: input.workspaceId, url, title: "Browser", order: this.nextSessionOrder(draft, input.workspaceId), createdAt: timestamp, updatedAt: timestamp };
+      draft.browserTabs.push(tab);
+    });
+    this.changed();
+    return tab;
+  }
+
+  async navigateBrowser(input: NavigateBrowserInput): Promise<void> {
+    const url = normalizeBrowserUrl(input.url);
+    await this.store.update((draft) => {
+      const tab = draft.browserTabs.find((tab) => tab.id === input.id);
+      if (!tab) throw new Error("Browser tab no longer exists");
+      tab.url = url;
+      tab.updatedAt = now();
+    });
+    this.changed();
+  }
+
+  async updateBrowserPage(id: string, page: { url?: string; title?: string }): Promise<void> {
+    const url = page.url ? normalizeBrowserUrl(page.url) : undefined;
+    await this.store.update((draft) => {
+      const tab = draft.browserTabs.find((tab) => tab.id === id);
+      if (!tab) return; // An in-flight navigation may finish after closing the tab.
+      if (url) tab.url = url;
+      if (page.title !== undefined) tab.title = page.title.slice(0, 512) || "Browser";
+      tab.updatedAt = now();
+    });
+    this.changed();
+  }
+
+  async closeBrowser(id: string): Promise<void> {
+    await this.store.update((draft) => {
+      if (!draft.browserTabs.some((tab) => tab.id === id)) throw new Error("Browser tab no longer exists");
+      draft.browserTabs = draft.browserTabs.filter((tab) => tab.id !== id);
+    });
+    this.changed();
+  }
+
+  async reorderWorkspaceTabs(input: ReorderWorkspaceTabsInput): Promise<void> {
+    await this.store.update((draft) => {
+      this.workspace(draft, input.workspaceId);
+      const tabs = [...draft.sessions, ...draft.browserTabs].filter((tab) => tab.workspaceId === input.workspaceId);
+      if (new Set(input.tabIds).size !== input.tabIds.length || input.tabIds.length !== tabs.length || input.tabIds.some((id) => !tabs.some((tab) => tab.id === id))) throw new Error("Tab order must include every tab in this workspace exactly once");
+      const orders = new Map(input.tabIds.map((id, index) => [id, index]));
+      tabs.forEach((tab) => { tab.order = orders.get(tab.id)!; });
     });
     this.changed();
   }
@@ -640,6 +699,7 @@ export class WorkspaceService extends EventEmitter {
     let created: Session | undefined;
     await this.store.update((draft) => {
       created = { ...session, pid };
+      created.order = this.nextSessionOrder(draft, workspace.id);
       draft.sessions.push(created);
     });
     await this.finishSessionStart(session.id);
@@ -1032,7 +1092,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private nextSessionOrder(snapshot: AppSnapshot, workspaceId: string): number {
-    const orders = snapshot.sessions.filter((item) => item.workspaceId === workspaceId).map((item) => item.order ?? 0);
+    const orders = [...snapshot.sessions, ...snapshot.browserTabs].filter((item) => item.workspaceId === workspaceId).map((item) => item.order ?? 0);
     return orders.length ? Math.max(...orders) + 1 : 0;
   }
 

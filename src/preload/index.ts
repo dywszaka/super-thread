@@ -1,8 +1,25 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { channels, type DesktopBridge, type MenuAction } from "../shared/contract";
-import type { TerminalOutput } from "../shared/domain";
+import type { BrowserState, BrowserTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  createBrowser: (input) => ipcRenderer.invoke(channels.createBrowser, input),
+  navigateBrowser: (input) => ipcRenderer.invoke(channels.navigateBrowser, input),
+  closeBrowser: (id) => ipcRenderer.invoke(channels.closeBrowser, id),
+  reorderWorkspaceTabs: (input) => ipcRenderer.invoke(channels.reorderWorkspaceTabs, input),
+  browserCommand: (input) => ipcRenderer.invoke(channels.browserCommand, input),
+  browserLayout: (input) => ipcRenderer.invoke(channels.browserLayout, input),
+  browserStates: () => ipcRenderer.invoke(channels.browserStates),
+  onBrowserStateChanged: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, state: BrowserState): void => listener(state);
+    ipcRenderer.on(channels.browserStateChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.browserStateChanged, wrapped);
+  },
+  onBrowserCreated: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tab: BrowserTab): void => listener(tab);
+    ipcRenderer.on(channels.browserCreated, wrapped);
+    return () => ipcRenderer.removeListener(channels.browserCreated, wrapped);
+  },
   platform: process.platform,
   openDocumentLink: (url) => ipcRenderer.invoke(channels.openDocumentLink, url),
   finishDocumentClose: () => ipcRenderer.send(channels.finishDocumentClose),

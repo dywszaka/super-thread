@@ -62,8 +62,16 @@ function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
     connections: stored.connections ?? base.connections,
     checkouts: stored.checkouts ?? base.checkouts,
     workspaces: (stored.workspaces ?? base.workspaces).map((workspace) => normalizeWorkspace(workspace, tmuxSessionNames.get(workspace.id))),
+    browserTabs: stored.browserTabs ?? [],
     sessions: storedSessions.filter((session) => session.kind !== "tmux").map(normalizeSession)
   };
+  if ((stored.schemaVersion ?? 0) < 11) {
+    for (const workspace of data.workspaces) {
+      data.sessions.filter((session) => session.workspaceId === workspace.id)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .forEach((session, index) => { session.order = index; });
+    }
+  }
   return data;
 }
 
