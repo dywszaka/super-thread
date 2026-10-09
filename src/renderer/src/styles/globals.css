@@ -325,3 +325,12 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .browser-message p { max-width: 560px; overflow-wrap: anywhere; }
 
 .workspace-shortcut-hint { flex: none; margin-left: auto; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--foreground); font: 10px system-ui, sans-serif; pointer-events: none; white-space: nowrap; }
+
+.workspace-running-summary { flex-wrap: wrap; gap: 10px 18px; }
+.workspace-overview-row { width: 100%; text-align: left; color: var(--foreground); font: inherit; cursor: pointer; -webkit-app-region: no-drag; }
+.workspace-overview-row:hover { background: var(--muted); }
+.workspace-overview-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.workspace-overview-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 10.5px; }
+.workspace-running-count { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 10px; background: var(--muted); color: var(--muted-foreground); font-size: 10.5px; }
+.workspace-running-count.has-running { color: var(--success); }
+.workspace-overview-row > svg { flex: none; color: var(--muted-foreground); }

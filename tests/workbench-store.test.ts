@@ -60,3 +60,13 @@ test("selecting a work thread opens its document and workspace selection remains
   useWorkbenchStore.getState().setWorkThreadFilter("thread-b");
   assert.equal(useWorkbenchStore.getState().activeWorkspaceId, null);
 });
+
+test("all workspaces clears workspace selection while preserving terminal selection", () => {
+  useWorkbenchStore.getState().setWorkThreadFilter("thread-a");
+  useWorkbenchStore.getState().setActiveWorkspace("workspace-a");
+  useWorkbenchStore.getState().setActiveSession("workspace-a", "session-a");
+  useWorkbenchStore.getState().showAllWorkspaces();
+  assert.deepEqual(useWorkbenchStore.getState().scope, { type: "all-workspaces" });
+  assert.equal(useWorkbenchStore.getState().activeWorkspaceId, null);
+  assert.equal(useWorkbenchStore.getState().activeSessionIds["workspace-a"], "session-a");
+});

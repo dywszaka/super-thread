@@ -64,3 +64,17 @@ export function resolveSelectionId(
 export function workspaceProjectName(snapshot: AppSnapshot, workspace: Workspace): string {
   return snapshot.projects.find((project) => project.id === workspace.projectId)?.name ?? "Unknown project";
 }
+
+export function workspaceOverview(snapshot: AppSnapshot): Array<{ workspace: Workspace; terminals: number; codex: number }> {
+  const counts = new Map<string, { terminals: number; codex: number }>();
+  for (const session of snapshot.sessions) {
+    if (session.status !== "running") continue;
+    const count = counts.get(session.workspaceId) ?? { terminals: 0, codex: 0 };
+    if (session.kind === "codex") count.codex++;
+    else count.terminals++;
+    counts.set(session.workspaceId, count);
+  }
+  return visibleWorkspaces(snapshot, { type: "all-workspaces" })
+    .map((workspace) => ({ workspace, ...(counts.get(workspace.id) ?? { terminals: 0, codex: 0 }) }))
+    .sort((left, right) => (right.terminals + right.codex) - (left.terminals + left.codex));
+}

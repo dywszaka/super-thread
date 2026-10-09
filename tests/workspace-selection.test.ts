@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate, resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
+import { workspaceOverview, formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate, resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
 import { emptySnapshot, type Workspace } from "../src/shared/domain";
 
 test("workspace selection adopts the first project added after the dialog mounts", () => {
@@ -90,4 +90,27 @@ test("document update labels use zero-padded local MMDD HH:mm in 24-hour time", 
   assert.equal(formatDocumentUpdate(new Date(2026, 0, 2, 0, 7).toISOString()), "0102 00:07");
   assert.equal(formatDocumentUpdate(new Date(2026, 11, 31, 23, 59).toISOString()), "1231 23:59");
   assert.equal(formatDocumentUpdate("invalid"), "—");
+});
+
+test("workspace overview counts running sessions by kind and sorts active workspaces without mutating them", () => {
+  const snapshot = emptySnapshot();
+  snapshot.workThreads = [
+    { id: "active", name: "Active", status: "active", pinned: false, createdAt: "now", updatedAt: "now" },
+    { id: "archived", name: "Archived", status: "archived", pinned: false, createdAt: "now", updatedAt: "now" }
+  ];
+  snapshot.workspaces = [workspace("empty", "active", "project"), workspace("one", "active", "project"), workspace("two", "active", "project"), workspace("tie", "active", "project"), workspace("hidden", "archived", "project")];
+  snapshot.sessions = [
+    { id: "legacy", workspaceId: "one", status: "running" },
+    { id: "shell", workspaceId: "two", kind: "shell", status: "running" },
+    { id: "codex", workspaceId: "two", kind: "codex", status: "running" },
+    { id: "tie", workspaceId: "tie", kind: "codex", status: "running" },
+    { id: "hidden", workspaceId: "hidden", kind: "codex", status: "running" },
+    { id: "exited", workspaceId: "empty", kind: "shell", status: "exited" },
+    { id: "failed", workspaceId: "empty", kind: "codex", status: "restore-failed" }
+  ].map((session) => ({ name: session.id, shell: "/bin/zsh", createdAt: "now", ...session })) as typeof snapshot.sessions;
+  snapshot.browserTabs = [{ id: "browser", workspaceId: "empty", title: "Browser", url: "https://example.com", order: 0, createdAt: "now", updatedAt: "now" }];
+  assert.deepEqual(workspaceOverview(snapshot).map(({ workspace, terminals, codex }) => [workspace.id, terminals, codex]), [["two", 1, 1], ["one", 1, 0], ["tie", 0, 1], ["empty", 0, 0]]);
+  assert.equal(snapshot.workspaces[0]?.id, "empty");
+  snapshot.sessions[2]!.status = "exited";
+  assert.deepEqual(workspaceOverview(snapshot).map((row) => row.workspace.id), ["one", "two", "tie", "empty"]);
 });
