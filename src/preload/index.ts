@@ -4,6 +4,7 @@ import { channels, type DesktopBridge, type MenuAction } from "../shared/contrac
 import type { BrowserState, BrowserTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  writeClipboard: (text) => ipcRenderer.invoke(channels.writeClipboard, text),
   setWorkspaceShortcutCount: (count) => ipcRenderer.send(channels.setWorkspaceShortcutCount, count),
   onWorkspaceShortcut: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, shortcut: WorkspaceShortcut): void => listener(shortcut);

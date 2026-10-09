@@ -1,6 +1,6 @@
 import { setWorkspaceShortcutCount } from "../windows/workspace-shortcuts";
 import type { BrowserRuntime } from "../runtime/browser-runtime";
-import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
 import {
   createBrowserSchema, navigateBrowserSchema, reorderWorkspaceTabsSchema, browserLayoutSchema, browserCommandSchema,
@@ -45,6 +45,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
       listener(event, ...args);
     });
   };
+  handle(channels.writeClipboard, (_event, text) => clipboard.writeText(z.string().max(2_000_000).parse(text)));
   handle(channels.createBrowser, (_event, input) => service.createBrowser(createBrowserSchema.parse(input)));
   handle(channels.navigateBrowser, (_event, input) => { const parsed = navigateBrowserSchema.parse(input); return browsers.navigate(parsed.id, parsed.url); });
   handle(channels.closeBrowser, (_event, id) => service.closeBrowser(sessionIdSchema.parse(id)));

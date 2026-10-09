@@ -31,6 +31,7 @@ import type {
 } from "./domain";
 
 export const channels = {
+  writeClipboard: "clipboard:write-text",
   workspaceShortcut: "workspace:shortcut",
   setWorkspaceShortcutCount: "workspace:shortcut-count",
   createBrowser: "browser:create",
@@ -262,6 +263,7 @@ export const browserCommandSchema = z.object({ id: z.string().min(1), command: z
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
+  writeClipboard(text: string): Promise<void>;
   setWorkspaceShortcutCount(count: number): void;
   onWorkspaceShortcut(listener: (shortcut: WorkspaceShortcut) => void): () => void;
   createBrowser(input: CreateBrowserInput): Promise<BrowserTab>;

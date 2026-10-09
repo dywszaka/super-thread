@@ -7,6 +7,7 @@ import type { WorkspaceService } from "../application/workspace-service";
 
 interface Page {
   view: WebContentsView;
+  visible: boolean;
   state: BrowserState;
   savingAddress: boolean;
   navigationGeneration: number;
@@ -35,10 +36,9 @@ export class BrowserRuntime {
       this.window = null;
       this.layout = null;
     });
-    window.on("resize", () => {
-      // Wait for fresh renderer bounds before displaying after a resize.
-      for (const page of this.pages.values()) page.view.setVisible(false);
-    });
+    // Keep the native surface attached during live resize; hiding it between
+    // renderer measurements exposes the empty host on every resize event.
+    window.on("resize", () => this.applyLayout());
     window.webContents.on("did-start-loading", () => this.hide());
     window.webContents.on("render-process-gone", () => this.hide());
     this.reconcile();
@@ -59,7 +59,7 @@ export class BrowserRuntime {
       contextIsolation: true, sandbox: true, webSecurity: true,
       allowRunningInsecureContent: false, webviewTag: false
     } });
-    const page: Page = { view, state: { id: tab.id, loading: false, canGoBack: false, canGoForward: false }, savingAddress: false, navigationGeneration: 0 };
+    const page: Page = { view, visible: false, state: { id: tab.id, loading: false, canGoBack: false, canGoForward: false }, savingAddress: false, navigationGeneration: 0 };
     this.pages.set(tab.id, page);
     owner.contentView.addChildView(view);
     view.setVisible(false);
@@ -148,17 +148,25 @@ export class BrowserRuntime {
       const visible = id === this.layout?.id && !!bounds && bounds.width > 0 && bounds.height > 0;
       if (visible && bounds) {
         const x = Math.min(width, Math.round(bounds.x)), y = Math.min(height, Math.round(bounds.y));
-        page.view.setBounds({ x, y, width: Math.max(0, Math.min(width - x, Math.round(bounds.width))), height: Math.max(0, Math.min(height - y, Math.round(bounds.height))) });
+        const next = { x, y, width: Math.max(0, Math.min(width - x, Math.round(bounds.width))), height: Math.max(0, Math.min(height - y, Math.round(bounds.height))) };
+        const current = page.view.getBounds();
+        if (current.x !== next.x || current.y !== next.y || current.width !== next.width || current.height !== next.height) page.view.setBounds(next);
       }
       const returnFocus = !visible && page.view.webContents.isFocused();
-      page.view.setVisible(visible);
+      this.setVisible(page, visible);
       if (returnFocus) this.window.webContents.focus();
     }
   }
 
+  private setVisible(page: Page, visible: boolean): void {
+    if (page.visible === visible) return;
+    page.view.setVisible(visible);
+    page.visible = visible;
+  }
+
   hide(): void {
     this.layout = null;
-    for (const page of this.pages.values()) page.view.setVisible(false);
+    for (const page of this.pages.values()) this.setVisible(page, false);
   }
 
   states(): BrowserState[] { return [...this.pages.values()].map((page) => ({ ...page.state })); }

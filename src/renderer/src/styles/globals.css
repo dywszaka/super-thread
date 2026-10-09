@@ -270,19 +270,15 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .document-save-status { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--muted-foreground); }
 .document-save-status.error { color: var(--danger); }
 .thread-document-toolbar { flex: none; min-height: 49px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; color: var(--muted-foreground); font-size: 11px; }
-.thread-document-toolbar .segmented { width: 190px; flex: none; }
+.thread-document-toolbar > button { flex: none; }
 .document-save-error { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 18px 10px; padding: 8px 10px; border: 1px solid var(--danger); border-radius: 6px; color: var(--danger); font-size: 11px; }
 .document-save-error span { min-width: 0; overflow-wrap: anywhere; user-select: text; }
-.thread-document-editor { min-width: 0; min-height: 0; flex: 1; margin: 0 18px 18px; user-select: text; --color-canvas-default: var(--surface-raised); --color-canvas-subtle: var(--muted); --color-fg-default: var(--foreground); --color-fg-muted: var(--muted-foreground); --color-border-default: var(--border); --color-accent-fg: var(--primary); }
-.thread-document-editor .w-md-editor { border-radius: var(--radius); overflow: hidden; background: var(--surface-raised); color: var(--foreground); box-shadow: 0 0 0 1px var(--border); --md-editor-font-family: "SF Mono", Menlo, monospace; }
-.thread-document-editor .w-md-editor-toolbar { background: var(--surface); border-color: var(--border); color: var(--foreground); padding: 8px; }
-.thread-document-editor .w-md-editor-toolbar li > button { color: var(--muted-foreground); height: 26px; width: 28px; }
-.thread-document-editor .w-md-editor-toolbar li > button:hover { background: var(--accent); color: var(--foreground); }
-.thread-document-editor .w-md-editor-content { min-height: 0; }
-.thread-document-editor .w-md-editor-preview { box-shadow: inset 1px 0 0 var(--border); padding: 20px; }
-.thread-document-editor .wmde-markdown { background: var(--surface-raised); color: var(--foreground); font-size: 14px; }
-.thread-document-editor .w-md-editor-text { padding: 20px; }
-.thread-document-editor textarea { -webkit-app-region: no-drag; }
+.thread-document-editor { min-width: 0; min-height: 0; flex: 1; margin: 0 18px 18px; overflow: auto; user-select: text; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); }
+.thread-document-editor .milkdown { --crepe-color-background: var(--surface-raised); --crepe-color-on-background: var(--foreground); --crepe-color-surface: var(--surface); --crepe-color-surface-low: var(--muted); --crepe-color-on-surface: var(--foreground); --crepe-color-on-surface-variant: var(--muted-foreground); --crepe-color-outline: var(--border); --crepe-color-primary: var(--primary); --crepe-color-secondary: var(--accent); --crepe-color-on-secondary: var(--foreground); --crepe-color-inverse: var(--surface-raised); --crepe-color-on-inverse: var(--foreground); --crepe-color-inline-code: var(--primary); --crepe-color-error: var(--danger); --crepe-color-hover: var(--accent); --crepe-color-selected: var(--accent); --crepe-color-inline-area: var(--muted); --crepe-base-font-size: 14px; --crepe-font-default: -apple-system, BlinkMacSystemFont, sans-serif; --crepe-font-title: -apple-system, BlinkMacSystemFont, sans-serif; --crepe-font-code: "SF Mono", Menlo, monospace; }
+.thread-document-editor .milkdown .ProseMirror { min-height: 240px; padding: 24px 42px; overflow-wrap: anywhere; -webkit-app-region: no-drag; }
+.thread-document-editor .milkdown .ProseMirror:focus { outline: none; }
+.thread-document-editor .milkdown .ProseMirror pre { padding: 12px; overflow: auto; background: var(--muted); border-radius: 6px; }
+.thread-document-editor .milkdown .ProseMirror pre code { font-family: var(--crepe-font-code); font-size: 12px; }
 @media (max-width: 1000px) { .thread-document-toolbar > span { display: none; }.thread-document-toolbar { justify-content: flex-end; }.thread-document-actions { gap: 8px; }.document-save-status { max-width: 110px; } }
 
 .custom-terminal-selection { display: flex; gap: 7px; min-width: 0; }

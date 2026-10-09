@@ -1,10 +1,8 @@
-import MDEditor, { commands } from "@uiw/react-md-editor";
-import rehypeSanitize from "rehype-sanitize";
+import { MarkdownEditor } from "./MarkdownEditor";
 import { Check, FileText, Loader2, Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { WorkThread } from "@/shared/domain";
-import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/contract";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { threadDocumentAutosave } from "../document-autosave";
 import { SidebarReopenButton } from "./Sidebar";
@@ -13,14 +11,6 @@ export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; on
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const document = useMemo(() => threadDocumentAutosave(thread.id, thread.document ?? ""), [thread.id]);
   const state = useSyncExternalStore(document.subscribe, document.getSnapshot);
-  const [mode, setMode] = useState<"edit" | "live" | "preview">(onClose ? "edit" : "live");
-  const [dark, setDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const change = (): void => setDark(media.matches);
-    media.addEventListener("change", change);
-    return () => media.removeEventListener("change", change);
-  }, []);
   useEffect(() => {
     void document.flush();
     return () => { void document.flush(); };
@@ -39,36 +29,19 @@ export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; on
       </header>
       <div className="thread-document-toolbar no-drag">
         <span>Use Markdown to write notes, plans, and documentation.</span>
-        <div className="segmented" aria-label="Document view">
-          {(["edit", "live", "preview"] as const).map((value) => <button key={value} aria-pressed={mode === value} className={mode === value ? "active" : ""} onClick={() => setMode(value)}>{value === "edit" ? "Edit" : value === "live" ? "Split" : "Preview"}</button>)}
-        </div>
       </div>
       {state.status === "error" && <div className="document-save-error no-drag" role="alert"><span>{state.error}. Your draft is kept on this device.</span><button className="button" onClick={() => void document.flush()}>Retry save</button></div>}
-      <section className="thread-document-editor no-drag" data-color-mode={dark ? "dark" : "light"} aria-label="Work thread document" onClick={(event) => {
+      <section className="thread-document-editor no-drag" aria-label="Work thread document" onBlur={() => void document.flush()} onClick={(event) => {
         const link = event.target instanceof Element ? event.target.closest("a") : null;
         const href = link?.getAttribute("href");
         if (!href || href.startsWith("#")) return;
+        if (link?.closest('[contenteditable="true"]') && !event.metaKey && !event.ctrlKey) return;
         event.preventDefault();
         if (/^(https?:|mailto:)/i.test(href)) {
           void window.desktop.openDocumentLink(href).catch(() => toast.error("Could not open this link."));
         } else toast.error("Use an http, https, or email link.");
       }}>
-        <MDEditor
-          autoFocus={Boolean(onClose)}
-          value={state.content}
-          onChange={(value) => {
-            const content = value ?? "";
-            if (content.length > MAX_WORK_THREAD_DOCUMENT_LENGTH) { toast.error("Document is too large (maximum 2 million characters)."); return; }
-            document.edit(content);
-          }}
-          preview={mode}
-          height="100%"
-          visibleDragbar={false}
-          commands={[commands.title, commands.bold, commands.italic, commands.strikethrough, commands.divider, commands.link, commands.quote, commands.code, commands.codeBlock, commands.divider, commands.unorderedListCommand, commands.orderedListCommand, commands.checkedListCommand]}
-          extraCommands={[]}
-          textareaProps={{ "aria-label": "Markdown document", placeholder: "# Start writing\n\nCapture your notes, plans, and ideas here…", maxLength: MAX_WORK_THREAD_DOCUMENT_LENGTH }}
-          previewOptions={{ rehypePlugins: [rehypeSanitize] }}
-        />
+        <MarkdownEditor document={document} autoFocus={Boolean(onClose)} />
       </section>
     </section>
   );

@@ -501,7 +501,7 @@ interface WorkThread {
 - 一个 Workspace 必须且只能属于一个 WorkThread。
 - WorkThread 可以暂时为空，也可以包含多个 Workspace。
 - 点击 WorkThread 默认打开 Document 页；即使还没有 Workspace，也可以独立写文档。Document 不在侧栏单独显示，点击 WorkThread 名称即可进入；其下只显示 Workspace 入口，继续打开终端。
-- 每个 WorkThread 拥有一份 Markdown 文档，使用 Markdown 编辑插件提供格式工具栏、源码编辑、分栏预览和纯预览。文档不属于任何 Project 或 Device 的仓库文件。
+- 每个 WorkThread 拥有一份 Markdown 文档，使用飞书式单栏所见即所得编辑器，输入 Markdown 标记时原地转换成标题、列表、引用、加粗等格式，无需切换编辑和预览；支持选中文字后的格式工具栏、斜杠块菜单、表格和撤销/重做。底层仍以 Markdown 自动保存。文档不属于任何 Project 或 Device 的仓库文件。
 - 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。
 - 文档随 WorkThread 本地持久化，归档、恢复和应用重启不清除文档；永久删除 WorkThread 同时删除文档。文档上限为 2,000,000 个字符，IPC 不裁剪 Markdown 空白。
 - 关闭窗口前等待未完成的文档保存；保存失败时保留窗口和草稿。
@@ -817,6 +817,8 @@ Codex 必须基于最近的累计终端输出判断，不能让输入框之后�
 ---
 
 # 15. Terminal Runtime
+
+- Terminal 的选区通过系统剪贴板复制，支持 Cmd+C 和原生 Edit → Copy；Ctrl+C 保留中断进程语义。Codex 等应用接管鼠标时，macOS 可按住 Option 拖动强制选择文字。
 
 Workspace 的新建 Terminal 菜单提供 `Custom…`，可创建、编辑和删除 Device 下的自定义终端入口。每个入口包含名称和启动目录，名称在同一 Device 下忽略大小写唯一；不同 Device 可使用相同名称。入口作为 Device 配置持久化，不引入新的顶级领域对象。Workspace 菜单只显示其所属 Device 的入口，同一 Device 的多个 Workspace 复用同一组入口。
 
@@ -1697,6 +1699,8 @@ Review
 
 
 ## Workspace Browser Tabs
+
+- Browser 在窗口连续缩放时保持网页可见，只更新原生视图边界；切换标签或显示覆盖层时才隐藏。
 
 BrowserTab 是 Workspace 持有的本机网页视图记录，不复用代表 PTY 进程的 Session。它保存 `id`、`workspaceId`、`url`、`title`、`order`、`createdAt` 和 `updatedAt`；旧快照迁移为没有 Browser 的集合。地址、标题、顺序属于持久数据，加载状态、错误和前进后退能力属于运行时状态。
 

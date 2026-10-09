@@ -38,10 +38,30 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
     const terminal = new Terminal({
       cursorBlink: true, fontFamily: '"SFMono-Regular", "SF Mono", Menlo, monospace', fontSize: 12.5, lineHeight: 1.25,
       theme: { background: "#121211", foreground: "#dedbd6", cursor: "#d6a861", selectionBackground: "#4a4137", black: "#232220", brightBlack: "#6f6b65", red: "#d16d67", green: "#87a968", yellow: "#d6a861", blue: "#7196c9", magenta: "#ad7eb7", cyan: "#6ca6a1", white: "#dedbd6" },
+      macOptionClickForcesSelection: true,
       allowProposedApi: false, scrollback: 10_000
     });
+    const copySelection = (): void => {
+      const text = terminal.getSelection();
+      if (text) void window.desktop.writeClipboard(text).catch(() => toast.error("Could not copy terminal selection."));
+    };
+    const copy = (event: ClipboardEvent): void => {
+      if (!terminal.hasSelection()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      copySelection();
+    };
+    // Native menu Copy and keyboard Copy must use xterm's buffer selection,
+    // including alternate-screen applications whose input textarea is empty.
+    container.current.addEventListener("copy", copy, true);
+    const host = container.current;
     const fit = new FitAddon();
     terminal.attachCustomKeyEventHandler((event) => {
+      if (terminal.hasSelection() && event.key.toLowerCase() === "c" && !event.altKey
+        && (window.desktop.platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && event.shiftKey && !event.metaKey)) {
+        if (event.type === "keydown") { event.preventDefault(); copySelection(); }
+        return false;
+      }
       const input = terminalInputForKeyEvent(session.kind, event);
       if (input === undefined) return true;
       event.preventDefault();
@@ -100,6 +120,7 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
       disposed = true;
       if (resizeFrame) cancelAnimationFrame(resizeFrame);
       observer.disconnect();
+      host.removeEventListener("copy", copy, true);
       unsubscribe();
       input?.dispose();
       terminalRef.current = null;
