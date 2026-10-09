@@ -327,3 +327,5 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .browser-content { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .browser-message { height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: var(--muted-foreground); padding: 24px; text-align: center; }
 .browser-message p { max-width: 560px; overflow-wrap: anywhere; }
+
+.workspace-shortcut-hint { flex: none; margin-left: auto; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--foreground); font: 10px system-ui, sans-serif; pointer-events: none; white-space: nowrap; }

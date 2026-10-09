@@ -1,3 +1,4 @@
+import { attachWorkspaceShortcuts } from "../windows/workspace-shortcuts";
 import { BrowserWindow, WebContentsView, session } from "electron";
 import type { BrowserLayoutInput, BrowserState, BrowserTab } from "../../shared/domain";
 import { isBrowserUrl } from "../../shared/browser-url";
@@ -63,6 +64,7 @@ export class BrowserRuntime {
     owner.contentView.addChildView(view);
     view.setVisible(false);
     const contents = view.webContents;
+    attachWorkspaceShortcuts(owner, contents);
     const publish = (): void => {
       if (contents.isDestroyed()) return;
       page.state.loading = contents.isLoading();
@@ -148,7 +150,9 @@ export class BrowserRuntime {
         const x = Math.min(width, Math.round(bounds.x)), y = Math.min(height, Math.round(bounds.y));
         page.view.setBounds({ x, y, width: Math.max(0, Math.min(width - x, Math.round(bounds.width))), height: Math.max(0, Math.min(height - y, Math.round(bounds.height))) });
       }
+      const returnFocus = !visible && page.view.webContents.isFocused();
       page.view.setVisible(visible);
+      if (returnFocus) this.window.webContents.focus();
     }
   }
 

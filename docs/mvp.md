@@ -1700,6 +1700,7 @@ Review
 
 BrowserTab 是 Workspace 持有的本机网页视图记录，不复用代表 PTY 进程的 Session。它保存 `id`、`workspaceId`、`url`、`title`、`order`、`createdAt` 和 `updatedAt`；旧快照迁移为没有 Browser 的集合。地址、标题、顺序属于持久数据，加载状态、错误和前进后退能力属于运行时状态。
 
+- 在 Workspace 中按住 Command 时，前九个 Terminal / Browser 标签（含初始化标签）按当前混合排序显示 ⌘1–⌘9；按 Command + 对应数字直接切换，网页获得焦点时同样有效。松开 Command 或窗口失去焦点后隐藏提示；应用弹窗打开时暂停此快捷键。
 - 现有标签栏加号可创建多个 Browser，与 Terminal 并列选择、关闭和拖拽排序；排序覆盖同一 Workspace 的全部 Terminal 与 Browser。
 - 地址栏只接受 HTTP(S)。裸域名默认 HTTPS，localhost 与本机回环地址默认 HTTP。输入地址后先保存再加载；主框架导航、重定向和站内地址变化更新最后访问地址。页面标题更新标签标题。
 - 每个 Browser 使用主进程独立创建的 WebContentsView，禁止 Node integration、preload 注入、未授权权限和下载；网页不具有应用 IPC 权限。后退、前进、刷新、加载状态和错误提示由应用地址栏提供。

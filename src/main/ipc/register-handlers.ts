@@ -1,3 +1,4 @@
+import { setWorkspaceShortcutCount } from "../windows/workspace-shortcuts";
 import type { BrowserRuntime } from "../runtime/browser-runtime";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
@@ -92,6 +93,11 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
   handle(channels.saveTerminalPreset, (_event, input) => service.saveTerminalPreset(saveTerminalPresetSchema.parse(input)));
   handle(channels.deleteTerminalPreset, (_event, input) => service.deleteTerminalPreset(deleteTerminalPresetSchema.parse(input)));
+  on(channels.setWorkspaceShortcutCount, (event, count) => {
+    const parsed = z.number().int().min(0).max(9).safeParse(count);
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (parsed.success && owner) setWorkspaceShortcutCount(owner, parsed.data);
+  });
   on(channels.setFocusMode, (event, enabled) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     owner?.setWindowButtonPosition({ x: 16, y: z.boolean().parse(enabled) ? 13 : 18 });

@@ -1,3 +1,5 @@
+import { attachWorkspaceShortcuts } from "./workspace-shortcuts";
+import { channels } from "../../shared/contract";
 import { BrowserWindow, nativeTheme } from "electron";
 import { join } from "node:path";
 
@@ -24,6 +26,8 @@ export function createMainWindow(): BrowserWindow {
     }
   });
 
+  attachWorkspaceShortcuts(window, window.webContents);
+  window.on("blur", () => window.webContents.send(channels.workspaceShortcut, { commandHeld: false }));
   window.once("ready-to-show", () => window.show());
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   if (process.env.ELECTRON_RENDERER_URL) window.loadURL(process.env.ELECTRON_RENDERER_URL);

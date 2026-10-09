@@ -1,3 +1,4 @@
+import type { WorkspaceShortcut } from "./workspace-shortcuts";
 import { z } from "zod";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
@@ -30,6 +31,8 @@ import type {
 } from "./domain";
 
 export const channels = {
+  workspaceShortcut: "workspace:shortcut",
+  setWorkspaceShortcutCount: "workspace:shortcut-count",
   createBrowser: "browser:create",
   navigateBrowser: "browser:navigate",
   closeBrowser: "browser:close",
@@ -259,6 +262,8 @@ export const browserCommandSchema = z.object({ id: z.string().min(1), command: z
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
+  setWorkspaceShortcutCount(count: number): void;
+  onWorkspaceShortcut(listener: (shortcut: WorkspaceShortcut) => void): () => void;
   createBrowser(input: CreateBrowserInput): Promise<BrowserTab>;
   navigateBrowser(input: NavigateBrowserInput): Promise<void>;
   closeBrowser(id: string): Promise<void>;

@@ -1,8 +1,15 @@
+import type { WorkspaceShortcut } from "../shared/workspace-shortcuts";
 import { contextBridge, ipcRenderer } from "electron";
 import { channels, type DesktopBridge, type MenuAction } from "../shared/contract";
 import type { BrowserState, BrowserTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  setWorkspaceShortcutCount: (count) => ipcRenderer.send(channels.setWorkspaceShortcutCount, count),
+  onWorkspaceShortcut: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, shortcut: WorkspaceShortcut): void => listener(shortcut);
+    ipcRenderer.on(channels.workspaceShortcut, wrapped);
+    return () => ipcRenderer.removeListener(channels.workspaceShortcut, wrapped);
+  },
   createBrowser: (input) => ipcRenderer.invoke(channels.createBrowser, input),
   navigateBrowser: (input) => ipcRenderer.invoke(channels.navigateBrowser, input),
   closeBrowser: (id) => ipcRenderer.invoke(channels.closeBrowser, id),
