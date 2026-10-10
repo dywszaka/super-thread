@@ -3,6 +3,7 @@ import { z } from "zod";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
+  CreateTodoInput, UpdateTodoInput, TodoTarget,
   BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
   AddProjectInput,
   AddRemoteDeviceInput,
@@ -32,6 +33,9 @@ import type {
 } from "./domain";
 
 export const channels = {
+  createTodo: "todo:create",
+  updateTodo: "todo:update",
+  deleteTodo: "todo:delete",
   writeClipboard: "clipboard:write-text",
   workspaceShortcut: "workspace:shortcut",
   setWorkspaceShortcutCount: "workspace:shortcut-count",
@@ -167,6 +171,16 @@ export const createWorkThreadSchema = z.object({
   name: z.string().trim().min(1).max(80)
 }).strict();
 
+export const todoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, "Use a valid calendar date");
+const todoTitleSchema = z.string().trim().min(1).max(500);
+export const todoTargetSchema = z.object({ workThreadId: z.string().min(1), id: z.string().min(1) }).strict();
+export const createTodoSchema = z.object({ workThreadId: z.string().min(1), title: todoTitleSchema, date: todoDateSchema }).strict();
+export const updateTodoSchema = todoTargetSchema.extend({ title: todoTitleSchema.optional(), date: todoDateSchema.optional(), completed: z.boolean().optional() })
+  .refine((input) => input.title !== undefined || input.date !== undefined || input.completed !== undefined, "Provide a TODO change");
+
 export const renameWorkThreadSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1).max(80)
@@ -271,6 +285,9 @@ export const browserCommandSchema = z.object({ id: z.string().min(1), command: z
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
+  createTodo(input: CreateTodoInput): Promise<void>;
+  updateTodo(input: UpdateTodoInput): Promise<void>;
+  deleteTodo(input: TodoTarget): Promise<void>;
   writeClipboard(text: string): Promise<void>;
   setWorkspaceShortcutCount(count: number): void;
   onWorkspaceShortcut(listener: (shortcut: WorkspaceShortcut) => void): () => void;

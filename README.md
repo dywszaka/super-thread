@@ -1,6 +1,6 @@
 # SuperThread
 
-SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, using a project's main checkout or creating isolated worktrees, and working in persistent terminal sessions and workspace browser tabs. Each WorkThread opens with an autosaved Markdown document in a single WYSIWYG pane that formats Markdown as you type. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake.
+SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, using a project's main checkout or creating isolated worktrees, and working in persistent terminal sessions and workspace browser tabs. Each WorkThread opens with an autosaved Markdown document in a single WYSIWYG pane that formats Markdown as you type. Each WorkThread also has dated TODOs next to its Document: incomplete items and the last seven days of completions appear in the thread, while All todos retains the complete history across active and archived threads. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake.
 
 ## Run
 

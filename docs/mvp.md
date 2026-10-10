@@ -32,7 +32,7 @@ Terminal Session / BrowserTab
 
 MVP 不包含：
 
-- Task
+- Agent Task / 自动执行任务
 - Agent
 - Agent workflow
 - Review workflow
@@ -489,6 +489,7 @@ interface WorkThread {
   sidebarOrder?: number
   document?: string
   documentUpdatedAt?: Date
+  todos?: Todo[]
   createdAt: Date
   updatedAt: Date
   archivedAt?: Date
@@ -505,6 +506,11 @@ interface WorkThread {
 - 每个 WorkThread 拥有一份 Markdown 文档，使用飞书式单栏所见即所得编辑器，输入 Markdown 标记时原地转换成标题、列表、引用、加粗等格式，无需切换编辑和预览；支持选中文字后的格式工具栏、斜杠块菜单、表格和撤销/重做。底层仍以 Markdown 自动保存。文档不属于任何 Project 或 Device 的仓库文件。
 - 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。
 - 文档随 WorkThread 本地持久化，归档、恢复和应用重启不清除文档；永久删除 WorkThread 同时删除文档。文档上限为 2,000,000 个字符，IPC 不裁剪 Markdown 空白。
+- 每个 WorkThread 可管理每日 TODO，Document 与 Todos 在同一页面通过标签切换；All work threads 的文档抽屉也复用该界面。TODO 是本地清单，不包含执行、Agent 或 Workflow 状态。
+- TODO 保存 id、1–500 字符标题、`YYYY-MM-DD` 日期、创建/更新时间以及可选完成时间；新建日期默认为用户本地的今天，支持编辑标题/日期、完成、重新打开和删除。所有修改经校验 IPC 在主进程串行持久化，与 Markdown 保存互不覆盖，TODO 修改不改变文档更新时间。
+- WorkThread 的 Todos 显示全部未完成项及完成时间距当前不超过 7 × 24 小时的已完成项，按日期分组并区分 Incomplete / Completed；到期记录只从此视图隐藏，不删除。页面定时以及窗口重新聚焦时刷新时间筛选。
+- 左侧 All todos 汇总所有 active 和 archived WorkThread 的全部 TODO，区分未完成与已完成、按日期分组并显示所属 WorkThread，可新增、编辑、完成、重新打开和删除；侧栏数字表示未完成总数。历史完成记录无时间限制。
+- TODO 随 WorkThread 归档、恢复及应用重启保留；永久删除 WorkThread 同时删除全部 TODO，确认文案须说明文档和 TODO 都将删除。旧快照升级至 schema 12 时为 WorkThread 补充空 TODO 列表，不改变既有文档与运行数据。
 - 关闭窗口前等待未完成的文档保存；保存失败时保留窗口和草稿。
 - WorkThread 置顶由用户手动设置，默认为非置顶；侧栏中置顶的排在前面；置顶与非置顶条目分别支持拖动调整组内顺序，拖动时显示插入位置，顺序本地持久化并在应用重启后恢复。尚未手动排序时保持创建顺序，新建条目追加到非置顶组末尾。聚焦条目后也可用 Option+↑/↓ 调整组内顺序。排序不改变置顶状态、文档更新时间或 All work threads 页的排序。在侧栏右键 WorkThread 可选择置顶或取消置顶。
 - 侧栏缩到最小宽度时，菜单、WorkThread、Workspace 与 Project 名称在右侧 padding 内显示省略号，不能撑宽列表或贴到分隔边线；悬停名称可查看完整文字。
@@ -512,7 +518,7 @@ interface WorkThread {
 - 列表显示 Last update，使用用户本地时间、24 小时制及 `MMDD HH:mm` 格式（如 `1008 09:05`）。
 - Archive/Restore 按钮旁提供 Doc 按钮，左侧列表平滑收窄的同时，右侧展开非模态 Markdown 编辑抽屉，关闭时反向收回；系统开启减少动态效果时直接切换。列表始终保留可见、可滚动并可切换其他文档。抽屉复用自动保存，关闭或切换文档时保存草稿，支持关闭按钮和 Escape；Archived 文档也可编辑。
 - 归档只隐藏整组内容，不停止 Session 或删除 Git Worktree。
-- 只有没有 Workspace 的 WorkThread 可以永久删除；删除确认必须说明其文档也将永久删除。
+- 只有没有 Workspace 的 WorkThread 可以永久删除；删除确认必须说明其文档和全部 TODO 也将永久删除。
 
 ---
 

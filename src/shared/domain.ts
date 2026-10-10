@@ -9,7 +9,20 @@ export type SessionKind = ManagedSessionKind | "tmux";
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 11;
+export const CURRENT_SCHEMA_VERSION = 12;
+
+export interface Todo {
+  id: string;
+  title: string;
+  date: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface CreateTodoInput { workThreadId: string; title: string; date: string; }
+export interface TodoTarget { workThreadId: string; id: string; }
+export interface UpdateTodoInput extends TodoTarget { title?: string; date?: string; completed?: boolean; }
 
 export interface WorkThread {
   id: string;
@@ -19,6 +32,7 @@ export interface WorkThread {
   sidebarOrder?: number;
   document?: string;
   documentUpdatedAt?: string;
+  todos?: Todo[];
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;

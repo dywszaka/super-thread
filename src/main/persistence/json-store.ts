@@ -88,7 +88,8 @@ function normalizeWorkThread(workThread: StoredWorkThread): WorkThread {
     ...rest,
     pinned: rest.pinned ?? priority === "high",
     sidebarOrder: Number.isSafeInteger(rest.sidebarOrder) && rest.sidebarOrder! >= 0 ? rest.sidebarOrder : undefined,
-    document: workThread.document ?? ""
+    document: workThread.document ?? "",
+    todos: workThread.todos ?? []
   };
 }
 

@@ -3,6 +3,7 @@ import type { BrowserRuntime } from "../runtime/browser-runtime";
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
 import {
+  createTodoSchema, updateTodoSchema, todoTargetSchema,
   createBrowserSchema, navigateBrowserSchema, reorderWorkspaceTabsSchema, browserLayoutSchema, browserCommandSchema,
   addProjectSchema,
   addRemoteDeviceSchema,
@@ -60,6 +61,9 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
     if (owner) finishDocumentClose(owner);
   });
   handle(channels.snapshot, () => service.snapshot());
+  handle(channels.createTodo, (_event, input) => service.createTodo(createTodoSchema.parse(input)));
+  handle(channels.updateTodo, (_event, input) => service.updateTodo(updateTodoSchema.parse(input)));
+  handle(channels.deleteTodo, (_event, input) => service.deleteTodo(todoTargetSchema.parse(input)));
   handle(channels.selectDirectory, async () => {
     const owner = BrowserWindow.getFocusedWindow() ?? undefined;
     const result = owner

@@ -27,11 +27,12 @@ export type WorkspaceScope =
   | { type: "all-projects" }
   | { type: "all-work-threads" }
   | { type: "all-devices" }
+  | { type: "all-todos" }
   | { type: "project"; id: string }
   | { type: "work-thread"; id: string };
 
 export function visibleWorkspaces(snapshot: AppSnapshot, scope: WorkspaceScope): Workspace[] {
-  if (scope.type === "all-projects" || scope.type === "all-work-threads" || scope.type === "all-devices") return [];
+  if (scope.type === "all-todos" || scope.type === "all-projects" || scope.type === "all-work-threads" || scope.type === "all-devices") return [];
   const activeThreadIds = new Set(
     snapshot.workThreads.filter((thread) => thread.status === "active").map((thread) => thread.id)
   );

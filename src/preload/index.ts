@@ -4,6 +4,9 @@ import { channels, type DesktopBridge, type MenuAction } from "../shared/contrac
 import type { BrowserState, BrowserTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  createTodo: (input) => ipcRenderer.invoke(channels.createTodo, input),
+  updateTodo: (input) => ipcRenderer.invoke(channels.updateTodo, input),
+  deleteTodo: (input) => ipcRenderer.invoke(channels.deleteTodo, input),
   writeClipboard: (text) => ipcRenderer.invoke(channels.writeClipboard, text),
   setWorkspaceShortcutCount: (count) => ipcRenderer.send(channels.setWorkspaceShortcutCount, count),
   onWorkspaceShortcut: (listener) => {

@@ -11,6 +11,7 @@ import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { WorkThreadList } from "./components/WorkThreadList";
 import { WorkspaceList } from "./components/WorkspaceList";
 import { ProjectList } from "./components/ProjectList";
+import { AllTodos } from "./components/TodoList";
 import { WorkThreadDocument } from "./components/WorkThreadDocument";
 import { useDocumentAutosaveLifecycle } from "./document-autosave";
 import { visibleWorkspaces } from "./selection";
@@ -27,13 +28,13 @@ export function WorkspaceApp(): React.ReactNode {
   const filtered = useMemo(() => snapshot ? visibleWorkspaces(snapshot, scope) : [], [snapshot, scope]);
   const active: Workspace | undefined = snapshot?.workspaces.find((item) => item.id === store.activeWorkspaceId && filtered.some((candidate) => candidate.id === item.id)) ?? filtered[0];
   const showingOverview = scope.type === "all-workspaces" && !store.activeWorkspaceId;
-  const showingWorkspace = !showingOverview && !documentThread && scope.type !== "all-projects" && scope.type !== "all-work-threads" && scope.type !== "all-devices";
+  const showingWorkspace = !showingOverview && !documentThread && scope.type !== "all-projects" && scope.type !== "all-work-threads" && scope.type !== "all-devices" && scope.type !== "all-todos";
   const showingTerminal = showingWorkspace && active?.status === "ready";
   const focusMode = store.focusMode && showingTerminal;
 
   useEffect(() => {
     if (documentThread || showingOverview) return;
-    if (store.scope.type === "all-projects" || store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
+    if (store.scope.type === "all-todos" || store.scope.type === "all-projects" || store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
     if (active && active.id !== store.activeWorkspaceId) store.setActiveWorkspace(active.id);
     if (!active && store.activeWorkspaceId) store.setActiveWorkspace(null);
   }, [active?.id, store.scope.type, documentThread?.id, showingOverview]);
@@ -67,7 +68,7 @@ export function WorkspaceApp(): React.ReactNode {
     <div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""} ${focusMode ? "focus-mode" : ""}`}>
       {!focusMode && <Sidebar snapshot={snapshot} />}
       <div className="workbench">
-        {focusMode ? <FocusTitlebar /> : store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : showingOverview ? <WorkspaceList snapshot={snapshot} /> : documentThread ? <WorkThreadDocument key={documentThread.id} thread={documentThread} /> : <>
+        {focusMode ? <FocusTitlebar /> : store.scope.type === "all-todos" ? <AllTodos snapshot={snapshot} /> : store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : showingOverview ? <WorkspaceList snapshot={snapshot} /> : documentThread ? <WorkThreadDocument key={documentThread.id} thread={documentThread} /> : <>
           {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
         </>}
         <div className={`workspace-terminal-stack ${showingTerminal ? "active" : ""}`}>

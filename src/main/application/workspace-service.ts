@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
 import type {
+  CreateTodoInput, UpdateTodoInput, TodoTarget,
   AddProjectInput,
   AddRemoteDeviceInput,
   AppSnapshot,
@@ -38,6 +39,7 @@ import type {
   WorkThread,
   Workspace
 } from "../../shared/domain";
+import { createTodoSchema, updateTodoSchema, todoTargetSchema } from "../../shared/contract";
 import { sortedWorkThreads } from "../../shared/work-thread-order";
 import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runner";
@@ -352,6 +354,7 @@ export class WorkspaceService extends EventEmitter {
           ? Math.max(...draft.workThreads.map((thread) => thread.sidebarOrder ?? -1)) + 1
           : undefined,
         document: "",
+        todos: [],
         createdAt: timestamp,
         updatedAt: timestamp
       });
@@ -384,6 +387,45 @@ export class WorkspaceService extends EventEmitter {
       thread.document = input.content;
       thread.documentUpdatedAt = now();
       thread.updatedAt = thread.documentUpdatedAt;
+    });
+    this.changed();
+  }
+
+  async createTodo(input: CreateTodoInput): Promise<void> {
+    const parsed = createTodoSchema.parse(input);
+    await this.store.update((draft) => {
+      const thread = this.workThread(draft, parsed.workThreadId);
+      const timestamp = now();
+      (thread.todos ??= []).push({ id: id("todo"), title: parsed.title, date: parsed.date, createdAt: timestamp, updatedAt: timestamp });
+      thread.updatedAt = timestamp;
+    });
+    this.changed();
+  }
+
+  async updateTodo(input: UpdateTodoInput): Promise<void> {
+    const parsed = updateTodoSchema.parse(input);
+    await this.store.update((draft) => {
+      const thread = this.workThread(draft, parsed.workThreadId);
+      const todo = thread.todos?.find((item) => item.id === parsed.id);
+      if (!todo) throw new Error("TODO not found");
+      if (parsed.title !== undefined) todo.title = parsed.title;
+      if (parsed.date !== undefined) todo.date = parsed.date;
+      const timestamp = now();
+      if (parsed.completed === true) todo.completedAt ??= timestamp;
+      if (parsed.completed === false) delete todo.completedAt;
+      todo.updatedAt = timestamp;
+      thread.updatedAt = timestamp;
+    });
+    this.changed();
+  }
+
+  async deleteTodo(input: TodoTarget): Promise<void> {
+    const parsed = todoTargetSchema.parse(input);
+    await this.store.update((draft) => {
+      const thread = this.workThread(draft, parsed.workThreadId);
+      if (!thread.todos?.some((item) => item.id === parsed.id)) throw new Error("TODO not found");
+      thread.todos = thread.todos.filter((item) => item.id !== parsed.id);
+      thread.updatedAt = now();
     });
     this.changed();
   }

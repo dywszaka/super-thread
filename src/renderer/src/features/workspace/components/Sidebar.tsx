@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server } from "lucide-react";
+import { ListTodo, Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, ReorderWorkThreadsInput, WorkThread, Workspace } from "@/shared/domain";
@@ -35,6 +35,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     showAllProjects,
     showAllWorkThreads,
     showAllDevices,
+    showAllTodos,
     setWorkThreadFilter,
     setActiveWorkspace,
     setSidebarCollapsed,
@@ -202,6 +203,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
           <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> <em title="All workspaces">All workspaces</em></span><b>{allActiveWorkspaces.length}</b></button>
           <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> <em title="All projects">All projects</em></span><b>{snapshot.projects.length}</b></button>
           <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> <em title="All work threads">All work threads</em></span><b>{snapshot.workThreads.length}</b></button>
+          <button className={`scope-row all ${scope.type === "all-todos" ? "selected" : ""}`} onClick={showAllTodos}><span><ListTodo size={15} /> <em title="All todos">All todos</em></span><b>{snapshot.workThreads.reduce((count, thread) => count + (thread.todos ?? []).filter((todo) => !todo.completedAt).length, 0)}</b></button>
           <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> <em title="All devices">All devices</em></span><b>{snapshot.devices.length}</b></button>
         </div>
 

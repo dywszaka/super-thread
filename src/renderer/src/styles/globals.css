@@ -274,6 +274,29 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .document-save-status.error { color: var(--danger); }
 .thread-document-toolbar { flex: none; min-height: 49px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; color: var(--muted-foreground); font-size: 11px; }
 .thread-document-toolbar > button { flex: none; }
+.thread-document-toolbar .segmented { flex: none; }
+.thread-document-toolbar .segmented button { padding: 0 10px; }
+.thread-document-editor[hidden] { display: none; }
+.thread-todos-panel { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.todo-pane { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 18px; }
+.todo-create, .todo-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.todo-pane input:not([type="checkbox"]), .todo-pane select { min-width: 0; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-raised); color: var(--foreground); }
+.todo-create input:not([type="date"]), .todo-edit input:not([type="date"]) { flex: 1 1 180px; }
+.todo-create select { flex: 1 1 140px; max-width: 240px; }
+.todo-pane input[type="date"] { width: 140px; }
+.todo-status-group { margin-top: 24px; }
+.todo-status-group h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.todo-status-group h2 span { color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
+.todo-hint { color: var(--muted-foreground); font-size: 11px; }
+.todo-date-group h3 { font-size: 11px; font-weight: 500; color: var(--muted-foreground); margin: 18px 0 8px; }
+.todo-row { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); margin: 5px 0; }
+.todo-row input[type="checkbox"] { flex: none; width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+.todo-copy { flex: 1; min-width: 0; }
+.todo-title { overflow-wrap: anywhere; }
+.todo-row.completed .todo-title { text-decoration: line-through; color: var(--muted-foreground); }
+.todo-copy small { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; color: var(--muted-foreground); font-size: 10px; overflow-wrap: anywhere; }
+.todo-row > button { flex: none; }
+.todo-edit { gap: 8px; }
 .document-save-error { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 18px 10px; padding: 8px 10px; border: 1px solid var(--danger); border-radius: 6px; color: var(--danger); font-size: 11px; }
 .document-save-error span { min-width: 0; overflow-wrap: anywhere; user-select: text; }
 .thread-document-editor { min-width: 0; min-height: 0; flex: 1; margin: 0 18px 18px; overflow: auto; user-select: text; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-raised); }
