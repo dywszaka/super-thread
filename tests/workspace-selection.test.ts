@@ -95,7 +95,7 @@ test("document update labels use zero-padded local MMDD HH:mm in 24-hour time", 
   assert.equal(formatDocumentUpdate("invalid"), "—");
 });
 
-test("workspace overview counts actively busy sessions by kind and sorts active workspaces without mutating them", () => {
+test("workspace overview distinguishes local activity from remote connections and sorts active workspaces without mutating them", () => {
   const snapshot = emptySnapshot();
   snapshot.workThreads = [
     { id: "active", name: "Active", status: "active", pinned: false, createdAt: "now", updatedAt: "now" },
@@ -105,18 +105,18 @@ test("workspace overview counts actively busy sessions by kind and sorts active 
   snapshot.sessions = [
     { id: "legacy", workspaceId: "one", status: "running" },
     { id: "shell", workspaceId: "two", kind: "shell", status: "running" },
-    { id: "codex", workspaceId: "two", kind: "codex", status: "running" },
-    { id: "tie", workspaceId: "tie", kind: "codex", status: "running" },
-    { id: "hidden", workspaceId: "hidden", kind: "codex", status: "running" },
+    { id: "remote", workspaceId: "two", kind: "shell", status: "running", activityStatus: "unknown" },
+    { id: "tie", workspaceId: "tie", kind: "shell", status: "running", activityStatus: "unknown" },
+    { id: "hidden", workspaceId: "hidden", kind: "shell", status: "running" },
     { id: "exited", workspaceId: "empty", kind: "shell", status: "exited" },
-    { id: "failed", workspaceId: "empty", kind: "codex", status: "restore-failed" },
+    { id: "failed", workspaceId: "empty", kind: "shell", status: "restore-failed" },
     { id: "idle-shell", workspaceId: "empty", kind: "shell", status: "running", activityStatus: "idle" },
-    { id: "waiting-codex", workspaceId: "empty", kind: "codex", status: "running", activityStatus: "waiting-input" },
-    { id: "idle-codex", workspaceId: "empty", kind: "codex", status: "running", activityStatus: "idle" },
+    { id: "waiting-shell", workspaceId: "empty", kind: "shell", status: "running", activityStatus: "waiting-input" },
+    { id: "idle-shell-2", workspaceId: "empty", kind: "shell", status: "running", activityStatus: "idle" },
     { id: "unknown", workspaceId: "empty", kind: "shell", status: "running", activityStatus: undefined }
   ].map((session) => ({ name: session.id, shell: "/bin/zsh", createdAt: "now", activityStatus: "busy", ...session })) as typeof snapshot.sessions;
   snapshot.browserTabs = [{ id: "browser", workspaceId: "empty", title: "Browser", url: "https://example.com", order: 0, createdAt: "now", updatedAt: "now" }];
-  assert.deepEqual(workspaceOverview(snapshot).map(({ workspace, terminals, codex }) => [workspace.id, terminals, codex]), [["two", 1, 1], ["one", 1, 0], ["tie", 0, 1], ["empty", 0, 0]]);
+  assert.deepEqual(workspaceOverview(snapshot).map(({ workspace, terminals, connected }) => [workspace.id, terminals, connected]), [["two", 1, 1], ["one", 1, 0], ["tie", 0, 1], ["empty", 0, 0]]);
   assert.equal(snapshot.workspaces[0]?.id, "empty");
   snapshot.sessions[2]!.activityStatus = "waiting-input";
   assert.deepEqual(workspaceOverview(snapshot).map((row) => row.workspace.id), ["one", "two", "tie", "empty"]);

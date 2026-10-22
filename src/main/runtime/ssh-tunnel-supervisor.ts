@@ -46,6 +46,7 @@ export function sshTunnelArgs(connection: DeviceConnection): string[] {
 export class SshTunnelSupervisor {
   private readonly states = new Map<string, TunnelState>();
   private stopped = false;
+  private reconnectEnabled = true;
 
   constructor(
     private readonly spawnSsh: SpawnSsh = (args) => spawn("ssh", args, { stdio: "ignore" }),
@@ -80,11 +81,24 @@ export class SshTunnelSupervisor {
   }
 
   reconnectAll(): void {
-    if (this.stopped) return;
+    if (this.stopped || !this.reconnectEnabled) return;
     for (const [deviceId, state] of this.states) {
       state.attempt = 0;
       this.stopCurrent(state);
       this.start(deviceId);
+    }
+  }
+
+  setReconnectEnabled(enabled: boolean): void {
+    if (this.stopped || this.reconnectEnabled === enabled) return;
+    this.reconnectEnabled = enabled;
+    for (const [deviceId, state] of this.states) {
+      if (!enabled && state.retryTimer) {
+        this.cancelSchedule(state.retryTimer);
+        state.retryTimer = undefined;
+      }
+      // Preserve live forwards. Reopen only disconnected tunnels when a window returns.
+      if (enabled && !state.process) this.start(deviceId);
     }
   }
 
@@ -95,7 +109,7 @@ export class SshTunnelSupervisor {
 
   private start(deviceId: string): void {
     const state = this.states.get(deviceId);
-    if (!state || this.stopped) return;
+    if (!state || this.stopped || !this.reconnectEnabled) return;
     if (state.retryTimer) {
       this.cancelSchedule(state.retryTimer);
       state.retryTimer = undefined;
@@ -120,7 +134,7 @@ export class SshTunnelSupervisor {
   }
 
   private retry(deviceId: string, state: TunnelState): void {
-    if (this.stopped || state.retryTimer) return;
+    if (this.stopped || !this.reconnectEnabled || state.retryTimer) return;
     const delay = Math.min(INITIAL_RETRY_MS * (2 ** state.attempt), MAX_RETRY_MS);
     state.attempt += 1;
     state.retryTimer = this.schedule(() => {

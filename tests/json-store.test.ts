@@ -95,3 +95,27 @@ test("a rejected mutation does not poison subsequent saves", async () => {
   await store.update((draft) => { draft.devices.push({ id: "local", name: "Mac", type: "local", status: "online", createdAt: "now" }); });
   assert.equal(store.snapshot().devices[0]?.id, "local");
 });
+
+test("removed Codex tabs migrate to stopped shells without probing or losing their directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-removed-codex-"));
+  const path = join(directory, "state.json");
+  await writeFile(path, JSON.stringify({
+    schemaVersion: 12,
+    sessions: [{ id: "old-codex", workspaceId: "workspace", name: "Keep my tab", kind: "codex", shell: "codex",
+      status: "running", pid: 999, cwd: "/srv/project", codexConversationId: "saved-id", activityStatus: "busy",
+      createdAt: "then", tmuxWindowKey: "legacy-key" }]
+  }));
+  const snapshot = await new JsonStore(path).load();
+  const session = snapshot.sessions[0]!;
+  assert.equal(session.id, "old-codex");
+  assert.equal(session.name, "Keep my tab");
+  assert.equal(session.cwd, "/srv/project");
+  assert.equal(session.kind, "shell");
+  assert.equal(session.status, "exited");
+  assert.equal(session.pid, undefined);
+  assert.equal(session.activityStatus, undefined);
+  assert.equal(session.codexConversationId, "saved-id");
+  assert.equal("tmuxWindowKey" in session, false);
+  assert.deepEqual(JSON.parse(JSON.stringify((await new JsonStore(path).load()).sessions)), JSON.parse(JSON.stringify(snapshot.sessions)));
+  assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, CURRENT_SCHEMA_VERSION);
+});

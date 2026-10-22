@@ -58,16 +58,16 @@ export function workspaceProjectName(snapshot: AppSnapshot, workspace: Workspace
   return snapshot.projects.find((project) => project.id === workspace.projectId)?.name ?? "Unknown project";
 }
 
-export function workspaceOverview(snapshot: AppSnapshot): Array<{ workspace: Workspace; terminals: number; codex: number }> {
-  const counts = new Map<string, { terminals: number; codex: number }>();
+export function workspaceOverview(snapshot: AppSnapshot): Array<{ workspace: Workspace; terminals: number; connected: number }> {
+  const counts = new Map<string, { terminals: number; connected: number }>();
   for (const session of snapshot.sessions) {
-    if (session.status !== "running" || session.activityStatus !== "busy") continue;
-    const count = counts.get(session.workspaceId) ?? { terminals: 0, codex: 0 };
-    if (session.kind === "codex") count.codex++;
-    else count.terminals++;
+    if (session.status !== "running") continue;
+    const count = counts.get(session.workspaceId) ?? { terminals: 0, connected: 0 };
+    if (session.activityStatus === "busy") count.terminals++;
+    else if (session.activityStatus === "unknown") count.connected++;
     counts.set(session.workspaceId, count);
   }
   return visibleWorkspaces(snapshot, { type: "all-workspaces" })
-    .map((workspace) => ({ workspace, ...(counts.get(workspace.id) ?? { terminals: 0, codex: 0 }) }))
-    .sort((left, right) => (right.terminals + right.codex) - (left.terminals + left.codex));
+    .map((workspace) => ({ workspace, ...(counts.get(workspace.id) ?? { terminals: 0, connected: 0 }) }))
+    .sort((left, right) => (right.terminals + right.connected) - (left.terminals + left.connected));
 }

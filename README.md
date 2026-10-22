@@ -1,6 +1,6 @@
 # SuperThread
 
-SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, using a project's main checkout or creating isolated worktrees, and working in persistent terminal sessions and workspace browser tabs. Each WorkThread opens with an autosaved Markdown document in a single WYSIWYG pane that formats Markdown as you type. Each WorkThread also has dated TODOs next to its Document: incomplete items and the last seven days of completions appear in the thread, while All todos retains the complete history across active and archived threads. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake.
+SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, using a project's main checkout or creating isolated worktrees, and working in persistent terminal sessions and workspace browser tabs. Each WorkThread opens with an autosaved Markdown document in a single WYSIWYG pane that formats Markdown as you type. Each WorkThread also has dated TODOs next to its Document: incomplete items and the last seven days of completions appear in the thread, while All todos retains the complete history across active and archived threads. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake while a window is open.
 
 ## Run
 
@@ -39,7 +39,9 @@ Development and packaged builds share persistent data at
 
 The implementation deliberately keeps the MVP domain to `WorkThread`, `Project`, `Device`, `Workspace`, `Session`, and `BrowserTab`. A WorkThread groups one or more workspaces; a project is identified by its canonical Git remote; physical checkouts belong to devices; worktrees and terminals belong to workspaces.
 
-On macOS, closing the window leaves the application runtime alive, so PTY sessions continue and can be reattached when the window is reopened. Quitting the application terminates the local runtime; recovery across a full runtime restart is intentionally a post-MVP concern.
+Embedded terminals support ordinary shells only; workspace tmux opens exclusively in iTerm. Remote terminals keep one interactive SSH connection and never create periodic SSH sessions for activity checks. The overview distinguishes local activity from remote connection counts.
+
+On macOS, closing the window leaves the application runtime alive, so PTY sessions and established SSH tunnels continue and terminals can be reattached when the window is reopened. Tunnel retry timers and wake reconnects are suspended until a window is reopened. Quitting the application terminates the local runtime; recovery across a full runtime restart is intentionally a post-MVP concern.
 
 Workspace tabs can contain multiple Terminals and Browsers in a shared, sortable tab bar. Browser tabs are local macOS web views owned by their Workspace, separate from PTY Sessions. Each saves its last HTTP(S) address and page title. Closing the main window destroys the web views; reopening the window or restarting the application restores every unclosed browser tab and automatically reloads its saved address, without restoring navigation history. Closing a browser tab removes its record; deleting a Workspace removes all its browser records.
 

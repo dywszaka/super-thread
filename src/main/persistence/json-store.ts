@@ -11,7 +11,7 @@ export class JsonStore {
 
   async load(): Promise<AppSnapshot> {
     try {
-      const stored = JSON.parse(await readFile(this.filePath, "utf8")) as Partial<AppSnapshot>;
+      const stored = JSON.parse(await readFile(this.filePath, "utf8")) as StoredSnapshot;
       this.data = migrateSnapshot(stored);
       if (stored.schemaVersion !== CURRENT_SCHEMA_VERSION) await this.save(this.data);
     } catch (error) {
@@ -46,9 +46,16 @@ export class JsonStore {
   }
 }
 
-function migrateSnapshot(stored: Partial<AppSnapshot>): AppSnapshot {
+type StoredSession = Omit<Session, "kind"> & {
+  kind?: string;
+  tmuxSessionName?: string; tmuxClientSessionName?: string; tmuxWindowKey?: string; tmuxWindowName?: string;
+  fallbackMessage?: string;
+};
+type StoredSnapshot = Omit<Partial<AppSnapshot>, "sessions"> & { sessions?: StoredSession[] };
+
+function migrateSnapshot(stored: StoredSnapshot): AppSnapshot {
   const base = emptySnapshot();
-  const storedSessions = stored.sessions ?? base.sessions;
+  const storedSessions: StoredSession[] = stored.sessions ?? base.sessions;
   const tmuxSessionNames = new Map(storedSessions
     .filter((session) => session.kind === "tmux" && session.tmuxSessionName)
     .map((session) => [session.workspaceId, session.tmuxSessionName!]));
@@ -93,15 +100,19 @@ function normalizeWorkThread(workThread: StoredWorkThread): WorkThread {
   };
 }
 
-function normalizeSession(session: Session): Session {
-  const { codexResultUnread, ...current } = session;
+function normalizeSession(session: StoredSession): Session {
+  const { codexResultUnread, fallbackMessage: _fallback,
+    tmuxSessionName: _tmux, tmuxClientSessionName: _client, tmuxWindowKey: _key, tmuxWindowName: _window,
+    kind, ...current } = session;
   const resultUnread = current.resultUnread ?? codexResultUnread;
   return {
     kind: "shell",
     order: 0,
     cwd: undefined,
     ...current,
-    activityStatus: session.status === "running" ? resultUnread ? "waiting-input" : current.activityStatus ?? "idle" : undefined,
+    // Keep the tab and cwd, but never auto-launch removed managed tools.
+    ...(kind === "codex" ? { status: "exited" as const, pid: undefined, shell: "shell", exitReason: "runtime-stopped" as const, restoreError: undefined } : {}),
+    activityStatus: kind !== "codex" && session.status === "running" ? resultUnread ? "waiting-input" : current.activityStatus ?? "idle" : undefined,
     resultUnread
   };
 }

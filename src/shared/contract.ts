@@ -243,7 +243,7 @@ export const renameWorkspaceSchema = z.object({
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().trim().min(1).max(80).optional(),
-  kind: z.enum(["shell", "codex"]).optional(),
+  kind: z.literal("shell").optional(),
   terminalPresetId: z.string().min(1).optional()
 }).strict().refine((input) => !input.terminalPresetId || !input.kind || input.kind === "shell", "Custom terminals must use a shell");
 

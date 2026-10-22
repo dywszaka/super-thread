@@ -3,13 +3,12 @@ export type WorkThreadStatus = "active" | "archived";
 export type WorkspaceStatus = "creating" | "ready" | "error";
 export type WorkspaceKind = "main" | "worktree";
 export type SessionStatus = "running" | "exited" | "restore-failed";
-export type ManagedSessionKind = "shell" | "codex";
-/** tmux is retained only to migrate snapshots created by older releases. */
-export type SessionKind = ManagedSessionKind | "tmux";
-export type SessionActivityStatus = "idle" | "busy" | "waiting-input";
+export type ManagedSessionKind = "shell";
+export type SessionKind = ManagedSessionKind;
+export type SessionActivityStatus = "idle" | "busy" | "waiting-input" | "unknown";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 12;
+export const CURRENT_SCHEMA_VERSION = 13;
 
 export interface Todo {
   id: string;
@@ -143,16 +142,11 @@ export interface Session {
   exitReason?: SessionExitReason;
   exitCode?: number;
   restoreError?: string;
-  tmuxSessionName?: string;
-  /** Legacy grouped-client metadata kept only for cleanup compatibility. */
-  tmuxClientSessionName?: string;
-  tmuxWindowKey?: string;
-  tmuxWindowName?: string;
+  /** Legacy recovery reference only; never queried or automatically resumed. */
   codexConversationId?: string;
   resultUnread?: boolean;
   /** Legacy field retained only for persisted-data migration. */
   codexResultUnread?: boolean;
-  fallbackMessage?: string;
   restoredAt?: string;
   createdAt: string;
   exitedAt?: string;
@@ -302,7 +296,6 @@ export interface ReorderSessionsInput {
 
 export interface CreateSessionResult {
   session: Session;
-  warning?: string;
 }
 
 export interface TerminalOutput {

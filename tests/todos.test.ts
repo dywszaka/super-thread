@@ -6,7 +6,7 @@ import test from "node:test";
 import { WorkspaceService } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
 import { createTodoSchema, updateTodoSchema } from "../src/shared/contract";
-import { emptySnapshot, type Todo, type WorkThread } from "../src/shared/domain";
+import { CURRENT_SCHEMA_VERSION, emptySnapshot, type Todo, type WorkThread } from "../src/shared/domain";
 import { localTodoDate, todoEntries, visibleThreadTodos } from "../src/shared/todos";
 import { visibleWorkspaces } from "../src/renderer/src/features/workspace/selection";
 import { useWorkbenchStore } from "../src/renderer/src/state/workbench-store";
@@ -82,7 +82,7 @@ test("schema 11 migrates without losing documents; All todos clears workspace se
   snapshot.workThreads.push({ id: "legacy", name: "Legacy", status: "active", pinned: true, document: "# Existing", createdAt: "then", updatedAt: "then" });
   await writeFile(path, JSON.stringify(snapshot));
   const migrated = await new JsonStore(path).load();
-  assert.equal(migrated.schemaVersion, 12);
+  assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(migrated.workThreads[0]!.document, "# Existing");
   assert.deepEqual(migrated.workThreads[0]!.todos, []);
   useWorkbenchStore.getState().setActiveWorkspace("workspace");

@@ -490,46 +490,18 @@ test("terminal close cannot be resurrected by its PTY exit event", async () => {
   assert.deepEqual(service.snapshot().sessions, []);
 });
 
-test("running session summaries include only terminals actively doing work", async () => {
+test("running session summaries warn about busy local terminals and remote connections with unknown activity", async () => {
   const { service, store } = await setup();
   await store.update((draft) => {
     draft.sessions.push(
       { id: "busy-shell", workspaceId: "workspace-1", name: "build", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "busy", createdAt: "now" },
       { id: "idle-shell", workspaceId: "workspace-1", name: "prompt", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "idle", createdAt: "now" },
-      { id: "waiting-codex", workspaceId: "workspace-1", name: "agent", status: "running", kind: "codex", shell: "codex", activityStatus: "waiting-input", createdAt: "now" }
+      { id: "remote-shell", workspaceId: "workspace-1", name: "remote", status: "running", kind: "shell", shell: "ssh", activityStatus: "unknown", createdAt: "now" },
+      { id: "waiting-shell", workspaceId: "workspace-1", name: "agent", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "waiting-input", createdAt: "now" }
     );
   });
 
-  assert.deepEqual(service.runningSessionSummaries(), ["Unknown workspace / build (shell)"]);
-});
-
-test("Codex completion waits only until the result is viewed", async () => {
-  const terminals = fakeTerminals();
-  const { service, store } = await setup(undefined, terminals);
-  await store.update((draft) => {
-    draft.sessions.push({
-      id: "codex-1", workspaceId: "workspace-1", name: "agent", status: "running", kind: "codex",
-      shell: "codex", activityStatus: "idle", createdAt: "now"
-    });
-  });
-  const emitActivity = async (activityStatus: "idle" | "busy" | "waiting-input", resultReady: boolean): Promise<void> => {
-    const changed = new Promise<void>((resolve) => service.once("changed", resolve));
-    terminals.emit("activity", { sessionId: "codex-1", activityStatus, resultReady });
-    await changed;
-  };
-
-  await emitActivity("waiting-input", false);
-  assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
-  assert.equal(Boolean(service.snapshot().sessions[0]?.resultUnread), false);
-
-  await emitActivity("busy", false);
-  await emitActivity("waiting-input", true);
-  assert.equal(service.snapshot().sessions[0]?.activityStatus, "waiting-input");
-  assert.equal(service.snapshot().sessions[0]?.resultUnread, true);
-
-  await service.markSessionViewed("codex-1");
-  assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
-  assert.equal(service.snapshot().sessions[0]?.resultUnread, false);
+  assert.deepEqual(service.runningSessionSummaries(), ["Unknown workspace / build (shell)", "Unknown workspace / remote (shell)"]);
 });
 
 test("shell command completion also waits until the result is viewed", async () => {
@@ -551,102 +523,6 @@ test("shell command completion also waits until the result is viewed", async () 
   await service.markSessionViewed("shell-1");
   assert.equal(service.snapshot().sessions[0]?.activityStatus, "idle");
   assert.equal(service.snapshot().sessions[0]?.resultUnread, false);
-});
-
-test("Codex creation falls back to a shell when the managed tool is missing", async () => {
-  const created: Session[] = [];
-  const probes: Array<{ program: string; args: string[] }> = [];
-  const commandRunner: CommandRunner = {
-    run: async (program, args) => {
-      probes.push({ program, args });
-      if (args.join(" ").includes("codex")) throw new Error("missing codex");
-      return { stdout: "", stderr: "", exitCode: 0 };
-    }
-  };
-  const { service, store } = await setup(undefined, fakeTerminals(created), commandRunner);
-  await store.update((draft) => addReadyWorkspace(draft));
-
-  const codex = await service.createSession({ workspaceId: "workspace-dev_local", kind: "codex" });
-
-  assert.match(codex.warning ?? "", /Codex CLI.*normal terminal/);
-  assert.equal(codex.session.kind, "shell");
-  assert.deepEqual(created.map((session) => session.kind), ["shell"]);
-  assert.deepEqual(probes.map((probe) => probe.program), ["sh"]);
-  assert.equal(probes.every((probe) => probe.args[1]?.includes('"${SHELL:-/bin/sh}" -lic')), true);
-});
-
-test("Codex conversation ids are persisted from terminal runtime events", async () => {
-  const terminals = fakeTerminals();
-  const commandRunner: CommandRunner = { run: async () => ({ stdout: "/usr/bin/codex", stderr: "", exitCode: 0 }) };
-  const { service, store } = await setup(undefined, terminals, commandRunner);
-  await store.update((draft) => addReadyWorkspace(draft));
-
-  const codex = await service.createSession({ workspaceId: "workspace-dev_local", kind: "codex" });
-  const changed = new Promise<void>((resolve) => service.once("changed", resolve));
-  terminals.emit("codex-conversation", { sessionId: codex.session.id, codexConversationId: "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99" });
-  await changed;
-
-  assert.equal(service.snapshot().sessions.find((session) => session.id === codex.session.id)?.codexConversationId, "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99");
-});
-
-test("resuming and startup restoration preserve saved Codex conversation ids", async () => {
-  const created: Session[] = [];
-  const { service, store } = await setup(undefined, fakeTerminals(created));
-  await store.update((draft) => {
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
-    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
-    draft.workspaces.push({
-      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
-      checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
-      status: "ready", createdAt: "now", updatedAt: "now"
-    });
-    draft.sessions.push({
-      id: "codex-1", workspaceId: "workspace-1", name: "agent", status: "restore-failed", kind: "codex", shell: "codex",
-      codexConversationId: "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99", exitedAt: "then", createdAt: "now"
-    });
-  });
-
-  await service.resumeSession("codex-1");
-
-  assert.equal(created[0]?.id, "codex-1");
-  assert.equal(created[0]?.kind, "codex");
-  assert.equal(created[0]?.codexConversationId, "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99");
-  assert.equal(service.snapshot().sessions[0]?.status, "running");
-});
-
-test("Codex sessions with saved conversation ids auto-restore after abnormal exit", async () => {
-  const created: Session[] = [];
-  const terminals = fakeTerminals(created);
-  const { service, store } = await setup(undefined, terminals);
-  await store.update((draft) => {
-    draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
-    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
-    draft.workspaces.push({
-      id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
-      checkoutId: "checkout-1", path: "/tmp/demo-worktree", branch: "work/demo", baseBranch: "main",
-      status: "ready", createdAt: "now", updatedAt: "now"
-    });
-    draft.sessions.push({
-      id: "codex-1", workspaceId: "workspace-1", name: "agent", status: "running", kind: "codex", shell: "codex",
-      activityStatus: "idle", codexConversationId: "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99", createdAt: "now"
-    });
-  });
-  const restored = new Promise<void>((resolve) => {
-    let changes = 0;
-    service.on("changed", () => {
-      changes += 1;
-      if (changes === 2) resolve();
-    });
-  });
-
-  terminals.emit("exit", { sessionId: "codex-1", exitCode: 1 });
-  await restored;
-
-  assert.equal(created[0]?.id, "codex-1");
-  assert.equal(created[0]?.codexConversationId, "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99");
-  assert.equal(service.snapshot().sessions[0]?.status, "running");
 });
 
 test("opening tmux in iTerm reuses one workspace-level tmux session", async () => {
@@ -805,7 +681,7 @@ test("startup restores interrupted sessions and isolates restore failures", asyn
   addReadyWorkspace(snapshot);
   snapshot.sessions.push(
     { id: "session-ok", workspaceId: "workspace-dev_local", name: "ok", status: "running", kind: "shell", shell: "/bin/zsh", pid: 111, cwd: "/tmp/demo-worktree/subdir", createdAt: "now" },
-    { id: "session-fail", workspaceId: "workspace-dev_local", name: "bad", status: "running", kind: "codex", shell: "codex", pid: 222, createdAt: "now" }
+    { id: "session-fail", workspaceId: "workspace-dev_local", name: "bad", status: "running", kind: "shell", shell: "/bin/zsh", pid: 222, createdAt: "now" }
   );
   snapshot.schemaVersion = CURRENT_SCHEMA_VERSION;
   await writeFile(path, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");

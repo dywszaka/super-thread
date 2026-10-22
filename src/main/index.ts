@@ -57,7 +57,11 @@ app.whenReady().then(async () => {
   const openWindow = (): BrowserWindow => {
     mainWindow = createMainWindow();
     browsers.attach(mainWindow);
-    mainWindow.on("closed", () => { mainWindow = null; });
+    service.setWindowOpen(true);
+    mainWindow.on("closed", () => {
+      mainWindow = null;
+      service.setWindowOpen(false);
+    });
     return mainWindow;
   };
 

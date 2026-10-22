@@ -72,7 +72,7 @@ test("RenameWorkspace keeps workspace names path-safe and trims whitespace", () 
 
 test("CreateSession supports managed terminal kinds and reorder validates workspace ownership input", () => {
   assert.equal(createSessionSchema.safeParse({ workspaceId: "workspace-1", kind: "shell" }).success, true);
-  assert.equal(createSessionSchema.safeParse({ workspaceId: "workspace-1", kind: "codex" }).success, true);
+  assert.equal(createSessionSchema.safeParse({ workspaceId: "workspace-1", kind: "codex" }).success, false);
   assert.equal(createSessionSchema.safeParse({ workspaceId: "workspace-1", kind: "tmux" }).success, false);
   assert.equal(createSessionSchema.safeParse({ workspaceId: "workspace-1", kind: "screen" }).success, false);
   assert.equal(reorderSessionsSchema.safeParse({ workspaceId: "workspace-1", sessionIds: ["session-2", "session-1"] }).success, true);

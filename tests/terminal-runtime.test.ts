@@ -1,239 +1,108 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexActivityFromOutput, codexConversationIdFromOutput, codexResultReadyFromOutput, foregroundProcessIsBusy, latestCodexConversationIdFromSessionIndex, sshTerminalArgs, TerminalRuntime, tmuxActivityFromProbe, tmuxAttachCommand, tmuxPaneIsBusy, tmuxWindowLookupCommand } from "../src/main/runtime/terminal-runtime";
-import { interactiveLoginShellCommand, quoteShellArgument } from "../src/main/runtime/login-shell";
-import type { Device, DeviceConnection, Session } from "../src/shared/domain";
+import type { IPty } from "node-pty";
+import { foregroundProcessIsBusy, sshTerminalArgs, TerminalRuntime } from "../src/main/runtime/terminal-runtime";
+import type { Device, DeviceConnection, Session, Workspace } from "../src/shared/domain";
 
-test("managed tools run through the user's interactive login shell", () => {
-  assert.equal(quoteShellArgument("it's here"), `'it'\\''s here'`);
-  assert.equal(
-    interactiveLoginShellCommand("command -v codex"),
-    `exec "\${SHELL:-/bin/sh}" -lic 'command -v codex'`
-  );
-});
+const session: Session = { id: "terminal", workspaceId: "workspace", name: "Terminal", status: "running", kind: "shell", shell: "ssh", createdAt: "now" };
+const device: Device = { id: "remote", name: "Remote", type: "remote", status: "online", createdAt: "now" };
+const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "never-connected.invalid", user: "builder", port: 2222 } };
+const workspace = { id: "workspace", path: "/tmp/demo worktree" } as Workspace;
 
-test("attach returns a sequenced replay without emitting it as live output", () => {
-  const runtime = new TerminalRuntime();
-  const internal = runtime as unknown as {
-    sessions: Map<string, { pty: unknown; buffer: string; sequence: number }>;
-  };
-  internal.sessions.set("session-1", { pty: {}, buffer: "historic output", sequence: 7 });
-  let emitted = false;
-  runtime.on("output", () => { emitted = true; });
+function fakePty() {
+  let onData: (data: string) => void = () => {};
+  let onExit: (event: { exitCode: number }) => void = () => {};
+  const input: string[] = [];
+  const sizes: number[][] = [];
+  const instance = {
+    pid: 123, onData: (callback: typeof onData) => { onData = callback; },
+    onExit: (callback: typeof onExit) => { onExit = callback; },
+    write: (data: string) => { input.push(data); },
+    resize: (cols: number, rows: number) => { sizes.push([cols, rows]); },
+    kill: () => onExit({ exitCode: 0 })
+  } as unknown as IPty;
+  return { instance, input, sizes, output: (data: string) => onData(data) };
+}
 
-  assert.deepEqual(runtime.attach("session-1"), { data: "historic output", sequence: 7 });
-  assert.equal(emitted, false);
-});
-
-test("attach returns an empty baseline for a missing runtime session", () => {
-  const runtime = new TerminalRuntime();
-  assert.deepEqual(runtime.attach("missing"), { data: "", sequence: 0 });
-});
-
-test("foreground process groups distinguish an idle shell from an occupying command", () => {
-  assert.equal(foregroundProcessIsBusy(" 123 123\n"), false);
-  assert.equal(foregroundProcessIsBusy(" 123 456\n"), true);
-  assert.equal(foregroundProcessIsBusy(""), false);
-});
-
-test("remote shell polling bypasses interactive startup and tracks foreground work", async () => {
-  const calls: Array<{ program: string; args: string[] }> = [];
-  let output = "123 456\n";
-  const runtime = new TerminalRuntime(async (program, args) => {
-    calls.push({ program, args });
-    return output;
+test("remote terminals use one SSH PTY and never schedule background probes", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const terminal = fakePty();
+  const spawns: Array<{ program: string; args: string[] | string }> = [];
+  let probes = 0;
+  const runtime = new TerminalRuntime(async () => { probes++; return ""; }, (program, args) => {
+    spawns.push({ program, args: args! });
+    return terminal.instance;
   });
-  const internal = runtime as unknown as {
-    sessions: Map<string, unknown>;
-    probeActivity(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
-  };
-  const session: Session = { id: "remote-shell", workspaceId: "workspace-1", name: "Terminal", status: "running", kind: "shell", shell: "zsh", createdAt: "now" };
-  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
-  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example", user: "builder", port: 2222 } };
-  const live = { pty: { pid: 999 }, remotePid: 123, activityStatus: "idle", probing: false };
-  internal.sessions.set(session.id, live);
+  runtime.create(session, workspace, device, connection);
+  terminal.output("prompt ready\r\n");
+  assert.deepEqual(runtime.attach(session.id), { data: "prompt ready\r\n", sequence: 1 });
+  // Reattaching after a renderer/window disconnect must not create another PTY.
+  runtime.attach(session.id);
+  runtime.write(session.id, "echo hi\r");
+  runtime.resize(session.id, 120, 40);
+  t.mock.timers.tick(86_400_000);
+  assert.equal(probes, 0);
+  assert.equal(spawns.length, 1);
+  assert.equal(spawns[0]?.program, "ssh");
+  assert.doesNotMatch(String(spawns[0]?.args), /-lic|superthread-pid|codex|tmux/);
+  assert.deepEqual(terminal.input, ["echo hi\r"]);
+  assert.deepEqual(terminal.sizes, [[120, 40]]);
+  assert.equal(runtime.has(session.id), true);
+  runtime.kill(session.id);
+  assert.equal(runtime.has(session.id), false);
+});
+
+test("runtime refuses removed managed kinds before spawning", () => {
+  let spawns = 0;
+  const runtime = new TerminalRuntime(undefined, () => { spawns++; return fakePty().instance; });
+  for (const kind of ["tmux", "codex"]) {
+    assert.throws(() => runtime.create({ ...session, kind } as unknown as Session, workspace, device, connection), /Only shell/);
+  }
+  assert.equal(spawns, 0);
+});
+
+test("local activity sampling emits command completion and ignores a late result after exit", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const terminal = fakePty();
+  let output = "123 456";
+  let pending: ((value: string) => void) | undefined;
+  const runtime = new TerminalRuntime(async (program) => {
+    assert.equal(program, "ps");
+    if (output === "pending") return new Promise<string>((resolve) => { pending = resolve; });
+    return output;
+  }, () => terminal.instance);
   const events: unknown[] = [];
   runtime.on("activity", (event) => events.push(event));
-
-  await internal.probeActivity(session, live, device, connection);
-  output = "123 123\n";
-  await internal.probeActivity(session, live, device, connection);
-
-  assert.equal(calls.length, 2);
-  for (const call of calls) {
-    assert.equal(call.program, "ssh");
-    assert.deepEqual(call.args.slice(-4), ["-p", "2222", "builder@example", "ps -o pgid= -o tpgid= -p 123"]);
-  }
+  runtime.create(session, workspace, { ...device, type: "local" }, { ...connection, transport: "local", config: {} });
+  await Promise.resolve();
+  output = "123 123";
+  t.mock.timers.tick(1000);
+  await Promise.resolve();
   assert.deepEqual(events, [
     { sessionId: session.id, activityStatus: "busy", resultReady: false },
     { sessionId: session.id, activityStatus: "idle", resultReady: true }
   ]);
+  output = "pending";
+  t.mock.timers.tick(1000);
+  runtime.kill(session.id);
+  pending?.("123 456");
+  await Promise.resolve();
+  assert.equal(events.length, 2);
 });
 
-test("tmux pane commands distinguish a shell prompt from an occupying command", () => {
-  assert.equal(tmuxPaneIsBusy("zsh\n"), false);
-  assert.equal(tmuxPaneIsBusy("/bin/bash\n"), false);
-  assert.equal(tmuxPaneIsBusy("npm\n"), true);
+test("attach returns an empty baseline for a missing session", () => {
+  assert.deepEqual(new TerminalRuntime().attach("missing"), { data: "", sequence: 0 });
 });
 
-test("remote terminal SSH detects unreachable and stale connections", () => {
-  assert.deepEqual(sshTerminalArgs({
-    deviceId: "remote-1",
-    transport: "ssh",
-    config: { host: "gpu.example", user: "builder", port: 2222 }
-  }, "run remote shell"), [
-    "-t",
-    "-o", "ConnectTimeout=5",
-    "-o", "ServerAliveInterval=5",
-    "-o", "ServerAliveCountMax=3",
-    "-p", "2222",
-    "builder@gpu.example",
-    "run remote shell"
+test("foreground process groups distinguish an idle shell from an occupying command", () => {
+  assert.equal(foregroundProcessIsBusy("123 123"), false);
+  assert.equal(foregroundProcessIsBusy("123 456"), true);
+  assert.equal(foregroundProcessIsBusy(""), false);
+});
+
+test("remote terminals and iTerm retain SSH connection timeout and keepalives", () => {
+  assert.deepEqual(sshTerminalArgs(connection, "run remote shell"), [
+    "-t", "-o", "ConnectTimeout=5", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
+    "-p", "2222", "builder@never-connected.invalid", "run remote shell"
   ]);
-});
-
-test("tmux activity distinguishes Codex work from waiting for input", () => {
-  assert.equal(tmuxActivityFromProbe("zsh\n% "), "idle");
-  assert.equal(tmuxActivityFromProbe("npm\nBuilding renderer..."), "busy");
-  assert.equal(tmuxActivityFromProbe("codex\nWorking (12s • esc to interrupt)"), "busy");
-  assert.equal(tmuxActivityFromProbe("codex\n\n› Implement the next feature"), "waiting-input");
-  assert.equal(tmuxActivityFromProbe("codex-aarch64-apple-darwin\nPermission required: allow this command?"), "waiting-input");
-  assert.equal(
-    tmuxActivityFromProbe("node\n› sleep 30\nWorking (2s • esc to interrupt)\nRan sleep 30\nAsk Codex to do anything"),
-    "waiting-input"
-  );
-  assert.equal(
-    tmuxActivityFromProbe("node\n› inspect the code\nAsk Codex to do anything\nWorking (2s • esc to interrupt)"),
-    "busy"
-  );
-  assert.equal(tmuxActivityFromProbe("node\nDevelopment server listening on port 3000"), "busy");
-});
-
-test("tmux tabs attach distinct windows in one workspace session", () => {
-  const first: Session = {
-    id: "session-1", workspaceId: "workspace-1", name: "tmux 1", status: "running", kind: "tmux", shell: "tmux",
-    tmuxSessionName: "fa-attn-nvfp4", tmuxWindowKey: "session-1", createdAt: "now"
-  };
-  const second: Session = { ...first, id: "session-2", name: "tmux 2", tmuxWindowKey: "session-2" };
-
-  assert.match(tmuxWindowLookupCommand(first), /@superthread_terminal_id/);
-  assert.match(tmuxWindowLookupCommand(first), /key='session-1'/);
-  const firstCommand = tmuxAttachCommand(first, "/tmp/demo worktree");
-  assert.match(firstCommand, /tmux new-session -d -P -F '#\{window_id\}' -s 'fa-attn-nvfp4'/);
-  assert.match(firstCommand, /set-option -w -t "\$window" @superthread_terminal_id 'session-1'/);
-  assert.match(firstCommand, /new-session -d -t 'fa-attn-nvfp4' -s 'superthread-client-session-1'/);
-  assert.match(firstCommand, /display-message.*#\{status-left\}/);
-  assert.match(firstCommand, /session_group/);
-  assert.match(firstCommand, /if \[ -n "\$status_left" \]/);
-  assert.match(firstCommand, /select-window -t 'superthread-client-session-1':"\$window"/);
-  assert.match(firstCommand, /attach-session -t 'superthread-client-session-1'/);
-  assert.doesNotMatch(firstCommand, /tmux new-window[^;]* -n /);
-  const secondCommand = tmuxAttachCommand(second, "/tmp/demo worktree");
-  assert.match(secondCommand, /tmux new-window -d -P -F '#\{window_id\}' -t 'fa-attn-nvfp4'/);
-  assert.match(secondCommand, /@superthread_terminal_id 'session-2'/);
-  assert.match(secondCommand, /new-session -d -t 'fa-attn-nvfp4' -s 'superthread-client-session-2'/);
-  assert.match(secondCommand, /attach-session -t 'superthread-client-session-2'/);
-});
-
-test("legacy tmux tabs retain their original attach behavior", () => {
-  const session: Session = {
-    id: "session-1", workspaceId: "workspace-1", name: "tmux 1", status: "running", kind: "tmux", shell: "tmux",
-    tmuxSessionName: "legacy-session", createdAt: "now"
-  };
-  assert.equal(tmuxAttachCommand(session, "/tmp/demo"), "tmux new-session -A -s 'legacy-session'");
-});
-
-test("Codex output distinguishes working from waiting for input", () => {
-  assert.equal(codexActivityFromOutput("Codex CLI starting…"), undefined);
-  assert.equal(codexActivityFromOutput("Working (12s • esc to interrupt)"), "busy");
-  assert.equal(codexActivityFromOutput("\n› Implement the next feature"), "waiting-input");
-  assert.equal(codexActivityFromOutput("Permission required: allow this command?"), "waiting-input");
-  assert.equal(codexActivityFromOutput("› old request\nWorking (12s • esc to interrupt)"), "busy");
-  assert.equal(codexActivityFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything"), "waiting-input");
-  assert.equal(
-    codexActivityFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything\nGPT-5.6-Sol medium · 191K used · 340K in · 2.89K out · 1 warning"),
-    "waiting-input"
-  );
-});
-
-test("only the completed-result prompt marks a Codex result ready", () => {
-  assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nAsk Codex to do anything"), true);
-  assert.equal(codexResultReadyFromOutput("Working (12s • esc to interrupt)\nPermission required: allow this command?"), false);
-  assert.equal(codexResultReadyFromOutput("Ask Codex to do anything"), true);
-});
-
-test("Codex conversation ids are parsed from labeled output and session index records", () => {
-  const id = "01a0d2b6-f542-7bc0-9a51-4e2c62eecc99";
-  assert.equal(codexConversationIdFromOutput(`Session ID: ${id}`), id);
-  assert.equal(codexConversationIdFromOutput(`Run codex resume ${id} to continue`), id);
-  assert.equal(codexConversationIdFromOutput(`unlabeled ${id}`), undefined);
-  assert.equal(latestCodexConversationIdFromSessionIndex([
-    "{\"id\":\"01a0b3e5-40d8-7e41-a621-bb87ad39d801\",\"updated_at\":\"2026-09-24T10:00:00.000Z\"}",
-    "{\"id\":\"01a0ce85-2172-7443-a4b0-5bbfcb4688fd\",\"updated_at\":\"2026-09-24T10:05:00.000Z\"}"
-  ].join("\n"), "2026-09-24T10:01:00.000Z"), "01a0ce85-2172-7443-a4b0-5bbfcb4688fd");
-});
-
-test("a foreground command returning to idle marks a generic terminal result ready", () => {
-  const runtime = new TerminalRuntime();
-  const events: unknown[] = [];
-  runtime.on("activity", (event) => events.push(event));
-  const internal = runtime as unknown as {
-    setActivity(sessionId: string, live: { activityStatus: "idle" | "busy" | "waiting-input" }, activityStatus: "idle" | "busy" | "waiting-input", resultReady?: boolean): void;
-  };
-
-  internal.setActivity("shell-1", { activityStatus: "busy" }, "idle");
-
-  assert.deepEqual(events, [{ sessionId: "shell-1", activityStatus: "idle", resultReady: true }]);
-});
-
-test("Codex index polling resolves custom CODEX_HOME once and prevents overlapping probes", async () => {
-  const calls: string[] = [];
-  let release: (value: string) => void = () => {};
-  const resolving = new Promise<string>((resolve) => { release = resolve; });
-  const runtime = new TerminalRuntime(async (_program, args) => {
-    calls.push(args.at(-1)!);
-    return calls.length === 1 ? resolving : "";
-  });
-  const internal = runtime as unknown as {
-    sessions: Map<string, unknown>;
-    probeCodexConversationId(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
-  };
-  const session: Session = { id: "codex-probe", workspaceId: "workspace-1", name: "Codex", status: "running", kind: "codex", shell: "zsh", createdAt: "now" };
-  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
-  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example" } };
-  const live = {};
-  internal.sessions.set(session.id, live);
-  const probe = () => internal.probeCodexConversationId(session, live, device, connection);
-  const first = probe();
-  await probe();
-  assert.equal(calls.length, 1);
-  release("startup notice\n/custom codex/session_index.jsonl\n");
-  await first;
-  await probe();
-  assert.equal(calls.length, 3);
-  assert.match(calls[0]!, /-lic/);
-  for (const command of calls.slice(1)) {
-    assert.match(command, /file='\/custom codex\/session_index.jsonl'/);
-    assert.doesNotMatch(command, /-lic/);
-  }
-});
-
-test("failed Codex path resolution does not repeat login startup on later polls", async () => {
-  const calls: string[] = [];
-  const runtime = new TerminalRuntime(async (_program, args) => {
-    calls.push(args.at(-1)!);
-    throw new Error("connection interrupted");
-  });
-  const internal = runtime as unknown as {
-    sessions: Map<string, unknown>;
-    probeCodexConversationId(session: Session, live: unknown, device: Device, connection: DeviceConnection): Promise<void>;
-  };
-  const session: Session = { id: "codex-failed-probe", workspaceId: "workspace-1", name: "Codex", status: "running", kind: "codex", shell: "zsh", createdAt: "now" };
-  const device: Device = { id: "remote-1", name: "Remote", type: "remote", status: "online", createdAt: "now" };
-  const connection: DeviceConnection = { deviceId: device.id, transport: "ssh", config: { host: "example" } };
-  const live = {};
-  internal.sessions.set(session.id, live);
-  for (let i = 0; i < 3; i++) await internal.probeCodexConversationId(session, live, device, connection);
-  assert.equal(calls.filter((command) => command.includes("-lic")).length, 1);
-  assert.equal(calls.length, 3);
 });

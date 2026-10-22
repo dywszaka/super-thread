@@ -23,7 +23,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   const sessions = snapshot.sessions.filter((session) => session.workspaceId === workspace.id);
   const activeCount = sessions.filter((session) => session.status === "running" && session.activityStatus === "busy").length;
-  const waitingCodexCount = sessions.filter((session) => session.activityStatus === "waiting-input").length;
+  const waitingCount = sessions.filter((session) => session.activityStatus === "waiting-input").length;
   const failedRestoreCount = sessions.filter((session) => session.status === "restore-failed").length;
   useEffect(() => {
     if (!details && !menu) return;
@@ -84,9 +84,9 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
         <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}{workspace.kind === "main" ? " · Main checkout" : ""}</p>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
       </button>
-      {(activeCount > 0 || waitingCodexCount > 0 || failedRestoreCount > 0) && <div className="session-summary no-drag">
+      {(activeCount > 0 || waitingCount > 0 || failedRestoreCount > 0) && <div className="session-summary no-drag">
         {activeCount > 0 && <span><i className="busy" /> {activeCount} running</span>}
-        {waitingCodexCount > 0 && <span><i className="waiting" /> {waitingCodexCount} waiting</span>}
+        {waitingCount > 0 && <span><i className="waiting" /> {waitingCount} waiting</span>}
         {failedRestoreCount > 0 && <span><i className="failed" /> {failedRestoreCount} failed</span>}
       </div>}
       <div className="header-actions no-drag">

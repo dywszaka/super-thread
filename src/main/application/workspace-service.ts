@@ -21,7 +21,6 @@ import type {
   DirectoryListing,
   SaveTerminalPresetInput,
   DeleteTerminalPresetInput,
-  ManagedSessionKind,
   Project,
   ReorderSessionsInput,
   RenameSessionInput,
@@ -47,7 +46,7 @@ import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
 import { ItermRuntime, itermTmuxCommand, type ExternalTerminalRuntime } from "../runtime/iterm-runtime";
-import { legacyTmuxClientSessionName, TerminalRuntime, tmuxTarget, tmuxWindowLookupCommand, type TerminalActivityEvent, type TerminalCodexConversationEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
+import { TerminalRuntime, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
@@ -99,6 +98,7 @@ export interface WorkspaceDirectoryRuntime {
 export interface DeviceTunnelRuntime {
   sync(connections: DeviceConnection[]): void;
   reconnectAll(): void;
+  setReconnectEnabled(enabled: boolean): void;
   stop(): void;
 }
 
@@ -112,7 +112,7 @@ export class WorkspaceService extends EventEmitter {
   private readonly startingSessionIds = new Set<string>();
   private readonly exitsDuringSessionStart = new Map<string, TerminalExitEvent>();
   private readonly closingSessionIds = new Set<string>();
-  private readonly autoRestoredCodexSessionIds = new Set<string>();
+  private windowOpen = true;
 
   constructor(
     private readonly store: JsonStore,
@@ -126,7 +126,6 @@ export class WorkspaceService extends EventEmitter {
     super();
     terminals.on("output", (event) => this.emit("terminal-output", event));
     terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event));
-    terminals.on("codex-conversation", (event: TerminalCodexConversationEvent) => void this.recordCodexConversation(event));
     terminals.on("exit", (event: TerminalExitEvent) => this.handleTerminalExit(event));
   }
 
@@ -723,6 +722,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private async createSessionOnce(input: CreateSessionInput): Promise<CreateSessionResult> {
+    if (input.kind && input.kind !== "shell") throw new Error("Only shell terminal sessions are supported");
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, input.workspaceId);
     if (workspace.status !== "ready") throw new Error("Workspace is not ready");
@@ -733,21 +733,19 @@ export class WorkspaceService extends EventEmitter {
     if (input.terminalPresetId && !preset) throw new Error("Custom terminal entry does not exist on this workspace’s device");
     if (preset && input.kind && input.kind !== "shell") throw new Error("Custom terminals must use a shell");
     const cwd = preset ? (await this.browseDirectory({ deviceId: device.id, path: preset.path })).path : workspace.path;
-    const requestedKind = input.kind ?? "shell";
-    const { kind, warning } = await this.resolveSessionKind(snapshot, workspace, device, requestedKind);
+    const kind = "shell";
     const timestamp = now();
     const sessionId = id("session");
     const session: Session = {
       id: sessionId,
       workspaceId: workspace.id,
-      name: preset?.name || input.name || this.defaultSessionName(kind, count + 1),
+      name: preset?.name || input.name || `Terminal ${count + 1}`,
       status: "running",
       kind,
       order: this.nextSessionOrder(snapshot, workspace.id),
-      shell: this.sessionShellLabel(kind, device),
+      shell: device.type === "remote" ? "ssh" : process.env.SHELL || "/bin/zsh",
       cwd,
-      activityStatus: "idle",
-      ...(warning ? { fallbackMessage: warning } : {}),
+      activityStatus: device.type === "remote" ? "unknown" : "idle",
       createdAt: timestamp
     };
     this.startingSessionIds.add(session.id);
@@ -767,7 +765,7 @@ export class WorkspaceService extends EventEmitter {
     });
     await this.finishSessionStart(session.id);
     this.changed();
-    return { session: created ?? { ...session, pid }, warning };
+    return { session: created ?? { ...session, pid } };
   }
 
   openWorkspaceTmuxInIterm(workspaceId: string): Promise<void> {
@@ -830,7 +828,7 @@ export class WorkspaceService extends EventEmitter {
     const restored = {
       ...session,
       cwd: session.cwd || workspace.path,
-      activityStatus: (session.resultUnread ? "waiting-input" : "idle") as SessionActivityStatus
+      activityStatus: (device.type === "remote" ? "unknown" : session.resultUnread ? "waiting-input" : "idle") as SessionActivityStatus
     };
     let pid: number;
     this.startingSessionIds.add(session.id);
@@ -876,63 +874,39 @@ export class WorkspaceService extends EventEmitter {
   attachSession(id: string): TerminalReplay { return this.terminals.attach(id); }
   writeSession(id: string, data: string): void { this.terminals.write(id, data); }
   resizeSession(id: string, cols: number, rows: number): void { this.terminals.resize(id, cols, rows); }
+  setWindowOpen(open: boolean): void {
+    this.windowOpen = open;
+    this.tunnels.setReconnectEnabled(open);
+  }
+
   reconnectTunnels(): void {
-    this.tunnels.reconnectAll();
-    void this.restoreRecoverableCodexSessions();
+    if (this.windowOpen) this.tunnels.reconnectAll();
   }
   runningSessionSummaries(): string[] {
     const snapshot = this.snapshot();
     return snapshot.sessions
-      .filter((session) => session.status === "running" && session.activityStatus === "busy")
+      .filter((session) => session.status === "running" && (session.activityStatus === "busy" || session.activityStatus === "unknown"))
       .map((session) => {
         const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
         return `${workspace?.name ?? "Unknown workspace"} / ${session.name} (${session.kind ?? "shell"})`;
       });
   }
   shutdown(): void { this.tunnels.stop(); }
-  async killSession(id: string, force = false): Promise<void> {
+  async killSession(id: string, _force = false): Promise<void> {
     const snapshot = this.snapshot();
     const session = snapshot.sessions.find((item) => item.id === id);
     if (!session) return;
-    const hasOtherTmuxTerminals = snapshot.sessions.some((item) => item.id !== id && item.workspaceId === session.workspaceId && item.kind === "tmux");
-    if (session.kind === "tmux" && session.status === "running" && session.activityStatus === "busy" && !force) {
-      throw new Error(`This tmux terminal is running a task. Closing it will stop the task and delete its tmux ${hasOtherTmuxTerminals ? "window" : "session"}.`);
-    }
     const running = this.terminals.has(id);
     this.closingSessionIds.add(id);
     try {
-      if (session.kind === "tmux" && session.tmuxSessionName) await this.deleteTmuxTerminal(snapshot, session);
       await this.store.update((draft) => {
         draft.sessions = draft.sessions.filter((item) => item.id !== id);
-        if (session.kind === "tmux" && !draft.sessions.some((item) => item.workspaceId === session.workspaceId && item.kind === "tmux")) {
-          const workspace = draft.workspaces.find((item) => item.id === session.workspaceId);
-          if (workspace) workspace.tmuxSessionName = undefined;
-        }
       });
       this.changed();
       if (running) this.terminals.kill(id);
     } finally {
       this.closingSessionIds.delete(id);
     }
-  }
-
-  private async deleteTmuxTerminal(snapshot: AppSnapshot, session: Session): Promise<void> {
-    const workspace = this.workspace(snapshot, session.workspaceId);
-    const device = this.device(snapshot, workspace.deviceId);
-    const runner = this.commandRunnerFactory(this.connection(snapshot, device.id));
-    const target = session.tmuxWindowKey
-      ? `"$(${tmuxWindowLookupCommand(session)})"`
-      : quoteShellArgument(tmuxTarget(session));
-    const workspaceSession = quoteShellArgument(session.tmuxSessionName || session.id);
-    const clientSessions = [session.tmuxClientSessionName, legacyTmuxClientSessionName(session)]
-      .filter((name): name is string => Boolean(name))
-      .map((name) => `tmux kill-session -t ${quoteShellArgument(name)} 2>/dev/null || true`)
-      .join("; ");
-    const cleanupLegacyClients = clientSessions ? `${clientSessions}; ` : "";
-    const command = session.tmuxWindowKey || session.tmuxWindowName
-      ? `${cleanupLegacyClients}tmux kill-window -t ${target} 2>/dev/null || true`
-      : `tmux kill-session -t ${workspaceSession} 2>/dev/null || true`;
-    await runner.run("sh", ["-lc", interactiveLoginShellCommand(command)], { cwd: workspace.path, timeoutMs: 8_000 });
   }
 
   async reorderSessions(input: ReorderSessionsInput): Promise<void> {
@@ -966,26 +940,12 @@ export class WorkspaceService extends EventEmitter {
     const snapshot = this.snapshot();
     const current = snapshot.sessions.find((item) => item.id === input.id);
     if (!current) throw new Error("Terminal session not found");
-    if (current.kind === "tmux") await this.renameTmuxWindow(snapshot, current, name);
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === input.id);
       if (!session) throw new Error("Terminal session not found");
       session.name = name;
     });
     this.changed();
-  }
-
-  private async renameTmuxWindow(snapshot: AppSnapshot, session: Session, name: string): Promise<void> {
-    const workspace = this.workspace(snapshot, session.workspaceId);
-    const device = this.device(snapshot, workspace.deviceId);
-    const target = session.tmuxWindowKey
-      ? `target=$(${tmuxWindowLookupCommand(session)}); test -n "$target"; tmux rename-window -t "$target" ${quoteShellArgument(name)}`
-      : `tmux rename-window -t ${quoteShellArgument(tmuxTarget(session))} ${quoteShellArgument(name)}`;
-    await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
-      "sh",
-      ["-lc", interactiveLoginShellCommand(target)],
-      { cwd: workspace.path, timeoutMs: 8_000 }
-    );
   }
 
   private async recordProjectAndCheckout(info: RepositoryInfo, deviceId: string, requestedName?: string): Promise<void> {
@@ -1038,17 +998,6 @@ export class WorkspaceService extends EventEmitter {
     }
   }
 
-  private async restoreRecoverableCodexSessions(): Promise<void> {
-    const snapshot = this.snapshot();
-    for (const session of snapshot.sessions.filter((item) => item.status === "restore-failed" && item.kind === "codex" && item.codexConversationId)) {
-      try {
-        await this.resumeSession(session.id);
-      } catch {
-        // Keep each failed Codex session isolated; users can still retry or start fresh.
-      }
-    }
-  }
-
   private async restoreInterruptedSession(sessionId: string): Promise<void> {
     const snapshot = this.snapshot();
     const session = snapshot.sessions.find((item) => item.id === sessionId);
@@ -1058,7 +1007,7 @@ export class WorkspaceService extends EventEmitter {
       if (workspace.status !== "ready") throw new Error("Workspace is not ready");
       const device = this.device(snapshot, workspace.deviceId);
       const connection = this.connection(snapshot, device.id);
-      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: session.resultUnread ? "waiting-input" as const : "idle" as const };
+      const restored = { ...session, cwd: session.cwd || workspace.path, activityStatus: device.type === "remote" ? "unknown" as const : session.resultUnread ? "waiting-input" as const : "idle" as const };
       this.startingSessionIds.add(session.id);
       let pid: number;
       try {
@@ -1101,28 +1050,8 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  private async resolveSessionKind(snapshot: AppSnapshot, workspace: Workspace, device: Device, requestedKind: ManagedSessionKind): Promise<{ kind: ManagedSessionKind; warning?: string }> {
-    if (requestedKind === "shell") return { kind: "shell" };
-    try {
-      await this.commandRunnerFactory(this.connection(snapshot, device.id)).run(
-        "sh",
-        ["-lc", interactiveLoginShellCommand("command -v codex")],
-        { cwd: workspace.path, timeoutMs: 8_000 }
-      );
-      return { kind: requestedKind };
-    } catch {
-      const warning = this.missingToolWarning(workspace.id, device, requestedKind);
-      return { kind: "shell", warning };
-    }
-  }
-
   private async resolveTmuxSessionName(snapshot: AppSnapshot, workspace: Workspace, device: Device): Promise<string> {
     if (workspace.tmuxSessionName) return workspace.tmuxSessionName;
-    const existingSessionName = snapshot.sessions.find((session) =>
-      session.workspaceId === workspace.id && session.kind === "tmux" && session.tmuxSessionName
-    )?.tmuxSessionName;
-    if (existingSessionName) return existingSessionName;
-
     const reserved = snapshot.workspaces
       .filter((item) => item.deviceId === device.id && item.id !== workspace.id)
       .flatMap((item) => item.tmuxSessionName ? [item.tmuxSessionName] : []);
@@ -1138,20 +1067,6 @@ export class WorkspaceService extends EventEmitter {
       // persisted workspace reservations still prevent app-owned collisions.
     }
     return nextTmuxSessionName(tmuxSessionBaseName(workspace.name), reserved);
-  }
-
-  private missingToolWarning(_workspaceId: string, device: Device, _kind: "codex"): string {
-    return `Codex CLI is not available on ${device.name}; opened a normal terminal instead.`;
-  }
-
-  private defaultSessionName(kind: ManagedSessionKind, index: number): string {
-    if (kind === "codex") return `Codex ${index}`;
-    return `Terminal ${index}`;
-  }
-
-  private sessionShellLabel(kind: ManagedSessionKind, device: Device): string {
-    if (kind === "codex") return "codex";
-    return device.type === "remote" ? "ssh" : process.env.SHELL || "/bin/zsh";
   }
 
   private nextSessionOrder(snapshot: AppSnapshot, workspaceId: string): number {
@@ -1177,18 +1092,6 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  private async recordCodexConversation(event: TerminalCodexConversationEvent): Promise<void> {
-    let recorded = false;
-    await this.store.update((draft) => {
-      const session = draft.sessions.find((item) => item.id === event.sessionId);
-      if (session?.kind === "codex" && !session.codexConversationId) {
-        session.codexConversationId = event.codexConversationId;
-        recorded = true;
-      }
-    });
-    if (recorded) this.changed();
-  }
-
   private handleTerminalExit(event: TerminalExitEvent): void {
     if (this.startingSessionIds.has(event.sessionId)) {
       this.exitsDuringSessionStart.set(event.sessionId, event);
@@ -1207,7 +1110,6 @@ export class WorkspaceService extends EventEmitter {
 
   private async markSessionExited(sessionId: string, exitCode?: number): Promise<void> {
     if (this.closingSessionIds.has(sessionId)) return;
-    const sessionBeforeExit = this.snapshot().sessions.find((item) => item.id === sessionId);
     await this.store.update((draft) => {
       const session = draft.sessions.find((item) => item.id === sessionId);
       if (session) Object.assign(session, {
@@ -1221,14 +1123,6 @@ export class WorkspaceService extends EventEmitter {
       });
     });
     this.changed();
-    if (sessionBeforeExit?.kind === "codex" && sessionBeforeExit.codexConversationId && exitCode !== 0 && !this.autoRestoredCodexSessionIds.has(sessionId)) {
-      this.autoRestoredCodexSessionIds.add(sessionId);
-      try {
-        await this.resumeSession(sessionId);
-      } catch {
-        // resumeSession records restore-failed, preserving the retry/new-session UI path.
-      }
-    }
   }
 
   private git(snapshot: AppSnapshot, device: Device): WorkspaceGitRuntime { return this.gitRuntimeFactory(device, this.connection(snapshot, device.id)); }

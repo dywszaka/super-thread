@@ -20,7 +20,7 @@ async function fixture() {
   await writeFile(path, JSON.stringify(snapshot));
   const terminals = Object.assign(new EventEmitter(), { has: () => false }) as unknown as TerminalRuntime;
   const store = new JsonStore(path);
-  const service = new WorkspaceService(store, terminals, undefined, undefined, { sync() {}, reconnectAll() {}, stop() {} });
+  const service = new WorkspaceService(store, terminals, undefined, undefined, { sync() {}, reconnectAll() {}, setReconnectEnabled() {}, stop() {} });
   await service.initialize();
   return { service, path, store };
 }

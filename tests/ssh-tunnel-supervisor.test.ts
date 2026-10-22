@@ -94,3 +94,47 @@ test("SshTunnelSupervisor stops removed device tunnels", () => {
 
   assert.equal(child.killedWith, "SIGTERM");
 });
+
+test("closed windows cancel retries, suppress wake reconnects and preserve live forwards", () => {
+  const children: FakeChild[] = [];
+  const callbacks: Array<() => void> = [];
+  const cancelled: NodeJS.Timeout[] = [];
+  const supervisor = new SshTunnelSupervisor(
+    () => { const child = new FakeChild(); children.push(child); return child as unknown as ChildProcess; },
+    (callback) => { callbacks.push(callback); return { id: callbacks.length } as unknown as NodeJS.Timeout; },
+    (timer) => { cancelled.push(timer); }
+  );
+  supervisor.sync([connection]);
+  supervisor.setReconnectEnabled(false);
+  supervisor.reconnectAll();
+  assert.equal(children.length, 1);
+  assert.equal(children[0]?.killedWith, undefined);
+  // A forward may disconnect after the window closes. Do not retry it.
+  children[0]?.emit("close", 255, null);
+  assert.equal(callbacks.length, 0);
+  supervisor.setReconnectEnabled(true);
+  assert.equal(children.length, 2);
+  children[1]?.emit("close", 255, null);
+  assert.equal(callbacks.length, 1);
+  supervisor.setReconnectEnabled(false);
+  assert.equal(cancelled.length, 1);
+  callbacks[0]?.(); // A callback already queued when cancellation occurred.
+  supervisor.reconnectAll();
+  assert.equal(children.length, 2);
+  supervisor.setReconnectEnabled(true);
+  assert.equal(children.length, 3);
+  supervisor.stop();
+});
+
+test("configuration sync cannot spawn SSH while reconnects are suspended", () => {
+  let spawned = 0;
+  const supervisor = new SshTunnelSupervisor(() => { spawned++; return new FakeChild() as unknown as ChildProcess; });
+  supervisor.setReconnectEnabled(false);
+  supervisor.sync([connection]);
+  assert.equal(spawned, 0);
+  supervisor.setReconnectEnabled(true);
+  assert.equal(spawned, 1);
+  supervisor.setReconnectEnabled(true);
+  assert.equal(spawned, 1);
+  supervisor.stop();
+});

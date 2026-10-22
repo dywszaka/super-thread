@@ -1,11 +1,10 @@
 import { EventEmitter } from "node:events";
-import { spawn } from "node:child_process";
 import os from "node:os";
-import { basename } from "node:path";
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
 import type { Device, DeviceConnection, Session, SessionActivityStatus, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
-import { interactiveLoginShellCommand, quoteShellArgument } from "./login-shell";
+import { ProcessCommandRunner } from "./command-runner";
+import { quoteShellArgument } from "./login-shell";
 
 interface LiveSession {
   pty: IPty;
@@ -14,47 +13,15 @@ interface LiveSession {
   activityStatus: SessionActivityStatus;
   activityTimer?: NodeJS.Timeout;
   probing: boolean;
-  remotePid?: number;
-  markerBuffer: string;
-  codexConversationProbe?: NodeJS.Timeout;
-  codexConversationId?: string;
-  codexConversationProbing?: boolean;
-  codexSessionIndexCommand?: string;
 }
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
 export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; resultReady: boolean; }
-export interface TerminalCodexConversationEvent { sessionId: string; codexConversationId: string; }
-
-const remotePidMarker = /\x1b]777;superthread-pid=(\d+)\x07/;
-const idleShells = new Set(["bash", "dash", "fish", "ksh", "nu", "sh", "tcsh", "zsh"]);
-const codexUuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 export function foregroundProcessIsBusy(output: string): boolean {
   const [processGroup, terminalProcessGroup] = output.trim().split(/\s+/).map(Number);
   return processGroup !== undefined && terminalProcessGroup !== undefined
     && Number.isInteger(processGroup) && Number.isInteger(terminalProcessGroup)
     && terminalProcessGroup > 0 && terminalProcessGroup !== processGroup;
-}
-
-export function tmuxPaneIsBusy(command: string): boolean {
-  const executable = basename(command.trim()).replace(/^-/, "");
-  return executable.length > 0 && !idleShells.has(executable);
-}
-
-export function tmuxActivityFromProbe(output: string): SessionActivityStatus {
-  const [command = "", ...paneLines] = output.replaceAll("\r", "").split("\n");
-  if (!tmuxPaneIsBusy(command)) return "idle";
-  const executable = basename(command.trim()).replace(/^-/, "");
-  const pane = paneLines.slice(-20).join("\n");
-  const isCodexProcess = executable === "codex" || executable.startsWith("codex-");
-  const isCodexNodeProcess = executable === "node" && /Ask Codex to do anything|\bWorking\b[^\n]*esc to interrupt|\bGPT-[\w.-]+\b[^\n]*(?:used|\bin\b|\bout\b)/i.test(pane);
-  if (!isCodexProcess && !isCodexNodeProcess) return "busy";
-  return codexActivityFromOutput(pane) ?? "busy";
-}
-
-export function tmuxTarget(session: Session): string {
-  const sessionName = session.tmuxSessionName || session.id;
-  return session.tmuxWindowName ? `${sessionName}:${session.tmuxWindowName}` : sessionName;
 }
 
 export function sshTerminalArgs(connection: DeviceConnection, command: string): string[] {
@@ -71,178 +38,51 @@ export function sshTerminalArgs(connection: DeviceConnection, command: string): 
   return args;
 }
 
-export function legacyTmuxClientSessionName(session: Session): string {
-  return `superthread-client-${session.id}`;
-}
-
-export function tmuxWindowLookupCommand(session: Session): string {
-  const sessionName = quoteShellArgument(session.tmuxSessionName || session.id);
-  const windowKey = quoteShellArgument(session.tmuxWindowKey || session.id);
-  return `tmux list-windows -t ${sessionName} -F '#{window_id} #{@superthread_terminal_id}' 2>/dev/null | awk -v key=${windowKey} '$2 == key { print $1; exit }'`;
-}
-
-export function tmuxAttachCommand(session: Session, cwd: string): string {
-  const sessionName = session.tmuxSessionName || session.id;
-  if (!session.tmuxWindowKey && !session.tmuxWindowName) {
-    return `tmux new-session -A -s ${quoteShellArgument(sessionName)}`;
-  }
-  if (session.tmuxWindowKey) {
-    const quotedSession = quoteShellArgument(sessionName);
-    const quotedKey = quoteShellArgument(session.tmuxWindowKey);
-    const quotedCwd = quoteShellArgument(cwd);
-    const clientSession = quoteShellArgument(legacyTmuxClientSessionName(session));
-    const lookup = tmuxWindowLookupCommand(session);
-    return `if tmux has-session -t ${quotedSession} 2>/dev/null; then window=$(${lookup}); if [ -z "$window" ]; then window=$(tmux new-window -d -P -F '#{window_id}' -t ${quotedSession} -c ${quotedCwd}); fi; else window=$(tmux new-session -d -P -F '#{window_id}' -s ${quotedSession} -c ${quotedCwd}); fi; tmux set-option -w -t "$window" @superthread_terminal_id ${quotedKey}; status_left=$(tmux display-message -p -t ${quotedSession} '#{status-left}' 2>/dev/null || true); status_left=$(printf '%s' "$status_left" | sed 's/#{session_name}/#{session_group}/g; s/#S/#{session_group}/g'); tmux kill-session -t ${clientSession} 2>/dev/null || true; tmux new-session -d -t ${quotedSession} -s ${clientSession}; if [ -n "$status_left" ]; then tmux set-option -t ${clientSession} status-left "$status_left"; else tmux set-option -t ${clientSession} status-left '[#{session_group}] '; fi; tmux select-window -t ${clientSession}:"$window"; exec tmux attach-session -t ${clientSession}`;
-  }
-  const quotedSession = quoteShellArgument(sessionName);
-  const quotedWindow = quoteShellArgument(session.tmuxWindowName || session.id);
-  const quotedCwd = quoteShellArgument(cwd);
-  const ensureWindow = `if tmux has-session -t ${quotedSession} 2>/dev/null; then if ! tmux list-windows -t ${quotedSession} -F '#{window_name}' | grep -Fqx -- ${quotedWindow}; then tmux new-window -d -t ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi; else tmux new-session -d -s ${quotedSession} -n ${quotedWindow} -c ${quotedCwd}; fi`;
-  const legacyClient = quoteShellArgument(session.tmuxClientSessionName || legacyTmuxClientSessionName(session));
-  return `${ensureWindow}; tmux kill-session -t ${legacyClient} 2>/dev/null || true; exec tmux attach-session -t ${quoteShellArgument(tmuxTarget(session))}`;
-}
-
-export function codexActivityFromOutput(output: string): "busy" | "waiting-input" | undefined {
-  const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-  const waitingAt = lastMatchIndex(plain, /\b(approve|confirmation|permission|allow)\b|\b(?:y\/n|yes\/no)\b|press enter|waiting for (?:your )?input|Ask Codex to do anything|(?:^|\n)\s*[›>]\s/gim);
-  const workingAt = lastMatchIndex(plain, /\bWorking\b|esc to interrupt/gim);
-  if (waitingAt < 0 && workingAt < 0) return undefined;
-  return waitingAt > workingAt ? "waiting-input" : "busy";
-}
-
-export function codexResultReadyFromOutput(output: string): boolean {
-  const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-  const promptAt = lastMatchIndex(plain, /Ask Codex to do anything|(?:^|\n)\s*[›>]\s/gim);
-  const workingAt = lastMatchIndex(plain, /\bWorking\b|esc to interrupt/gim);
-  return promptAt >= 0 && promptAt > workingAt;
-}
-
-export function codexConversationIdFromOutput(output: string): string | undefined {
-  const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-  const patterns = [
-    new RegExp(`\\b(?:session|conversation|thread)[\\s_-]*(?:id)?\\s*[:=]\\s*(${codexUuidPattern})\\b`, "i"),
-    new RegExp(`\\bcodex\\s+resume\\s+(${codexUuidPattern})\\b`, "i")
-  ];
-  for (const pattern of patterns) {
-    const match = plain.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-  return undefined;
-}
-
-export function latestCodexConversationIdFromSessionIndex(index: string, sinceIso?: string): string | undefined {
-  const since = sinceIso ? Date.parse(sinceIso) - 5 * 60_000 : Number.NEGATIVE_INFINITY;
-  for (const line of index.trim().split("\n").reverse()) {
-    try {
-      const item = JSON.parse(line) as { id?: unknown; updated_at?: unknown };
-      if (typeof item.id !== "string") continue;
-      if (!new RegExp(`^${codexUuidPattern}$`, "i").test(item.id)) continue;
-      const updatedAt = typeof item.updated_at === "string" ? Date.parse(item.updated_at) : Number.NaN;
-      if (Number.isFinite(since) && Number.isFinite(updatedAt) && updatedAt < since) continue;
-      return item.id;
-    } catch {
-      // Ignore partial or legacy lines and keep scanning for a usable record.
-    }
-  }
-  return undefined;
-}
-
-function lastMatchIndex(value: string, pattern: RegExp): number {
-  let index = -1;
-  for (const match of value.matchAll(pattern)) index = match.index;
-  return index;
-}
-
-function run(program: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => child.kill("SIGTERM"), 1_500);
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.once("error", (error) => { clearTimeout(timer); reject(error); });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve(stdout);
-      else reject(new Error(stderr.trim() || `${program} exited with ${code ?? "unknown"}`));
-    });
-  });
-}
+const runLocalProbe = async (program: string, args: string[]): Promise<string> =>
+  (await new ProcessCommandRunner().run(program, args, { timeoutMs: 1_500 })).stdout;
 
 export class TerminalRuntime extends EventEmitter {
   private readonly sessions = new Map<string, LiveSession>();
 
-  constructor(private readonly runProbe: typeof run = run) { super(); }
+  constructor(
+    private readonly runProbe = runLocalProbe,
+    private readonly spawnPty: typeof pty.spawn = pty.spawn
+  ) { super(); }
 
   create(session: Session, workspace: Workspace, device: Device, connection: DeviceConnection): number {
-    const shell = process.env.SHELL || "/bin/zsh";
+    if (session.kind && session.kind !== "shell") throw new Error("Only shell terminal sessions are supported");
+    if (this.sessions.has(session.id)) throw new Error("Terminal session is already running");
+    const remote = device.type === "remote";
     const cwd = session.cwd || workspace.path;
-    const kind = session.kind ?? "shell";
-    let program = shell;
-    let args: string[] = ["-l"];
-    if (device.type === "remote") {
-      const command = this.remoteCommand(kind, session, cwd);
-      program = "ssh";
-      args = sshTerminalArgs(connection, command);
-    } else if (kind === "codex" || kind === "tmux") {
-      const command = this.managedToolCommand(kind, session, cwd);
-      args = ["-lic", command];
-    }
-    const instance = pty.spawn(program, args, {
-      name: "xterm-256color",
-      cols: 100,
-      rows: 30,
-      cwd: device.type === "local" ? cwd : os.homedir(),
+    const program = remote ? "ssh" : process.env.SHELL || "/bin/zsh";
+    const args = remote
+      ? sshTerminalArgs(connection, `cd ${quoteShellArgument(cwd)} && exec "\${SHELL:-/bin/sh}" -l`)
+      : ["-l"];
+    const instance = this.spawnPty(program, args, {
+      name: "xterm-256color", cols: 100, rows: 30,
+      cwd: remote ? os.homedir() : cwd,
       env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>
     });
     const live: LiveSession = {
-      pty: instance,
-      buffer: "",
-      sequence: 0,
-      activityStatus: session.activityStatus ?? "idle",
-      probing: false,
-      markerBuffer: ""
+      pty: instance, buffer: "", sequence: 0,
+      activityStatus: remote ? "unknown" : "idle", probing: false
     };
     this.sessions.set(session.id, live);
     instance.onData((data) => {
-      if (device.type === "remote" && kind === "shell" && live.remotePid === undefined) {
-        live.markerBuffer += data;
-        const marker = live.markerBuffer.match(remotePidMarker);
-        if (!marker && live.markerBuffer.length < 4_096) return;
-        if (marker) live.remotePid = Number(marker[1]);
-        data = live.markerBuffer.replace(remotePidMarker, "");
-        live.markerBuffer = "";
-      }
       live.buffer = (live.buffer + data).slice(-64_000);
       live.sequence += 1;
-      if (kind === "codex") {
-        const codexConversationId = live.codexConversationId ?? codexConversationIdFromOutput(live.buffer);
-        if (codexConversationId && codexConversationId !== live.codexConversationId) {
-          this.recordCodexConversationId(session.id, live, codexConversationId);
-        }
-        const activityStatus = codexActivityFromOutput(live.buffer);
-        if (activityStatus) {
-          const resultReady = live.activityStatus === "busy" && codexResultReadyFromOutput(live.buffer);
-          this.setActivity(session.id, live, activityStatus, resultReady);
-        }
-      }
       this.emit("output", { sessionId: session.id, data, sequence: live.sequence } satisfies TerminalOutput);
     });
     instance.onExit(({ exitCode }) => {
       if (live.activityTimer) clearInterval(live.activityTimer);
-      if (live.codexConversationProbe) clearInterval(live.codexConversationProbe);
+      if (this.sessions.get(session.id) !== live) return;
       this.sessions.delete(session.id);
       this.emit("exit", { sessionId: session.id, exitCode } satisfies TerminalExitEvent);
     });
-    if (kind === "codex" && !session.codexConversationId) {
-      const probe = (): void => { void this.probeCodexConversationId(session, live, device, connection); };
-      live.codexConversationProbe = setInterval(probe, 1_500);
-      live.codexConversationProbe.unref();
-      probe();
-    }
-    if (kind !== "codex") {
-      const probe = (): void => { void this.probeActivity(session, live, device, connection); };
+    // A remote terminal owns just its interactive SSH connection. Do not open
+    // additional SSH sessions to infer activity, including while windows close.
+    if (!remote) {
+      const probe = (): void => { void this.probeActivity(session.id, live); };
       live.activityTimer = setInterval(probe, 1_000);
       live.activityTimer.unref();
       probe();
@@ -250,111 +90,22 @@ export class TerminalRuntime extends EventEmitter {
     return instance.pid;
   }
 
-  private remoteCommand(kind: string, session: Session, cwd: string): string {
-    if (kind === "codex" || kind === "tmux") {
-      return interactiveLoginShellCommand(`cd ${quoteShellArgument(cwd)} && ${this.managedToolCommand(kind, session, cwd)}`);
-    }
-    return `cd ${quoteShellArgument(cwd)} && printf '\\033]777;superthread-pid=%s\\007' "$$" && exec "\${SHELL:-/bin/sh}" -l`;
-  }
-
-  private managedToolCommand(kind: "codex" | "tmux", session: Session, cwd: string): string {
-    if (kind === "codex") {
-      const args = session.codexConversationId ? ` resume ${quoteShellArgument(session.codexConversationId)}` : "";
-      return `codex${args}`;
-    }
-    return tmuxAttachCommand(session, cwd);
-  }
-
-  private async probeActivity(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
-    if (live.probing || !this.sessions.has(session.id)) return;
+  private async probeActivity(sessionId: string, live: LiveSession): Promise<void> {
+    if (live.probing || this.sessions.get(sessionId) !== live) return;
     live.probing = true;
     try {
-      const kind = session.kind ?? "shell";
-      let command: string;
-      let interpret: (output: string) => SessionActivityStatus;
-      if (kind === "tmux") {
-        if (session.tmuxWindowKey) {
-          command = `target=$(${tmuxWindowLookupCommand(session)}); test -n "$target"; tmux display-message -p -t "$target" '#{pane_current_command}'; tmux capture-pane -p -t "$target" -S -20`;
-        } else {
-          const target = quoteShellArgument(tmuxTarget(session));
-          command = `tmux display-message -p -t ${target} '#{pane_current_command}'; tmux capture-pane -p -t ${target} -S -20`;
-        }
-        interpret = tmuxActivityFromProbe;
-      } else {
-        const pid = device.type === "remote" ? live.remotePid : live.pty.pid;
-        if (!pid) return;
-        command = `ps -o pgid= -o tpgid= -p ${pid}`;
-        interpret = (output) => foregroundProcessIsBusy(output) ? "busy" : "idle";
-      }
-      // Shell activity only needs ps. Re-running interactive startup files every
-      // second can create persistent ssh-agents or trigger automatic tmux attach.
-      const remoteProbe = kind === "tmux" ? interactiveLoginShellCommand(command) : command;
-      const output = device.type === "remote"
-        ? await this.runProbe("ssh", this.sshArgs(connection, remoteProbe))
-        : await this.runProbe("sh", ["-c", command]);
-      const activityStatus = interpret(output);
-      const resultReady = kind === "tmux" && activityStatus === "waiting-input"
-        ? live.activityStatus === "busy" && codexResultReadyFromOutput(output.split("\n").slice(1).join("\n"))
-        : undefined;
-      this.setActivity(session.id, live, activityStatus, resultReady);
+      const output = await this.runProbe("ps", ["-o", "pgid=", "-o", "tpgid=", "-p", String(live.pty.pid)]);
+      if (this.sessions.get(sessionId) !== live) return;
+      const activityStatus = foregroundProcessIsBusy(output) ? "busy" : "idle";
+      if (live.activityStatus === activityStatus) return;
+      const resultReady = live.activityStatus === "busy" && activityStatus === "idle";
+      live.activityStatus = activityStatus;
+      this.emit("activity", { sessionId, activityStatus, resultReady } satisfies TerminalActivityEvent);
     } catch {
-      // A transient probe failure must not turn an idle terminal into a false running warning.
+      // A failed local sample must not invent a completion or running warning.
     } finally {
       live.probing = false;
     }
-  }
-
-  private async probeCodexConversationId(session: Session, live: LiveSession, device: Device, connection: DeviceConnection): Promise<void> {
-    if (live.codexConversationId || live.codexConversationProbing || !this.sessions.has(session.id)) return;
-    live.codexConversationProbing = true;
-    try {
-      if (!live.codexSessionIndexCommand) {
-        // Resolve shell-configured CODEX_HOME once, then read the index without
-        // re-running startup files on every timer tick, including after failure.
-        live.codexSessionIndexCommand = "file=\"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl\"; if [ -f \"$file\" ]; then tail -n 80 \"$file\"; fi";
-        const resolveIndex = "printf '\\n%s\\n' \"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl\"";
-        const resolved = device.type === "remote"
-          ? await this.runProbe("ssh", this.sshArgs(connection, interactiveLoginShellCommand(resolveIndex)))
-          : await this.runProbe("sh", ["-lc", resolveIndex]);
-        const path = resolved.split("\n").filter((line) => line.length > 0).at(-1);
-        if (path) live.codexSessionIndexCommand = `file=${quoteShellArgument(path)}; if [ -f "$file" ]; then tail -n 80 "$file"; fi`;
-      }
-      const command = live.codexSessionIndexCommand;
-      const output = device.type === "remote"
-        ? await this.runProbe("ssh", this.sshArgs(connection, command))
-        : await this.runProbe("sh", ["-c", command]);
-      const codexConversationId = latestCodexConversationIdFromSessionIndex(output, session.createdAt);
-      if (codexConversationId) this.recordCodexConversationId(session.id, live, codexConversationId);
-    } catch {
-      // Codex may not have created its session index yet; the next probe can try again.
-    } finally {
-      live.codexConversationProbing = false;
-    }
-  }
-
-  private recordCodexConversationId(sessionId: string, live: LiveSession, codexConversationId: string): void {
-    live.codexConversationId = codexConversationId;
-    if (live.codexConversationProbe) {
-      clearInterval(live.codexConversationProbe);
-      live.codexConversationProbe = undefined;
-    }
-    this.emit("codex-conversation", { sessionId, codexConversationId } satisfies TerminalCodexConversationEvent);
-  }
-
-  private sshArgs(connection: DeviceConnection, command: string): string[] {
-    const config = connection.config;
-    const target = config.user ? `${config.user}@${config.host}` : String(config.host);
-    const args = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=2"];
-    if (config.port) args.push("-p", String(config.port));
-    args.push(target, command);
-    return args;
-  }
-
-  private setActivity(sessionId: string, live: LiveSession, activityStatus: SessionActivityStatus, resultReady?: boolean): void {
-    if (live.activityStatus === activityStatus) return;
-    const completedWork = resultReady ?? (live.activityStatus === "busy" && activityStatus === "idle");
-    live.activityStatus = activityStatus;
-    this.emit("activity", { sessionId, activityStatus, resultReady: completedWork } satisfies TerminalActivityEvent);
   }
 
   attach(id: string): TerminalReplay {

@@ -12,6 +12,7 @@ async function setup(): Promise<{ service: WorkspaceService; store: JsonStore }>
   const service = new WorkspaceService(store, undefined, undefined, undefined, {
     sync: () => undefined,
     reconnectAll: () => undefined,
+    setReconnectEnabled: () => undefined,
     stop: () => undefined
   });
   await service.initialize();
@@ -78,4 +79,24 @@ test("remote devices can only be deleted when no project checkout uses them", as
   await service.deleteDevice("dev_remote");
   assert.equal(service.snapshot().devices.some((device) => device.id === "dev_remote"), false);
   assert.equal(service.snapshot().connections.some((connection) => connection.deviceId === "dev_remote"), false);
+});
+
+test("window closure gates wake reconnects until a window is reopened", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-window-"));
+  const enabled: boolean[] = [];
+  let reconnects = 0;
+  const service = new WorkspaceService(new JsonStore(join(directory, "state.json")), undefined, undefined, undefined, {
+    sync() {}, stop() {}, setReconnectEnabled(value) { enabled.push(value); },
+    reconnectAll() { reconnects++; }
+  });
+  await service.initialize();
+  service.setWindowOpen(false);
+  service.reconnectTunnels();
+  service.reconnectTunnels();
+  assert.equal(reconnects, 0);
+  service.setWindowOpen(true);
+  service.reconnectTunnels();
+  assert.deepEqual(enabled, [false, true]);
+  assert.equal(reconnects, 1);
+  service.shutdown();
 });

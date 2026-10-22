@@ -580,7 +580,7 @@ interface Workspace {
 
 规则：
 
-- All workspaces 打开独立总览，不自动进入 Workspace；点击列表项后进入对应 Workspace。总览沿用 active 视图规则，隐藏归档 WorkThread 的 Workspace。页面上方分别显示 running Terminal 与 Codex 数量，每行显示该 Workspace 的 running 合计；只统计 runtime snapshot 中 status=running 且 activityStatus=busy 的 Session（不包含 Browser、空闲 shell、等待输入或权限确认的 Codex），按 running 合计降序排列，同数量保持原顺序，并随运行状态更新。
+- All workspaces 打开独立总览，不自动进入 Workspace；点击列表项后进入对应 Workspace。总览沿用 active 视图规则，隐藏归档 WorkThread 的 Workspace。页面与每行分别展示本机正在执行工作的 Terminal 数量（`status=running && activityStatus=busy`）以及已连接的远程 Terminal 数量（`status=running && activityStatus=unknown`）。远程不做忙闲探测，连接数不代表正在执行工作。按两者合计降序排列，同数量保持原顺序，并随运行状态更新。
 - Workspace 名称在创建时决定 worktree 路径与 `work/{workspace-name}` 分支，且在同一 Device 上唯一。
 - 侧栏右键 Workspace 可编辑 Workspace 信息；只有名称可以修改，Project、Device、路径、分支与 Base branch 均只读。
 - 重命名只更新展示名称与 `updatedAt`，不重命名目录、不改分支、不改 tmux session 名称，也不影响已存在的 Session 与其工作目录。
@@ -777,9 +777,7 @@ interface Session {
     | "exited"
     | "restore-failed"
 
-  kind:
-    | "shell"
-    | "codex"
+  kind: "shell"
 
   order: number
 
@@ -787,11 +785,10 @@ interface Session {
 
   pid?: number
   cwd?: string
-  activityStatus?: "idle" | "busy" | "waiting-input"
+  activityStatus?: "idle" | "busy" | "waiting-input" | "unknown"
   exitReason?: "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed"
   exitCode?: number
   restoreError?: string
-  codexConversationId?: string
   resultUnread?: boolean
 
   createdAt: Date
@@ -815,13 +812,9 @@ interface Session {
 }
 ```
 
-`status` 描述 PTY 生命周期；产品界面中的 `running` 描述终端是否正在执行工作，两者不可混用。只有
-`status === "running" && activityStatus === "busy"` 才计为 running。任何内嵌 Terminal（shell 或 Codex）
-在前台工作或 command 执行时为 `busy`；工作结束且结果尚未被用户查看时为 `waiting-input`，结果所在 Terminal
-在前台窗口中显示后转为 `idle`。普通 shell 只有前台 command 占用 Terminal、需要等待完成或
-通过 Ctrl+C 中断时才为 `busy`，停留在交互式 shell prompt 时为 `idle`。直接运行的
-Codex 必须基于最近的累计终端输出判断，不能让输入框之后的 footer/status 重绘把等待状态覆盖为 `busy`。
-首次启动后仅显示输入框、权限请求或其他需要输入的界面不代表有未读结果，不得单独触发 waiting。
+`status` 描述 PTY 生命周期；`activityStatus` 描述能可靠观测到的活动。本地 Terminal 通过本地进程组采样区分
+`busy` 与空闲，命令完成后未读结果为 `waiting-input`，查看后为 `idle`。远程 Terminal 只保留交互 SSH
+连接，存活时活动标记为 `unknown`；不得为了判断忙闲周期性创建 SSH，也不得把未知状态展示为空闲或忙碌。
 
 ---
 
@@ -833,30 +826,27 @@ Workspace 的新建 Terminal 菜单提供 `Custom…`，可创建、编辑和删
 
 点击入口会在该 Workspace 中新建普通 shell Session，由 Workspace 所属 Device 在指定目录启动。保存和启动时均验证目录存在并可访问，`~` 按所属 Device 的用户 home 解析；目录不存在、Device 不可用或入口不属于当前 Device 时显示错误，不回退到 Workspace 目录。Session 保存实际启动目录，恢复时继续使用该目录。编辑或删除入口不影响已创建的 Session，也不修改 Workspace 的路径、worktree 或 Git 分支。
 
-创建 Session 可以选择两种 managed Terminal 类型：
+创建 Session 只支持普通 shell Terminal：
 
 - `shell`：普通 Terminal，在 Workspace 当前目录启动 shell。
-- `codex`：在 Workspace 当前目录启动 Codex CLI；缺少 Codex CLI 时回退为 `shell` 并提示。
 - `tmux` 不创建 SuperThread Session 或内嵌 Terminal。每个 Workspace 只拥有一个 tmux session；首次选择 `tmux in iTerm` 时按 Workspace 名称分配并持久化 session 名称，若 Device 上已有同名 session，则依次追加 `-2`、`-3` 等数字。Runtime 在 Workspace 所属 Device 上确保该 session 存在，然后让 iTerm 通过本地命令或 SSH 直接 attach，不加载可能截断命令的交互式登录 shell。已有 iTerm terminal window 时在当前窗口新建并选中 tab；没有 terminal window 时才新建 window。重复打开必须复用同一个 tmux session，不得创建额外 tmux window 或 SuperThread Session 记录。缺少 tmux 或 iTerm 时直接提示错误，不回退为内嵌 shell。
 
 iTerm attach 必须使用可用性探测得到的 tmux 绝对路径。Local Device 通过非交互式 `/bin/sh -c` 解释 `cd` 与 `exec`，不得依赖 iTerm profile 的 PATH 或把 shell 语法直接作为 profile command；Remote Device 则把相同的绝对路径和 attach 命令交给 SSH 执行。
 
-Codex 与 Workspace tmux 的可用性探测、创建必须使用 Device 用户的交互式登录 shell，使 SSH
+Workspace tmux 的可用性探测、创建必须使用 Device 用户的交互式登录 shell，使 SSH
 设备上的 `.bashrc` / `.zshrc`、Conda、nvm 等 PATH 配置与普通 Terminal 中的行为一致；iTerm attach
 是例外，必须直接执行，避免有 TTY 时的 shell 初始化逻辑替换 attach 命令。
-新建 Terminal 或 Codex 后，Renderer 必须立即展示并选中仅存在于 UI 状态中的初始化标签页；
+新建 Terminal 后，Renderer 必须立即展示并选中仅存在于 UI 状态中的初始化标签页；
 成功后用持久化 Session 替换该标签页，失败后保留错误、Retry 和 Close，且 Retry 复用同一标签页。
 未创建成功的初始化标签页不得写入持久领域数据。
 
 Terminal 输入必须保留 xterm 的原生 IME composition 处理，以支持中文输入法的全角标点等
-非 ASCII 字符。Codex Session 中 `Shift+Enter` 插入换行而不提交 prompt；普通 `Enter`
-继续提交，shell Session 的按键行为保持终端默认语义。
+非 ASCII 字符。键盘输入使用普通终端语义，不包含应用专用的 Codex Shift+Enter 映射。
 
-普通 shell Session 的周期性活动检查只查询进程组；本地不得启动登录 shell，远端通过 SSH
-直接执行 `ps`，不得反复加载交互式登录 shell 的初始化文件，避免触发自动 tmux attach
-或重复创建长期存活的 SSH agent。
-Codex conversation 查询只在首次检查时解析一次登录 shell 中的 `CODEX_HOME`，后续直接读取
-同一路径的 session index；查询不得并发重叠，解析失败后也不得周期性重跑 shell 初始化。
+普通本地 Session 的周期性活动检查只运行本地 `ps`，不得启动登录 shell。远程 Session 不进行后台
+SSH 活动查询，不创建 PID 探测标记，不读取 Codex index，也不为工具查找或会话恢复建立周期查询。
+创建 Session 的 UI、IPC 和 runtime 只接受 shell；移除内嵌 Codex 与 tmux 的启动、探测、恢复和控制分支。
+用户仍可自行在普通 shell 或 iTerm 中运行任何 CLI。
 
 创建普通 Session：
 
@@ -947,7 +937,7 @@ Reconnect PTY
 
 重新连接时，Runtime 返回带单调序号的终端历史快照；UI 必须先完成历史解析，再接通输入转发，并只追加快照序号之后的实时输出。历史回放不得把终端能力查询产生的响应再次写入 PTY。
 
-Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态，不能信任旧 PID。上次退出或连接中断时仍标记为 `running` 的 Session 会按 Workspace 批量恢复；恢复时使用各自记录的 `cwd`，`codex` Session 优先用记录的 Codex conversation 恢复。直接运行的 Codex 不承诺从被中断的执行中途继续。旧快照中的内嵌 tmux Session 迁移为 Workspace 的唯一 `tmuxSessionName`，不再恢复内嵌 PTY。
+Desktop Runtime 启动时必须核对持久化 Session 与真实 runtime 状态，不能信任旧 PID。上次退出或连接中断时仍标记为 `running` 的 Session 会按 Workspace 批量恢复；恢复时使用各自记录的 `cwd` 启动普通 shell。schema 13 将旧 Codex 标签迁移为已退出的普通 shell，保留 id、名称、目录、顺序与旧 conversation ID 参考值，清除旧 PID 与专用运行状态；用户可手动 Resume，不自动执行 Codex。旧快照中的内嵌 tmux Session 迁移为 Workspace 的唯一 `tmuxSessionName`，不再恢复内嵌 PTY。
 
 单个 Session 恢复失败时只影响自身：状态变为 `restore-failed`，保留 `restoreError`，UI 提供 Resume 重试和新建同类型 Session 入口。其他 Session 的恢复继续执行。
 
@@ -957,7 +947,7 @@ Session 进入 `exited` 或 `restore-failed` 状态后，Terminal 页面中央�
 
 Remote Session 的交互式 SSH 连接必须配置连接超时和 server keepalive。SSH 在 Session 创建、恢复或网络中断时退出，即使退出发生在持久化启动状态之前，也必须把原 Session 记录为 `exited` 并显示 Resume；不得遗留没有真实 PTY 的 `running` 状态。Resume 必须复用原 Session metadata。iTerm 中的远程 tmux 连接使用相同的连接超时与 server keepalive 参数。
 
-退出整个应用时，如果存在 `status === "running" && activityStatus === "busy"` 的 Session，主进程必须展示确认提醒并列出仍在执行的 Session。Codex 等待输入和停留在 shell prompt 的空闲 Session 不触发提醒。macOS 上只关闭窗口不触发该提醒，窗口关闭期间 PTY 继续存活并可重新附着。
+退出整个应用时，如果存在本地忙碌 Session 或活动未知的远程连接，主进程必须展示确认提醒并列出这些 Session，避免关闭无法判断忙闲的远程工作。本地已知空闲 Session 不触发提醒。macOS 上只关闭窗口不触发该提醒，窗口关闭期间 PTY 和已经建立的 SSH 隧道继续存活并可重新附着，但不得不断创建新的 SSH。窗口关闭时取消待执行的隧道重试，禁止断线或系统唤醒触发后台重连；重新打开窗口后只恢复已断开的隧道，保留健康连接。原连接上的 keepalive 不创建新 SSH 进程或 shell。
 
 ---
 
@@ -1121,7 +1111,7 @@ Path
 
 右上角并列提供 `Open in VS Code` 与 `tmux in iTerm`。前者对本地 Workspace 使用 VS Code 的本地文件 URI，对 Remote Device 上的 Workspace 使用 VS Code Remote-SSH URI，并使用该 Device 已保存的 SSH user、host 和非默认 port；后者在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用这两个操作。
 
-Header 在有状态需要注意时显示紧凑 Session 汇总：正在执行、Codex 等待输入、Codex 已完成但未读、恢复失败。切换到带未读 Codex 结果的 Terminal 后清除未读标记。
+Header 在有状态需要注意时显示紧凑 Session 汇总：本地正在执行、已完成但未读、恢复失败。远程未知活动不推断为忙碌或等待。切换到带未读结果的 Terminal 后清除未读标记。
 
 ---
 
@@ -1137,7 +1127,6 @@ Terminal 1
 
 ```text
 + New Terminal
-+ New Codex
 Double-click Terminal name to rename
 Drag Terminal tabs to reorder
 ```
@@ -1323,7 +1312,7 @@ interface DeviceConnection {
 
 每个 Remote Device 可以配置多个 SSH tunnel。`local-to-remote` 在本机 loopback 地址监听，转发到从远程机器可访问的目标；`remote-to-local` 在远程 loopback 地址监听，反向转发到从本机可访问的目标。默认不暴露到局域网或公网。
 
-Tunnel 配置属于持久连接配置，但 SSH tunnel 进程、PID、重试次数和连接状态都属于 runtime state。Desktop Runtime 使用 `ssh -N`、keepalive 与 `ExitOnForwardFailure` 维护每个 Device 的 tunnel 进程；断网或 SSH 退出后按指数退避自动重连，macOS 从睡眠恢复时立即重建连接，应用退出时终止 tunnel 进程。
+Tunnel 配置属于持久连接配置，但 SSH tunnel 进程、PID、重试次数和连接状态都属于 runtime state。Desktop Runtime 使用 `ssh -N`、keepalive 与 `ExitOnForwardFailure` 维护每个 Device 的 tunnel 进程；有窗口打开时，断网或 SSH 退出后按指数退避自动重连，macOS 从睡眠恢复时重建连接；所有窗口关闭后暂停重试与唤醒重连，重新打开窗口时恢复已断开的隧道；应用退出时终止 tunnel 进程。
 
 这样未来：
 
