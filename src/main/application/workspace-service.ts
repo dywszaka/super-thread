@@ -45,6 +45,8 @@ import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runn
 import { DirectoryRuntime } from "../runtime/directory-runtime";
 import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
+import type { SshTunnelRuntime } from "../../shared/domain";
+import { tunnelConflicts } from "../../shared/ssh-tunnels";
 import { ItermRuntime, itermTmuxCommand, type ExternalTerminalRuntime } from "../runtime/iterm-runtime";
 import { TerminalRuntime, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
@@ -96,6 +98,8 @@ export interface WorkspaceDirectoryRuntime {
 }
 
 export interface DeviceTunnelRuntime {
+  statuses?(): SshTunnelRuntime[];
+  onChanged?(listener: () => void): void;
   sync(connections: DeviceConnection[]): void;
   reconnectAll(): void;
   setReconnectEnabled(enabled: boolean): void;
@@ -124,6 +128,7 @@ export class WorkspaceService extends EventEmitter {
     private readonly externalTerminal: ExternalTerminalRuntime = new ItermRuntime()
   ) {
     super();
+    tunnels.onChanged?.(() => this.emit("tunnels-changed"));
     terminals.on("output", (event) => this.emit("terminal-output", event));
     terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event));
     terminals.on("exit", (event: TerminalExitEvent) => this.handleTerminalExit(event));
@@ -156,6 +161,16 @@ export class WorkspaceService extends EventEmitter {
 
   snapshot(): AppSnapshot { return this.store.snapshot(); }
 
+  tunnelStatuses(): SshTunnelRuntime[] { return this.tunnels.statuses?.() ?? []; }
+
+  private assertTunnelBindings(snapshot: AppSnapshot, connection: DeviceConnection): void {
+    const conflict = tunnelConflicts(connection, snapshot.connections)[0];
+    if (!conflict) return;
+    const tunnel = connection.config.tunnels![conflict.index]!;
+    const owner = snapshot.devices.find((device) => device.id === conflict.deviceId)?.name ?? conflict.deviceId;
+    throw new Error(`${tunnel.direction === "local-to-remote" ? "Local" : "Remote"} port ${tunnel.sourcePort} already has a tunnel on ${owner}`);
+  }
+
   async addDevice(input: AddRemoteDeviceInput): Promise<void> {
     const deviceId = id("dev");
     await this.store.update((draft) => {
@@ -170,6 +185,7 @@ export class WorkspaceService extends EventEmitter {
           ...(input.tunnels?.length ? { tunnels: input.tunnels } : {})
         }
       });
+      this.assertTunnelBindings(draft, draft.connections[draft.connections.length - 1]!);
     });
     this.tunnels.sync(this.snapshot().connections);
     await this.pingDevices();
@@ -184,7 +200,8 @@ export class WorkspaceService extends EventEmitter {
     await this.store.update((draft) => {
       const item = draft.devices.find((candidate) => candidate.id === input.id);
       const connection = draft.connections.find((candidate) => candidate.deviceId === input.id);
-      if (item) Object.assign(item, { name: input.name, status: "unknown" });
+      const destinationChanged = connection && (connection.config.host !== input.host || connection.config.user !== input.user || (connection.config.port ?? 22) !== (input.port ?? 22));
+      if (item) Object.assign(item, { name: input.name, ...(destinationChanged ? { status: "unknown" } : {}) });
       if (connection) Object.assign(connection, {
         transport: "ssh",
         config: {
@@ -194,6 +211,7 @@ export class WorkspaceService extends EventEmitter {
           ...(tunnelConfig !== undefined ? { tunnels: tunnelConfig } : {})
         }
       });
+      if (connection) this.assertTunnelBindings(draft, connection);
     });
     this.tunnels.sync(this.snapshot().connections);
     this.changed();

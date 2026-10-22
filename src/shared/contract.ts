@@ -3,6 +3,7 @@ import { z } from "zod";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
+  SshTunnelRuntime,
   CreateTodoInput, UpdateTodoInput, TodoTarget,
   BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
   AddProjectInput,
@@ -33,6 +34,8 @@ import type {
 } from "./domain";
 
 export const channels = {
+  tunnelStatuses: "device:tunnel-statuses",
+  tunnelsChanged: "device:tunnels-changed",
   createTodo: "todo:create",
   updateTodo: "todo:update",
   deleteTodo: "todo:delete",
@@ -285,6 +288,8 @@ export const browserCommandSchema = z.object({ id: z.string().min(1), command: z
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
+  tunnelStatuses(): Promise<SshTunnelRuntime[]>;
+  onTunnelsChanged(listener: () => void): () => void;
   createTodo(input: CreateTodoInput): Promise<void>;
   updateTodo(input: UpdateTodoInput): Promise<void>;
   deleteTodo(input: TodoTarget): Promise<void>;

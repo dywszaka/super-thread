@@ -4,6 +4,12 @@ import { channels, type DesktopBridge, type MenuAction } from "../shared/contrac
 import type { BrowserState, BrowserTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  tunnelStatuses: () => ipcRenderer.invoke(channels.tunnelStatuses),
+  onTunnelsChanged: (listener) => {
+    const wrapped = (): void => listener();
+    ipcRenderer.on(channels.tunnelsChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.tunnelsChanged, wrapped);
+  },
   createTodo: (input) => ipcRenderer.invoke(channels.createTodo, input),
   updateTodo: (input) => ipcRenderer.invoke(channels.updateTodo, input),
   deleteTodo: (input) => ipcRenderer.invoke(channels.deleteTodo, input),

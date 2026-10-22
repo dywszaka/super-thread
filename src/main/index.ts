@@ -66,6 +66,7 @@ app.whenReady().then(async () => {
   };
 
   service.on("changed", () => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.dataChanged)));
+  service.on("tunnels-changed", () => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.tunnelsChanged)));
   service.on("terminal-output", (event) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.terminalOutput, event)));
   createApplicationMenu(() => mainWindow);
   openWindow();

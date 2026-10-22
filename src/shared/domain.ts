@@ -83,6 +83,15 @@ export interface SshTunnelConfig {
   destinationPort: number;
 }
 
+/** Live forwarding state; never persisted with device configuration. */
+export interface SshTunnelRuntime {
+  deviceId: string;
+  tunnel: SshTunnelConfig;
+  status: "connecting" | "active" | "retrying" | "paused";
+  error?: string;
+  retryAt?: number;
+}
+
 export interface DeviceConnection {
   deviceId: string;
   transport: "local" | "ssh";

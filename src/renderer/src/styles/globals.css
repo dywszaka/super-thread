@@ -248,7 +248,40 @@ input, textarea, [contenteditable="true"], .selectable { user-select: text; }
 .workspace-link-list input { flex: none; accent-color: var(--primary); }
 .workspace-link-list svg { flex: none; color: var(--muted-foreground); }
 .workspace-link-list span { overflow-wrap: anywhere; min-width: 0; }
-.tunnel-section { display: grid; gap: 8px; padding-top: 2px; }.tunnel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.tunnel-heading > div { min-width: 0; display: grid; gap: 3px; }.tunnel-heading strong { font-size: 11px; }.tunnel-heading span { color: var(--muted-foreground); font-size: 9.5px; line-height: 1.35; }.tunnel-heading .button { flex: none; font-size: 10.5px; }.tunnel-empty { min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px dashed var(--border-strong); border-radius: 7px; color: var(--muted-foreground); font-size: 10.5px; }.tunnel-card { display: grid; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }.tunnel-card-head { display: grid; grid-template-columns: minmax(0, 1fr) 29px; align-items: end; gap: 8px; }.tunnel-grid { display: grid; grid-template-columns: .8fr 1.4fr .8fr; gap: 8px; }
+.tunnel-section { display: grid; gap: 7px; padding-top: 2px; }
+.tunnel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: -18px; z-index: 1; padding: 6px 0; background: var(--surface-raised); }
+.tunnel-heading > div { min-width: 0; display: grid; gap: 3px; }
+.tunnel-heading strong { font-size: 11px; }
+.tunnel-heading span { color: var(--muted-foreground); font-size: 9.5px; line-height: 1.35; }
+.tunnel-heading .button { flex: none; font-size: 10.5px; }
+.tunnel-empty { min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px dashed var(--border-strong); border-radius: 7px; color: var(--muted-foreground); font-size: 10.5px; }
+.tunnel-card { min-width: 0; display: grid; gap: 6px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+.tunnel-card.has-conflict { border-color: var(--danger); }
+.tunnel-row { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.tunnel-row > .icon-button { flex: none; width: 25px; height: 25px; }
+.tunnel-toggle { flex: 1; min-width: 0; padding: 5px 0; display: flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; text-align: left; }
+.tunnel-toggle > svg { flex: none; transform: rotate(-90deg); }
+.tunnel-toggle > svg.expanded { transform: none; }
+.tunnel-mapping { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 5px; font-size: 10px; line-height: 1.5; flex-wrap: wrap; overflow-wrap: anywhere; }
+.tunnel-mapping strong { font-weight: 600; }
+.tunnel-mapping > span { color: var(--muted-foreground); }
+.tunnel-status { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; color: var(--muted-foreground); white-space: nowrap; }
+.tunnel-status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.tunnel-status.active { color: var(--success); }
+.tunnel-status.retrying { color: var(--danger); }
+.tunnel-status.pending, .tunnel-status.connecting { color: var(--warning); }
+.tunnel-editor { display: grid; gap: 10px; padding: 7px 0 4px; border-top: 1px solid var(--border); }
+.tunnel-grid { display: grid; grid-template-columns: .8fr 1.4fr .8fr; gap: 8px; }
+.tunnel-error { color: var(--danger); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.device-tunnels { margin-top: 5px; font-size: 10px; }
+.device-tunnels > summary { cursor: pointer; color: var(--muted-foreground); line-height: 1.8; }
+.tunnel-port-preview { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.tunnel-port-preview code { padding: 0 4px; background: var(--muted); border-radius: 3px; }
+.device-tunnel-list { display: grid; gap: 7px; margin-top: 7px; max-height: 260px; overflow-y: auto; }
+.device-tunnel-item { display: grid; gap: 3px; padding: 6px 0; border-top: 1px solid var(--border); }
+.device-card:has(.device-tunnels[open]) { align-items: flex-start; }
+@media (max-width: 640px) { .tunnel-grid { grid-template-columns: 1fr; } .device-card { align-items: flex-start; } .tunnel-port-preview { display: flex; margin-left: 0; } }
+
 .directory-browser { display: grid; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
 .directory-browser-bar { display: grid; grid-template-columns: 29px minmax(0, 1fr) 29px; align-items: center; gap: 6px; }.directory-browser-bar code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-family: "SF Mono", Menlo, monospace; font-size: 10px; }
 .directory-list { max-height: 152px; overflow-y: auto; display: grid; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); }.directory-list button { height: 27px; border: 0; border-radius: 5px; background: transparent; display: flex; align-items: center; gap: 7px; padding: 0 7px; text-align: left; color: var(--foreground); font-size: 11px; }.directory-list button:hover { background: var(--muted); }.directory-list button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -100,3 +100,63 @@ test("window closure gates wake reconnects until a window is reopened", async ()
   assert.equal(reconnects, 1);
   service.shutdown();
 });
+
+test("saving conflicting local ports rejects the transaction and does not change persisted settings", async () => {
+  const { service, store } = await setup();
+  const tunnel = { direction: "local-to-remote" as const, sourcePort: 3000, destinationHost: "127.0.0.1", destinationPort: 3000 };
+  await store.update((draft) => {
+    draft.devices.push({ id: "dev_other", name: "Other GPU", type: "remote", status: "unknown", createdAt: "now" });
+    draft.connections.push({ deviceId: "dev_other", transport: "ssh", config: { host: "other.example", tunnels: [tunnel] } });
+  });
+  await assert.rejects(() => service.updateDevice({ id: "dev_remote", name: "Changed", host: "gpu.example", user: "builder", tunnels: [tunnel] }), /Local port 3000 already has a tunnel on Other GPU/);
+  assert.equal(service.snapshot().devices.find((device) => device.id === "dev_remote")!.name, "Old host");
+  await assert.rejects(() => service.addDevice({ name: "New", host: "new.example", user: "builder", tunnels: [tunnel] }), /Local port 3000/);
+  assert.equal(service.snapshot().devices.some((device) => device.name === "New"), false);
+});
+
+test("concurrent saves cannot reserve the same local listener twice", async () => {
+  const { service, store } = await setup();
+  await store.update((draft) => {
+    draft.devices.push({ id: "dev_other", name: "Other", type: "remote", status: "unknown", createdAt: "now" });
+    draft.connections.push({ deviceId: "dev_other", transport: "ssh", config: { host: "other.example" } });
+  });
+  const tunnels = [{ direction: "local-to-remote" as const, sourcePort: 3000, destinationHost: "localhost", destinationPort: 3000 }];
+  const results = await Promise.allSettled([
+    service.updateDevice({ id: "dev_remote", name: "GPU", host: "gpu.example", user: "builder", tunnels }),
+    service.updateDevice({ id: "dev_other", name: "Other", host: "other.example", user: "builder", tunnels })
+  ]);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(service.snapshot().connections.filter((connection) => connection.config.tunnels?.length).length, 1);
+});
+
+test("saving starts tunnels immediately and exposes runtime updates without persisting them", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-tunnel-state-"));
+  const store = new JsonStore(join(directory, "state.json"));
+  const synced: unknown[] = [];
+  let notify: () => void = () => {};
+  const states = [{ deviceId: "dev_remote", tunnel: { direction: "local-to-remote" as const, sourcePort: 3000, destinationHost: "localhost", destinationPort: 8000 }, status: "active" as const }];
+  const service = new WorkspaceService(store, undefined, undefined, undefined, {
+    sync(connections) { synced.push(connections); }, reconnectAll() {}, setReconnectEnabled() {}, stop() {},
+    statuses() { return structuredClone(states); }, onChanged(listener) { notify = listener; }
+  });
+  await service.initialize();
+  await store.update((draft) => {
+    draft.devices.push({ id: "dev_remote", name: "GPU", type: "remote", status: "online", createdAt: "now" });
+    draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu" } });
+  });
+  await service.updateDevice({ id: "dev_remote", name: "GPU", host: "gpu", user: "builder", tunnels: [states[0]!.tunnel] });
+  assert.equal(synced.length, 2);
+  let updates = 0;
+  service.on("tunnels-changed", () => { updates++; });
+  notify();
+  assert.equal(updates, 1);
+  assert.deepEqual(service.tunnelStatuses(), states);
+  assert.equal(JSON.stringify(store.snapshot()).includes('"active"'), false);
+});
+
+test("editing only tunnels preserves device reachability without another connection check", async () => {
+  const { service } = await setup();
+  await service.updateDevice({ id: "dev_remote", name: "Old host", host: "old.example", user: "allen", port: 22,
+    tunnels: [{ direction: "local-to-remote", sourcePort: 3000, destinationHost: "localhost", destinationPort: 8000 }] });
+  assert.equal(service.snapshot().devices.find((device) => device.id === "dev_remote")!.status, "online");
+});

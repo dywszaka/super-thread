@@ -1312,7 +1312,13 @@ interface DeviceConnection {
 
 每个 Remote Device 可以配置多个 SSH tunnel。`local-to-remote` 在本机 loopback 地址监听，转发到从远程机器可访问的目标；`remote-to-local` 在远程 loopback 地址监听，反向转发到从本机可访问的目标。默认不暴露到局域网或公网。
 
-Tunnel 配置属于持久连接配置，但 SSH tunnel 进程、PID、重试次数和连接状态都属于 runtime state。Desktop Runtime 使用 `ssh -N`、keepalive 与 `ExitOnForwardFailure` 维护每个 Device 的 tunnel 进程；有窗口打开时，断网或 SSH 退出后按指数退避自动重连，macOS 从睡眠恢复时重建连接；所有窗口关闭后暂停重试与唤醒重连，重新打开窗口时恢复已断开的隧道；应用退出时终止 tunnel 进程。
+Tunnel 配置属于持久连接配置，但 SSH tunnel 进程、PID、重试次数和连接状态都属于 runtime state。Desktop Runtime 使用 `ssh -N`、keepalive 与 `ExitOnForwardFailure` 维护每条映射独立的 tunnel 进程；有窗口打开时，断网或 SSH 退出后按指数退避自动重连，macOS 从睡眠恢复时重建连接；所有窗口关闭后暂停重试与唤醒重连，重新打开窗口时恢复已断开的隧道；应用退出时终止 tunnel 进程。
+
+Device 页默认折叠 tunnel 明细，显示 active 数量及端口预览；展开可查看每条映射的方向、源端口、目标与实时状态。编辑时既有映射以摘要行展示，每次只展开一条；新增映射置顶、自动展开并聚焦端口，不需要滚动到底部。最多 32 条映射。
+
+保存配置后立即自动连接，无需 Check connections；后者只检查 SSH 可达性，不代表 tunnel 生效。未保存映射标记 Unsaved，运行态区分 Connecting、Active、Retrying 与 Paused。只有 SSH 已确认监听建立后才显示 Active；反向映射等待服务端确认。Active 不代表目标应用已启动或应用请求一定成功。失败时显示 SSH 错误并自动退避重试，状态经独立 typed IPC 实时更新，不写入持久快照。未修改的映射在保存时保持原连接，单条映射失败不影响其他映射。
+
+编辑时提前标出配置冲突并阻止保存，主进程在串行持久化事务内再次校验：本机源端口在所有 Device 的 local-to-remote 配置之间唯一；同一 host（忽略大小写）与 SSH port 的 remote-to-local 源端口唯一（不因 SSH user 不同而隔离）。不同 host 别名指向同一机器，或其他应用占用端口，只能由 SSH 实际建立时检测并显示失败原因。
 
 这样未来：
 

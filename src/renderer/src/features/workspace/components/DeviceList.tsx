@@ -1,17 +1,19 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, FolderGit2, Laptop, Pencil, Plus, RefreshCw, Server, TerminalSquare, Trash2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, Device, DeviceConnection, SshTunnelConfig } from "@/shared/domain";
+import type { AppSnapshot, Device, DeviceConnection, SshTunnelConfig, SshTunnelRuntime } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
-import { SshTunnelFields } from "./SshTunnelFields";
+import { sameTunnel, tunnelConflicts } from "@/shared/ssh-tunnels";
+import { SshTunnelFields, TunnelMapping, TunnelStatus } from "./SshTunnelFields";
 import { SidebarReopenButton } from "./Sidebar";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
 export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const client = useQueryClient();
+  const { data: runtimes = [] } = useQuery({ queryKey: ["tunnel-statuses"], queryFn: () => window.desktop.tunnelStatuses() });
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const [checking, setChecking] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -72,6 +74,7 @@ export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.React
                   <div className="device-card-title"><strong>{device.name}</strong><span className={`device-status ${device.status}`}><i />{device.status}</span>{device.type === "local" && <span className="device-kind">Local</span>}</div>
                   <code>{address}</code>
                   <div className="device-usage"><span><FolderGit2 size={12} /> {checkouts.length} {checkouts.length === 1 ? "project checkout" : "project checkouts"}</span><span><TerminalSquare size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span>{device.type === "remote" && <span><ArrowRightLeft size={12} /> {connection?.config.tunnels?.length ?? 0} {(connection?.config.tunnels?.length ?? 0) === 1 ? "tunnel" : "tunnels"}</span>}</div>
+                  {device.type === "remote" && <DeviceTunnels connection={connection} runtimes={runtimes} />}
                 </div>
                 <div className="device-card-actions">
                   {device.type === "remote" && <button className="button" disabled={busy} onClick={() => setEditingId(device.id)}><Pencil size={13} /> Edit</button>}
@@ -82,47 +85,56 @@ export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.React
           })}
         </div>
       </section>
-      <EditDeviceDialog device={editing} connection={editingConnection} onClose={() => setEditingId(null)} />
+      {editing && editingConnection && <EditDeviceDialog key={editing.id} device={editing} connection={editingConnection} snapshot={snapshot} runtimes={runtimes} onClose={() => setEditingId(null)} />}
     </main>
   );
 }
 
-function EditDeviceDialog({ device, connection, onClose }: { device?: Device; connection?: DeviceConnection; onClose(): void }): React.ReactNode {
+function DeviceTunnels({ connection, runtimes }: { connection?: DeviceConnection; runtimes: SshTunnelRuntime[] }): React.ReactNode {
+  const tunnels = connection?.config.tunnels ?? [];
+  if (!tunnels.length) return null;
+  const active = runtimes.filter((item) => item.deviceId === connection?.deviceId && item.status === "active").length;
+  const retrying = runtimes.filter((item) => item.deviceId === connection?.deviceId && item.status === "retrying").length;
+  return <details className="device-tunnels">
+    <summary><span>{active}/{tunnels.length} tunnels active{retrying > 0 && ` · ${retrying} retrying`}</span><span className="tunnel-port-preview">{tunnels.slice(0, 4).map((tunnel, index) => <code key={index}>{tunnel.direction === "local-to-remote" ? "Local" : "Remote"} :{tunnel.sourcePort}</code>)}{tunnels.length > 4 && <span>+{tunnels.length - 4}</span>}</span></summary>
+    <div className="device-tunnel-list">{tunnels.map((tunnel, index) => {
+      const runtime = runtimes.find((item) => item.deviceId === connection?.deviceId && sameTunnel(item.tunnel, tunnel));
+      return <div className="device-tunnel-item" key={index}><div className="tunnel-row"><TunnelMapping tunnel={tunnel} /><TunnelStatus runtime={runtime} /></div>{runtime?.error && <div className="tunnel-error">{runtime.error} · Reconnects automatically</div>}</div>;
+    })}</div>
+  </details>;
+}
+
+function EditDeviceDialog({ device, connection, snapshot, runtimes, onClose }: { device: Device; connection: DeviceConnection; snapshot: AppSnapshot; runtimes: SshTunnelRuntime[]; onClose(): void }): React.ReactNode {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [name, setName] = useState("");
-  const [host, setHost] = useState("");
-  const [user, setUser] = useState("");
-  const [port, setPort] = useState("22");
-  const [tunnels, setTunnels] = useState<SshTunnelConfig[]>([]);
-
-  useEffect(() => {
-    if (!device) return;
-    setName(device.name);
-    setHost(connection?.config.host || "");
-    setUser(connection?.config.user || "");
-    setPort(String(connection?.config.port || 22));
-    setTunnels(structuredClone(connection?.config.tunnels ?? []));
-  }, [device?.id, connection?.config.host, connection?.config.user, connection?.config.port, connection?.config.tunnels]);
+  const [name, setName] = useState(device.name);
+  const [host, setHost] = useState(connection.config.host || "");
+  const [user, setUser] = useState(connection.config.user || "");
+  const [port, setPort] = useState(String(connection.config.port || 22));
+  const [tunnels, setTunnels] = useState<SshTunnelConfig[]>(() => structuredClone(connection.config.tunnels ?? []));
+  const draft: DeviceConnection = { ...connection, config: { host, user, port: Number(port), tunnels } };
+  const conflicts = tunnelConflicts(draft, snapshot.connections);
+  const destinationChanged = host !== connection.config.host || user !== connection.config.user || Number(port) !== (connection.config.port ?? 22);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!device) return;
+    if (conflicts.length) return;
     setBusy(true);
     try {
       await window.desktop.updateDevice({ id: device.id, name, host, user, port: Number(port), tunnels });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
-      toast.success(`${name.trim()} updated`);
+      await client.invalidateQueries({ queryKey: ["tunnel-statuses"] });
+      toast.success(`${name.trim()} saved. Tunnels connect automatically.`);
       onClose();
     } catch (error) { toast.error(cleanError(error)); }
     finally { setBusy(false); }
   };
 
   return (
-    <Modal open={Boolean(device)} title="Edit remote device" description="Update the SSH destination used for future device operations." busy={busy} submitLabel="Save Changes" onClose={onClose} onSubmit={submit}>
+    <Modal open title="Edit remote device" description="Save changes to apply tunnels immediately. Check connections only checks SSH reachability." busy={busy} submitDisabled={conflicts.length > 0} submitLabel="Save & Connect" onClose={onClose} onSubmit={submit}>
       <div className="form-grid two"><Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} /></Field><Field label="Host"><input value={host} onChange={(event) => setHost(event.target.value)} required /></Field></div>
       <div className="form-grid two"><Field label="SSH user"><input value={user} onChange={(event) => setUser(event.target.value)} required /></Field><Field label="Port"><input type="number" value={port} onChange={(event) => setPort(event.target.value)} min="1" max="65535" required /></Field></div>
-      <SshTunnelFields value={tunnels} onChange={setTunnels} />
+      <SshTunnelFields value={tunnels} onChange={setTunnels} connection={draft} connections={snapshot.connections} devices={snapshot.devices} saved={destinationChanged ? [] : connection.config.tunnels} runtimes={runtimes} />
     </Modal>
   );
 }

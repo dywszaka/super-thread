@@ -28,6 +28,7 @@ class EmergencyErrorBoundary extends Component<{ children: ReactNode }, { error:
 function BridgeEvents(): null {
   const client = useQueryClient();
   useEffect(() => window.desktop.onDataChanged(() => { void client.invalidateQueries({ queryKey: ["snapshot"] }); }), [client]);
+  useEffect(() => window.desktop.onTunnelsChanged(() => { void client.invalidateQueries({ queryKey: ["tunnel-statuses"] }); }), [client]);
   useEffect(() => {
     const handle = (event: PromiseRejectionEvent): void => { toast.error(event.reason?.message || "Unexpected error"); };
     window.addEventListener("unhandledrejection", handle);

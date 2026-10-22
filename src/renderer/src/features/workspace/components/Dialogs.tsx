@@ -6,6 +6,7 @@ import type { AppSnapshot, DirectoryListing, SshTunnelConfig } from "@/shared/do
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { resolveSelectionId, sortedWorkThreads } from "../selection";
 import { Field, Modal } from "./Modal";
+import { tunnelConflicts } from "@/shared/ssh-tunnels";
 import { SshTunnelFields } from "./SshTunnelFields";
 import { WorkspaceLinks } from "./WorkspaceLinks";
 
@@ -57,7 +58,7 @@ export function DirectoryField({ value, onChange, remote, deviceId, placeholder 
   );
 }
 
-export function AddDeviceDialog(): ReactNode {
+export function AddDeviceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
   const { dialog, closeDialog } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -67,6 +68,8 @@ export function AddDeviceDialog(): ReactNode {
   const [port, setPort] = useState("22");
   const [tunnels, setTunnels] = useState<SshTunnelConfig[]>([]);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const tunnelConnection = { deviceId: "new-device", transport: "ssh" as const, config: { host, user, port: Number(port), tunnels } };
+  const conflicts = tunnelConflicts(tunnelConnection, snapshot.connections);
   const parsedPort = Number(port);
   const valid = Boolean(name.trim() && host.trim() && user.trim() && Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535);
   const submit = async (event: FormEvent): Promise<void> => {
@@ -78,10 +81,10 @@ export function AddDeviceDialog(): ReactNode {
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   return (
-    <Modal open={dialog === "device"} title="Add remote device" description="Connect through SSH. SuperThread never stores your password." busy={busy} submitDisabled={!valid} submitLabel="Add Device" onClose={closeDialog} onSubmit={submit}>
+    <Modal open={dialog === "device"} title="Add remote device" description="Connect through SSH. SuperThread never stores your password." busy={busy} submitDisabled={!valid || conflicts.length > 0} submitLabel="Add Device" onClose={closeDialog} onSubmit={submit}>
       <div className="form-grid two"><Field label="Name" error={touched.name && !name.trim() ? "Enter a device name." : undefined}><input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} placeholder="dev-cuda" /></Field><Field label="Host" error={touched.host && !host.trim() ? "Enter a host name or address." : undefined}><input value={host} onChange={(e) => setHost(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, host: true }))} placeholder="dev-cuda.local" /></Field></div>
       <div className="form-grid two"><Field label="SSH user" error={touched.user && !user.trim() ? "Enter the SSH user." : undefined}><input value={user} onChange={(e) => setUser(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, user: true }))} placeholder="allen" /></Field><Field label="Port" error={touched.port && !(Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) ? "Use a port from 1 to 65535." : undefined}><input type="number" value={port} onChange={(e) => setPort(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, port: true }))} min="1" max="65535" /></Field></div>
-      <SshTunnelFields value={tunnels} onChange={setTunnels} />
+      <SshTunnelFields value={tunnels} onChange={setTunnels} connection={tunnelConnection} connections={snapshot.connections} devices={snapshot.devices} />
       <div className="callout"><Network size={16} /><span>SSH keys and your existing <code>~/.ssh/config</code> are used for authentication.</span></div>
     </Modal>
   );
@@ -282,5 +285,5 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
 }
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog /><NewWorkThreadDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
+  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} /><NewWorkThreadDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
 }

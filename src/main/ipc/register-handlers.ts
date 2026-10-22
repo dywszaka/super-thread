@@ -54,6 +54,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.reorderWorkspaceTabs, (_event, input) => service.reorderWorkspaceTabs(reorderWorkspaceTabsSchema.parse(input)));
   handle(channels.browserLayout, (_event, input) => browsers.setLayout(browserLayoutSchema.parse(input)));
   handle(channels.browserStates, () => browsers.states());
+  handle(channels.tunnelStatuses, () => service.tunnelStatuses());
   handle(channels.browserCommand, (_event, input) => { const parsed = browserCommandSchema.parse(input); browsers.command(parsed.id, parsed.command); });
   handle(channels.openDocumentLink, (_event, url) => shell.openExternal(documentLinkSchema.parse(url)));
   on(channels.finishDocumentClose, (event) => {
