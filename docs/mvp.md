@@ -820,7 +820,8 @@ interface Session {
 
 # 15. Terminal Runtime
 
-- Terminal 的选区通过系统剪贴板复制，支持 Cmd+C 和原生 Edit → Copy；Ctrl+C 保留中断进程语义。Codex 等应用接管鼠标时，macOS 可按住 Option 拖动强制选择文字。
+- Terminal 的选区通过系统剪贴板复制，支持 Cmd+C 和原生 Edit → Copy；Ctrl+C 保留中断进程语义。全屏应用接管鼠标且没有终端自身选区时，Copy 转发标准 Ctrl+Insert 复制请求，由应用复制其内部选区。macOS 仍可按住 Option 拖动强制选择终端文字。
+- 支持 tmux、Codex 等 CLI 发出的 OSC 52 剪贴板写入（UTF-8 文本，最多 2,000,000 字节），使 tmux 配置的鼠标选中后自动复制可到达本机系统剪贴板。本机和 SSH 终端使用相同处理；不读取或向 CLI 返回剪贴板内容，忽略无效、空或超限请求，历史重放不触发剪贴板写入。
 
 Workspace 的新建 Terminal 菜单提供 `Custom…`，可创建、编辑和删除 Device 下的自定义终端入口。每个入口包含名称和启动目录，名称在同一 Device 下忽略大小写唯一；不同 Device 可使用相同名称。入口作为 Device 配置持久化，不引入新的顶级领域对象。Workspace 菜单只显示其所属 Device 的入口，同一 Device 的多个 Workspace 复用同一组入口。
 

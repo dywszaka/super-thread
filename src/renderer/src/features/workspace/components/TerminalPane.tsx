@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { AppSnapshot, ManagedSessionKind, Session, TerminalOutput, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { CustomTerminalDialog } from "./CustomTerminalDialog";
+import { installTerminalClipboard } from "../terminal-clipboard";
 
 interface PendingSession {
   id: string;
@@ -35,34 +36,18 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
       macOptionClickForcesSelection: true,
       allowProposedApi: false, scrollback: 10_000
     });
-    const copySelection = (): void => {
-      const text = terminal.getSelection();
-      if (text) void window.desktop.writeClipboard(text).catch(() => toast.error("Could not copy terminal selection."));
-    };
-    const copy = (event: ClipboardEvent): void => {
-      if (!terminal.hasSelection()) return;
-      event.preventDefault();
-      event.stopPropagation();
-      copySelection();
-    };
-    // Native menu Copy and keyboard Copy must use xterm's buffer selection,
-    // including alternate-screen applications whose input textarea is empty.
-    container.current.addEventListener("copy", copy, true);
-    const host = container.current;
     const fit = new FitAddon();
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (terminal.hasSelection() && event.key.toLowerCase() === "c" && !event.altKey
-        && (window.desktop.platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && event.shiftKey && !event.metaKey)) {
-        if (event.type === "keydown") { event.preventDefault(); copySelection(); }
-        return false;
-      }
-      return true;
-    });
     terminal.loadAddon(fit); terminal.open(container.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
     let disposed = false;
     let replayComplete = false;
+    const clipboard = installTerminalClipboard(terminal, container.current, {
+      platform: window.desktop.platform,
+      writeText: (text) => window.desktop.writeClipboard(text),
+      isLive: () => replayComplete && !disposed,
+      onError: () => toast.error("Could not copy terminal text.")
+    });
     let input: { dispose(): void } | undefined;
     let resizeFrame = 0;
     const pending: TerminalOutput[] = [];
@@ -110,7 +95,7 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
       disposed = true;
       if (resizeFrame) cancelAnimationFrame(resizeFrame);
       observer.disconnect();
-      host.removeEventListener("copy", copy, true);
+      clipboard.dispose();
       unsubscribe();
       input?.dispose();
       terminalRef.current = null;
