@@ -9,6 +9,7 @@ import type { AppSnapshot, ManagedSessionKind, Session, TerminalOutput, Workspac
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { CustomTerminalDialog } from "./CustomTerminalDialog";
 import { installTerminalClipboard } from "../terminal-clipboard";
+import { terminalAppearance } from "../terminal-appearance";
 
 interface PendingSession {
   id: string;
@@ -31,8 +32,8 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
   useEffect(() => {
     if (!container.current || session.status !== "running") return;
     const terminal = new Terminal({
-      cursorBlink: true, fontFamily: '"SFMono-Regular", "SF Mono", Menlo, monospace', fontSize: 12.5, lineHeight: 1.25,
-      theme: { background: "#121211", foreground: "#dedbd6", cursor: "#d6a861", selectionBackground: "#4a4137", black: "#232220", brightBlack: "#6f6b65", red: "#d16d67", green: "#87a968", yellow: "#d6a861", blue: "#7196c9", magenta: "#ad7eb7", cyan: "#6ca6a1", white: "#dedbd6" },
+      ...terminalAppearance(container.current),
+      cursorBlink: true,
       macOptionClickForcesSelection: true,
       allowProposedApi: false, scrollback: 10_000
     });

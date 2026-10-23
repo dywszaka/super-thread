@@ -12,8 +12,6 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/contract";
 import type { DocumentAutosave } from "../document-autosave";
-import "@milkdown/crepe/theme/common/style.css";
-import "@milkdown/crepe/theme/frame.css";
 
 export function MarkdownEditor({ document, autoFocus }: { document: DocumentAutosave; autoFocus: boolean }): React.ReactNode {
   const host = useRef<HTMLDivElement>(null);

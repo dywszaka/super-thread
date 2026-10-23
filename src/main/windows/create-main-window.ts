@@ -10,7 +10,7 @@ export function createMainWindow(): BrowserWindow {
     minWidth: 880,
     minHeight: 560,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#11100f" : "#f6f5f3",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1d1f" : "#ffffff",
     titleBarStyle: "hidden",
     frame: false,
     trafficLightPosition: { x: 16, y: 18 },

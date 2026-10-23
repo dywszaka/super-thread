@@ -53,7 +53,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     activeWorkspaceId: null,
     activeSessionIds: {},
     sidebarCollapsed: false,
-    sidebarWidth: 226,
+    sidebarWidth: 240,
     focusMode: false,
     expandedThreadIds: [],
     sessionCreateRequests: [],

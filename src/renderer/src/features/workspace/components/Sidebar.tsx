@@ -94,8 +94,8 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
 
   const openThreadMenu = (event: React.MouseEvent, thread: WorkThread): void => {
     event.preventDefault();
-    const width = 184;
-    const height = 124;
+    const width = 220;
+    const height = 148;
     setWorkspaceMenu(null);
     setThreadMenu({
       thread,
@@ -106,7 +106,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
 
   const openWorkspaceMenu = (event: React.MouseEvent, workspace: Workspace): void => {
     event.preventDefault();
-    const width = 184;
+    const width = 220;
     const height = 44;
     setThreadMenu(null);
     setWorkspaceMenu({
