@@ -3325,6 +3325,110 @@ input, textarea, [contenteditable="true"], .selectable {
   overflow-wrap: anywhere;
 }
 
+.file-preview-toolbar {
+  flex-wrap: nowrap;
+}
+
+.file-preview-path {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.file-preview-path strong,
+.file-preview-path span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-path strong {
+  font-weight: 500;
+}
+
+.file-preview-path span {
+  font-size: var(--text-control);
+  color: var(--muted-foreground);
+}
+
+.file-picker-path {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.file-picker-path input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--foreground);
+  font-size: var(--text-control);
+}
+
+.file-picker-breadcrumbs {
+  font-size: var(--text-control);
+  overflow-wrap: anywhere;
+}
+
+.file-picker-breadcrumbs button {
+  background: transparent;
+  color: var(--link);
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-control);
+}
+
+.file-picker-list {
+  min-height: 120px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.file-picker-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+}
+
+.file-picker-entry > svg {
+  flex-shrink: 0;
+}
+
+.file-picker-entry > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-picker-entry:hover,
+.file-picker-breadcrumbs button:hover {
+  background: var(--accent);
+}
+
+.file-picker-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 16px;
+  color: var(--muted-foreground);
+  font-size: var(--text-control);
+}
+
 .workspace-shortcut-hint {
   flex: none;
   margin-left: auto;

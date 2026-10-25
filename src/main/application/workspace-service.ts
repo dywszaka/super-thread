@@ -1,4 +1,6 @@
 import { normalizeBrowserUrl } from "../../shared/browser-url";
+import { WorkspaceFileRuntime } from "../runtime/workspace-file-runtime";
+import type { FilePreviewTab, WorkspaceFileInput, WorkspaceFileLocation } from "../../shared/domain";
 import type { BrowserTab, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput } from "../../shared/domain";
 import { EventEmitter } from "node:events";
 import { hostname } from "node:os";
@@ -654,6 +656,7 @@ export class WorkspaceService extends EventEmitter {
     await runtime.deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
     await this.store.update((draft) => {
       draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
+      draft.filePreviewTabs = draft.filePreviewTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
       const thread = draft.workThreads.find((item) => item.id === workspace.workThreadId);
@@ -665,10 +668,46 @@ export class WorkspaceService extends EventEmitter {
   private async removeWorkspaceMetadata(workspaceId: string, workThreadId: string): Promise<void> {
     await this.store.update((draft) => {
       draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
+      draft.filePreviewTabs = draft.filePreviewTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
       const thread = draft.workThreads.find((item) => item.id === workThreadId);
       if (thread) thread.updatedAt = now();
+    });
+    this.changed();
+  }
+
+  workspaceFiles(workspaceId: string): WorkspaceFileRuntime {
+    const snapshot = this.snapshot();
+    const workspace = this.workspace(snapshot, workspaceId);
+    if (workspace.status !== "ready") throw new Error("Workspace is not ready");
+    return new WorkspaceFileRuntime(workspace.path, this.connection(snapshot, workspace.deviceId));
+  }
+
+  browseWorkspaceFiles(input: WorkspaceFileInput, signal?: AbortSignal): Promise<WorkspaceFileLocation> {
+    return this.workspaceFiles(input.workspaceId).inspect(input.path, signal);
+  }
+
+  async openFilePreview(input: WorkspaceFileInput): Promise<FilePreviewTab> {
+    const file = await this.browseWorkspaceFiles(input);
+    if (file.kind !== "file" || !file.fileType) throw new Error("Select a PDF, HTML, or Markdown file");
+    let tab!: FilePreviewTab;
+    await this.store.update((draft) => {
+      if (this.workspace(draft, input.workspaceId).status !== "ready") throw new Error("Workspace is not ready");
+      const existing = draft.filePreviewTabs.find((item) => item.workspaceId === input.workspaceId && item.path === file.path);
+      if (existing) { tab = existing; return; }
+      const timestamp = now();
+      tab = { id: id("preview"), workspaceId: input.workspaceId, path: file.path, fileType: file.fileType!, order: this.nextSessionOrder(draft, input.workspaceId), createdAt: timestamp, updatedAt: timestamp };
+      draft.filePreviewTabs.push(tab);
+    });
+    this.changed();
+    return tab;
+  }
+
+  async closeFilePreview(id: string): Promise<void> {
+    await this.store.update((draft) => {
+      if (!draft.filePreviewTabs.some((tab) => tab.id === id)) throw new Error("File preview no longer exists");
+      draft.filePreviewTabs = draft.filePreviewTabs.filter((tab) => tab.id !== id);
     });
     this.changed();
   }
@@ -720,7 +759,7 @@ export class WorkspaceService extends EventEmitter {
   async reorderWorkspaceTabs(input: ReorderWorkspaceTabsInput): Promise<void> {
     await this.store.update((draft) => {
       this.workspace(draft, input.workspaceId);
-      const tabs = [...draft.sessions, ...draft.browserTabs].filter((tab) => tab.workspaceId === input.workspaceId);
+      const tabs = [...draft.sessions, ...draft.browserTabs, ...draft.filePreviewTabs].filter((tab) => tab.workspaceId === input.workspaceId);
       if (new Set(input.tabIds).size !== input.tabIds.length || input.tabIds.length !== tabs.length || input.tabIds.some((id) => !tabs.some((tab) => tab.id === id))) throw new Error("Tab order must include every tab in this workspace exactly once");
       const orders = new Map(input.tabIds.map((id, index) => [id, index]));
       tabs.forEach((tab) => { tab.order = orders.get(tab.id)!; });
@@ -1088,7 +1127,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private nextSessionOrder(snapshot: AppSnapshot, workspaceId: string): number {
-    const orders = [...snapshot.sessions, ...snapshot.browserTabs].filter((item) => item.workspaceId === workspaceId).map((item) => item.order ?? 0);
+    const orders = [...snapshot.sessions, ...snapshot.browserTabs, ...snapshot.filePreviewTabs].filter((item) => item.workspaceId === workspaceId).map((item) => item.order ?? 0);
     return orders.length ? Math.max(...orders) + 1 : 0;
   }
 

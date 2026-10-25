@@ -3,6 +3,7 @@ import { z } from "zod";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
+  FilePreviewTab, FilePreviewState, WorkspaceFileInput, WorkspaceFileLocation,
   SshTunnelRuntime,
   CreateTodoInput, UpdateTodoInput, TodoTarget,
   BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
@@ -34,6 +35,14 @@ import type {
 } from "./domain";
 
 export const channels = {
+  browseWorkspaceFiles: "workspace:files-browse",
+  openFilePreview: "preview:open",
+  closeFilePreview: "preview:close",
+  refreshFilePreview: "preview:refresh",
+  filePreviewLayout: "preview:layout",
+  filePreviewStates: "preview:states",
+  filePreviewStateChanged: "preview:state-changed",
+  filePreviewCreated: "preview:created",
   tunnelStatuses: "device:tunnel-statuses",
   tunnelsChanged: "device:tunnels-changed",
   createTodo: "todo:create",
@@ -284,10 +293,22 @@ export const browserLayoutSchema = z.object({ id: z.string().min(1).nullable(), 
   width: z.number().finite().min(0).max(32768), height: z.number().finite().min(0).max(32768)
 }).strict() }).strict();
 export const browserCommandSchema = z.object({ id: z.string().min(1), command: z.enum(["back", "forward", "reload"]) }).strict();
+export const workspaceFileInputSchema = z.object({
+  workspaceId: z.string().min(1),
+  path: z.string().max(8192).refine((path) => !path.includes("\0"), "Invalid file path")
+}).strict();
 
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
+  browseWorkspaceFiles(input: WorkspaceFileInput): Promise<WorkspaceFileLocation>;
+  openFilePreview(input: WorkspaceFileInput): Promise<FilePreviewTab>;
+  closeFilePreview(id: string): Promise<void>;
+  refreshFilePreview(id: string): Promise<void>;
+  filePreviewLayout(input: BrowserLayoutInput): Promise<void>;
+  filePreviewStates(): Promise<FilePreviewState[]>;
+  onFilePreviewStateChanged(listener: (state: FilePreviewState) => void): () => void;
+  onFilePreviewCreated(listener: (tab: FilePreviewTab) => void): () => void;
   tunnelStatuses(): Promise<SshTunnelRuntime[]>;
   onTunnelsChanged(listener: () => void): () => void;
   createTodo(input: CreateTodoInput): Promise<void>;

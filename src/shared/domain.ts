@@ -8,7 +8,7 @@ export type SessionKind = ManagedSessionKind;
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input" | "unknown";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 13;
+export const CURRENT_SCHEMA_VERSION = 14;
 
 export interface Todo {
   id: string;
@@ -179,6 +179,26 @@ export interface BrowserState {
   error?: string;
 }
 
+export type PreviewFileType = "pdf" | "html" | "markdown";
+export interface FilePreviewTab {
+  id: string;
+  workspaceId: string;
+  path: string;
+  fileType: PreviewFileType;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface WorkspaceFileInput { workspaceId: string; path: string; }
+export interface WorkspaceFileEntry {
+  name: string;
+  path: string;
+  kind: "directory" | "file";
+  fileType?: PreviewFileType;
+}
+export type WorkspaceFileLocation = WorkspaceFileEntry & { entries?: WorkspaceFileEntry[]; parentPath?: string | null };
+export interface FilePreviewState { id: string; loading: boolean; error?: string; }
+
 export interface CreateBrowserInput { workspaceId: string; url?: string; }
 export interface NavigateBrowserInput { id: string; url: string; }
 export interface ReorderWorkspaceTabsInput { workspaceId: string; tabIds: string[]; }
@@ -197,6 +217,7 @@ export interface AppSnapshot {
   workspaces: Workspace[];
   sessions: Session[];
   browserTabs: BrowserTab[];
+  filePreviewTabs: FilePreviewTab[];
 }
 
 export const emptySnapshot = (): AppSnapshot => ({
@@ -208,6 +229,7 @@ export const emptySnapshot = (): AppSnapshot => ({
   checkouts: [],
   workspaces: [],
   browserTabs: [],
+  filePreviewTabs: [],
   sessions: []
 });
 

@@ -47,6 +47,12 @@ export function WorkspaceApp(): React.ReactNode {
       store.setActiveSession(tab.workspaceId, tab.id);
     });
   }), [client]);
+  useEffect(() => window.desktop.onFilePreviewCreated((tab) => {
+    void client.invalidateQueries({ queryKey: ["snapshot"] }).then(() => {
+      store.setActiveWorkspace(tab.workspaceId);
+      store.setActiveSession(tab.workspaceId, tab.id);
+    });
+  }), [client]);
   useEffect(() => window.desktop.setFocusMode(focusMode), [focusMode]);
   useEffect(() => window.desktop.onMenuAction((action) => {
     if (action === "new-work-thread") store.openDialog("workThread");

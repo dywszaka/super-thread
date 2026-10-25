@@ -18,7 +18,7 @@ Workspace ─── Project × Device
    │
    │ contains
    ▼
-Terminal Session / BrowserTab
+Terminal Session / BrowserTab / FilePreviewTab
 ```
 
 其中：
@@ -29,6 +29,7 @@ Terminal Session / BrowserTab
 - Workspace：Project 在某个 Device 上的一份隔离 Working Copy
 - Session：Workspace 中一个持久 Terminal / PTY
 - BrowserTab：Workspace 持有的本机网页视图及其最后访问地址
+- FilePreviewTab：Workspace 持有的只读文件预览标签，通过所属 Device 读取文件
 
 MVP 不包含：
 
@@ -171,6 +172,7 @@ Device
 Workspace
 Session
 BrowserTab
+FilePreviewTab
 ```
 
 关系：
@@ -718,7 +720,7 @@ Done
 
 # 13. Workspace Delete
 
-删除 `main` Workspace 只停止其 Session 并删除 Workspace、Session 与 BrowserTab metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
+删除 `main` Workspace 只停止其 Session 并删除 Workspace、Session、BrowserTab 与 FilePreviewTab metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
 
 删除 `worktree` Workspace：
 
@@ -726,7 +728,7 @@ Done
 2. 停止所有 Session
 3. 删除 Git Worktree
 4. 删除对应 Branch
-5. 删除 Workspace、Session 和 BrowserTab metadata
+5. 删除 Workspace、Session、BrowserTab 和 FilePreviewTab metadata
 
 Runtime：
 
@@ -756,7 +758,7 @@ git worktree remove --force
 git branch -D <workspace-branch>
 ```
 
-只有在 PTY/连接、Git worktree 和 branch 删除成功后，才删除持久化 Workspace、Session 与 BrowserTab 记录。失败时必须保留 metadata，避免 UI 状态与实际 Git 状态失配。
+只有在 PTY/连接、Git worktree 和 branch 删除成功后，才删除持久化 Workspace、Session、BrowserTab 与 FilePreviewTab 记录。失败时必须保留 metadata，避免 UI 状态与实际 Git 状态失配。
 
 ---
 
@@ -1719,6 +1721,19 @@ BrowserTab 是 Workspace 持有的本机网页视图记录，不复用代表 PTY
 - Remote Workspace 的 Browser 仍运行于 Mac 本机，localhost 指 Mac；远程网页可使用已有 SSH 端口转发访问。
 
 验收覆盖多个 Browser 创建与地址独立保存、主框架及站内导航更新、混合排序、关闭删除、旧快照迁移、窗口重开和应用重启自动加载、Workspace 删除清理，以及真实 Electron 中网页加载、导航控件、安全隔离、弹窗遮挡、浅深色、窄窗口、交通灯间距、拖拽与 Terminal 输入输出及切换。
+
+## Workspace 文件预览
+
+- Workspace 标签栏「＋」提供 File Preview。弹窗从 Workspace 根目录开始，可使用面包屑、上级目录、路径输入及刷新；目录和 PDF、HTML、Markdown 文件可选，支持 `.pdf`、`.html`、`.htm`、`.md`、`.markdown`，扩展名忽略大小写。路径保留合法文件名中的空格与换行，接受相对路径和 Workspace 内的绝对路径。
+- 文件通过所属 Device 读取。本地使用 Node 文件 API，远端使用现有系统 SSH 配置临时执行 Python 3 辅助代码，不部署常驻服务或开放端口。缺少 Python 3、连接失败、文件消失、权限不足及超限均显示明确错误并可重试。
+- FilePreviewTab 独立于 PTY Session 和普通 BrowserTab，保存 id、workspaceId、规范化的 Workspace 相对路径、fileType、order、createdAt 和 updatedAt。重复打开同一 Workspace 的实际文件路径会聚焦已有标签。标签与 Terminal、Browser 混合排序、关闭及使用 ⌘1–⌘9 切换。
+- schema 14 增加 `filePreviewTabs` 集合，旧数据迁移为空集合。重启及窗口重开后恢复标签与顺序，在首次选择时读取最新内容；加载状态、错误、文件字节和 SSH 子进程属于运行时数据，不写入快照。成功删除 Workspace 后清理其预览标签及运行时。
+- 预览为只读。PDF 使用内置查看器支持翻页和缩放，协议支持 Range；HTML 禁用脚本并保留静态样式和图片；Markdown 渲染标题、列表、表格、引用与代码块，关闭原始 HTML。不运行 Markdown 图表脚本。
+- 主文件、目录及关联资源均检查实际路径，拒绝越界、目标位于 Workspace 外的软链接和非普通文件。相对资源从当前文件目录解析，根相对资源从 Workspace 根目录解析；仅自动加载 Workspace 内资源，不请求 CDN。受支持的文件链接打开预览标签，用户点击的 HTTP(S) 链接打开普通 Browser 标签。
+- 工具栏显示名称、相对路径及刷新按钮。刷新重新读取文件和关联资源；切换标签保留页面，不轮询 SSH。HTML/Markdown 上限 5 MiB，PDF 和单个关联资源上限 50 MiB，超限报错且不截断。文件缓存总量上限 256 MiB，最多同时进行四个读取请求；关闭标签或窗口释放其缓存并取消请求，旧请求结果不得覆盖新内容或重建标签。
+- Renderer 仅使用校验过的窄 IPC：浏览 Workspace 文件、打开/关闭预览、刷新、布局和运行状态。文件视图使用独立内存 session、沙箱 WebContentsView 和专用协议，无 Node 或应用 preload，禁止权限、下载及任意导航；弹窗、菜单和拖动期间隐藏原生视图。
+
+验收覆盖本地与真实 SSH 的三种文件、中文及特殊文件名、关联资源和相对路径、软链接边界、PDF 二进制与 Range、脚本及外部资源阻止、刷新与断线重试、重复打开、混合排序与快捷键、旧快照迁移、窗口重开和 Workspace 删除清理，以及浅深色、窄窗口、交通灯、拖动区、弹窗遮挡和 Terminal 生命周期回归。
 
 ## UI 质感与可读性
 

@@ -1,9 +1,25 @@
 import type { WorkspaceShortcut } from "../shared/workspace-shortcuts";
 import { contextBridge, ipcRenderer } from "electron";
 import { channels, type DesktopBridge, type MenuAction } from "../shared/contract";
-import type { BrowserState, BrowserTab, TerminalOutput } from "../shared/domain";
+import type { BrowserState, BrowserTab, FilePreviewState, FilePreviewTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  browseWorkspaceFiles: (input) => ipcRenderer.invoke(channels.browseWorkspaceFiles, input),
+  openFilePreview: (input) => ipcRenderer.invoke(channels.openFilePreview, input),
+  closeFilePreview: (id) => ipcRenderer.invoke(channels.closeFilePreview, id),
+  refreshFilePreview: (id) => ipcRenderer.invoke(channels.refreshFilePreview, id),
+  filePreviewLayout: (input) => ipcRenderer.invoke(channels.filePreviewLayout, input),
+  filePreviewStates: () => ipcRenderer.invoke(channels.filePreviewStates),
+  onFilePreviewStateChanged: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, state: FilePreviewState): void => listener(state);
+    ipcRenderer.on(channels.filePreviewStateChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.filePreviewStateChanged, wrapped);
+  },
+  onFilePreviewCreated: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tab: FilePreviewTab): void => listener(tab);
+    ipcRenderer.on(channels.filePreviewCreated, wrapped);
+    return () => ipcRenderer.removeListener(channels.filePreviewCreated, wrapped);
+  },
   tunnelStatuses: () => ipcRenderer.invoke(channels.tunnelStatuses),
   onTunnelsChanged: (listener) => {
     const wrapped = (): void => listener();

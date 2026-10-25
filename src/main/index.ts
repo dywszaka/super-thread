@@ -1,5 +1,6 @@
 import { BrowserRuntime } from "./runtime/browser-runtime";
-import { app, BrowserWindow, dialog, powerMonitor, type MessageBoxOptions } from "electron";
+import { FilePreviewRuntime, FILE_PREVIEW_SCHEME } from "./runtime/file-preview-runtime";
+import { app, BrowserWindow, dialog, powerMonitor, protocol, type MessageBoxOptions } from "electron";
 import { join } from "node:path";
 import { applicationUserDataPath } from "./application-paths";
 import { WorkspaceService } from "./application/workspace-service";
@@ -10,6 +11,7 @@ import { createMainWindow } from "./windows/create-main-window";
 import { channels } from "../shared/contract";
 
 let mainWindow: BrowserWindow | null = null;
+protocol.registerSchemesAsPrivileged([{ scheme: FILE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 // Keep development and packaged builds on the same persistent application data.
 app.setPath("userData", applicationUserDataPath(app.getPath("appData")));
@@ -23,11 +25,12 @@ app.whenReady().then(async () => {
   const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")));
   await service.initialize();
   const browsers = new BrowserRuntime(service);
+  const previews = new FilePreviewRuntime(service);
   let quitRequested = false;
   registerIpcHandlers(service, (owner) => {
     if (quitRequested) app.quit();
     else owner.close();
-  }, browsers);
+  }, browsers, previews);
   powerMonitor.on("resume", () => service.reconnectTunnels());
   app.once("will-quit", () => service.shutdown());
   let quitConfirmed = false;
@@ -57,6 +60,7 @@ app.whenReady().then(async () => {
   const openWindow = (): BrowserWindow => {
     mainWindow = createMainWindow();
     browsers.attach(mainWindow);
+    previews.attach(mainWindow);
     service.setWindowOpen(true);
     mainWindow.on("closed", () => {
       mainWindow = null;

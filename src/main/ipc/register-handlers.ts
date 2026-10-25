@@ -1,8 +1,10 @@
 import { setWorkspaceShortcutCount } from "../windows/workspace-shortcuts";
 import type { BrowserRuntime } from "../runtime/browser-runtime";
+import type { FilePreviewRuntime } from "../runtime/file-preview-runtime";
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
 import {
+  workspaceFileInputSchema,
   createTodoSchema, updateTodoSchema, todoTargetSchema,
   createBrowserSchema, navigateBrowserSchema, reorderWorkspaceTabsSchema, browserLayoutSchema, browserCommandSchema,
   addProjectSchema,
@@ -32,7 +34,7 @@ import { vscodeWorkspaceUrl } from "../runtime/vscode-workspace";
 
 const sessionIdSchema = z.string().min(1);
 
-export function registerIpcHandlers(service: WorkspaceService, finishDocumentClose: (window: BrowserWindow) => void, browsers: BrowserRuntime): void {
+export function registerIpcHandlers(service: WorkspaceService, finishDocumentClose: (window: BrowserWindow) => void, browsers: BrowserRuntime, previews: FilePreviewRuntime): void {
   const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown): void => {
     ipcMain.handle(channel, (event, ...args) => {
       const owner = BrowserWindow.fromWebContents(event.sender);
@@ -48,6 +50,12 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
     });
   };
   handle(channels.writeClipboard, (_event, text) => clipboard.writeText(z.string().max(2_000_000).parse(text)));
+  handle(channels.browseWorkspaceFiles, (_event, input) => service.browseWorkspaceFiles(workspaceFileInputSchema.parse(input)));
+  handle(channels.openFilePreview, (_event, input) => service.openFilePreview(workspaceFileInputSchema.parse(input)));
+  handle(channels.closeFilePreview, (_event, id) => service.closeFilePreview(sessionIdSchema.parse(id)));
+  handle(channels.refreshFilePreview, (_event, id) => previews.refresh(sessionIdSchema.parse(id)));
+  handle(channels.filePreviewStates, () => previews.states());
+  handle(channels.filePreviewLayout, (_event, input) => previews.setLayout(browserLayoutSchema.parse(input)));
   handle(channels.createBrowser, (_event, input) => service.createBrowser(createBrowserSchema.parse(input)));
   handle(channels.navigateBrowser, (_event, input) => { const parsed = navigateBrowserSchema.parse(input); return browsers.navigate(parsed.id, parsed.url); });
   handle(channels.closeBrowser, (_event, id) => service.closeBrowser(sessionIdSchema.parse(id)));

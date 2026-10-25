@@ -70,6 +70,7 @@ function migrateSnapshot(stored: StoredSnapshot): AppSnapshot {
     checkouts: stored.checkouts ?? base.checkouts,
     workspaces: (stored.workspaces ?? base.workspaces).map((workspace) => normalizeWorkspace(workspace, tmuxSessionNames.get(workspace.id))),
     browserTabs: stored.browserTabs ?? [],
+    filePreviewTabs: stored.filePreviewTabs ?? [],
     sessions: storedSessions.filter((session) => session.kind !== "tmux").map(normalizeSession)
   };
   if ((stored.schemaVersion ?? 0) < 11) {
