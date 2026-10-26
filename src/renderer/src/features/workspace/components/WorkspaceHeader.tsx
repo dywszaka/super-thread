@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Code2, ExternalLink, Focus, GitBranch, MoreHorizontal, Plus, Server, Trash2 } from "lucide-react";
+import { ChevronDown, Code2, ExternalLink, Focus, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Workspace } from "@/shared/domain";
@@ -25,6 +25,8 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const activeCount = sessions.filter((session) => session.status === "running" && session.activityStatus === "busy").length;
   const waitingCount = sessions.filter((session) => session.activityStatus === "waiting-input").length;
   const failedRestoreCount = sessions.filter((session) => session.status === "restore-failed").length;
+  const attentionCount = activeCount + waitingCount + failedRestoreCount;
+  const sessionSummary = `${activeCount} running · ${waitingCount} waiting · ${failedRestoreCount} restore failed`;
   useEffect(() => {
     if (!details && !menu) return;
     const closeFloatingPanels = (event: PointerEvent): void => {
@@ -33,10 +35,22 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
       if (details && !detailsButton.current?.contains(target) && !detailsPopover.current?.contains(target)) setDetails(false);
       if (menu && !menuAnchor.current?.contains(target)) setMenu(false);
     };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (details) detailsButton.current?.focus();
+      if (menu) menuAnchor.current?.querySelector("button")?.focus();
+      setDetails(false);
+      setMenu(false);
+    };
     window.addEventListener("pointerdown", closeFloatingPanels);
-    return () => window.removeEventListener("pointerdown", closeFloatingPanels);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeFloatingPanels);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
   }, [details, menu]);
   const openInVSCode = async (): Promise<void> => {
+    setMenu(false);
     setOpeningInVSCode(true);
     try {
       await window.desktop.openWorkspaceInVSCode(workspace.id);
@@ -47,6 +61,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
     }
   };
   const openTmuxInIterm = async (): Promise<void> => {
+    setMenu(false);
     setOpeningTmux(true);
     try {
       await window.desktop.openWorkspaceTmuxInIterm(workspace.id);
@@ -79,22 +94,21 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   return (
     <header className="workspace-header drag">
       <SidebarReopenButton />
-      <button ref={detailsButton} className="workspace-identity no-drag" onClick={() => { setDetails((open) => !open); setMenu(false); }}>
-        <div><span>{workThread?.name}</span><i>/</i><span>{project?.name}</span><i>/</i><strong>{workspace.name}</strong></div>
-        <p><Server size={12} /> {device?.name}<span>·</span><GitBranch size={12} /> {workspace.branch}{workspace.kind === "main" ? " · Main checkout" : ""}</p>
+      <button ref={detailsButton} className="workspace-identity no-drag" aria-label="Workspace details" aria-expanded={details} title={`${workspace.name} · ${device?.name ?? ""} · ${workspace.branch}`} onClick={() => { setDetails((open) => !open); setMenu(false); }}>
+        <strong title={workspace.name}>{workspace.name}</strong>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
+        <span className="workspace-context"><span>·</span><span title={device?.name}>{device?.name}</span><span>·</span><span title={workspace.branch}>{workspace.branch}</span></span>
       </button>
-      {(activeCount > 0 || waitingCount > 0 || failedRestoreCount > 0) && <div className="session-summary no-drag">
-        {activeCount > 0 && <span><i className="busy" /> {activeCount} running</span>}
-        {waitingCount > 0 && <span><i className="waiting" /> {waitingCount} waiting</span>}
-        {failedRestoreCount > 0 && <span><i className="failed" /> {failedRestoreCount} failed</span>}
-      </div>}
+      {attentionCount > 0 && <div className="session-summary no-drag" role="img" aria-label={sessionSummary} title={sessionSummary}><i className={failedRestoreCount ? "failed" : waitingCount ? "waiting" : "busy"} /><span>{attentionCount}</span></div>}
       <div className="header-actions no-drag">
-        <button className="button" disabled={workspace.status !== "ready"} title="Enter Focus mode" onClick={enterFocusMode}><Focus size={14} /> Focus</button>
-        <button className="button" disabled={workspace.status !== "ready" || openingInVSCode} title="Open this workspace in Visual Studio Code" onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button>
-        <button className="button" disabled={workspace.status !== "ready" || openingTmux} title="Open this workspace's tmux session in iTerm" onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> {openingTmux ? "Opening…" : "tmux in iTerm"}</button>
-        <button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New</button>
-        <div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions"><MoreHorizontal size={17} /></button>{menu && <div className="context-menu"><button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button></div>}</div>
+        <button className="icon-button" disabled={workspace.status !== "ready"} aria-label="Enter Focus mode" title="Enter Focus mode" onClick={enterFocusMode}><Focus size={14} /></button>
+        <div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions" title="Workspace actions" aria-expanded={menu}><MoreHorizontal size={17} /></button>{menu && <div className="context-menu">
+          <button disabled={workspace.status !== "ready" || openingInVSCode} onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button>
+          <button disabled={workspace.status !== "ready" || openingTmux} onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> {openingTmux ? "Opening…" : "tmux in iTerm"}</button>
+          <button onClick={() => { setMenu(false); openDialog("workspace"); }}><Plus size={14} /> New Workspace</button>
+          <div className="context-menu-separator" />
+          <button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button>
+        </div>}</div>
       </div>
       {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Main checkout" : "Worktree"}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
     </header>

@@ -1084,37 +1084,19 @@ Terminal 永远属于 Workspace。
 
 # 20. Workspace Header
 
-顶部只显示必要信息：
+Workspace Header 固定为 40px 的单行，显示：
 
 ```text
-llama.cpp / nvfp4-kernel
-
-dev-cuda
-work/nvfp4-kernel
+nvfp4-kernel ▾ · dev-cuda · work/nvfp4-kernel       [Focus 图标] [⋯]
 ```
 
-可以展开查看：
+Workspace 名称优先保留，Device 与 Branch 使用次级文字。宽度不足时省略并可悬停查看完整文字，Header 与操作区均不换行；侧栏收起时保留 macOS 交通灯与展开侧栏按钮的安全区。点击名称展开现有详情浮层，查看 WorkThread、Project、Device、Type、Branch、Base 与完整 Path。
 
-```text
-Project
-llama.cpp
+右侧保留 Focus 图标和 Workspace actions 菜单。菜单提供 `Open in VS Code`、`tmux in iTerm`、`New Workspace` 和 `Delete workspace`；标签栏 `＋` 仍负责新建 Terminal、Browser 和 File Preview。VS Code 对本地 Workspace 使用本地文件 URI，对 Remote Workspace 使用 Remote-SSH URI，并沿用 Device 已保存的 SSH user、host 和非默认 port；tmux 操作在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用 Focus 与外部打开操作；外部打开期间禁用对应菜单项。菜单或详情可通过 Escape 或点击外部关闭，Escape 将焦点归还入口。
 
-Device
-dev-cuda
+有需要注意的 Session 时只显示一个紧凑计数标记，汇总正在执行、等待输入与恢复失败的数量；悬停及辅助技术可读取各项数量，标记颜色优先表示恢复失败、其次等待输入。远程未知活动不推断为忙碌或等待。
 
-Branch
-work/nvfp4-kernel
-
-Base
-master
-
-Path
-~/.superthread/workspaces/llama.cpp/nvfp4-kernel
-```
-
-右上角并列提供 `Open in VS Code` 与 `tmux in iTerm`。前者对本地 Workspace 使用 VS Code 的本地文件 URI，对 Remote Device 上的 Workspace 使用 VS Code Remote-SSH URI，并使用该 Device 已保存的 SSH user、host 和非默认 port；后者在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用这两个操作。
-
-Header 在有状态需要注意时显示紧凑 Session 汇总：本地正在执行、已完成但未读、恢复失败。远程未知活动不推断为忙碌或等待。切换到带未读结果的 Terminal 后清除未读标记。
+Terminal、Browser 和文件预览共用的标签栏固定高 32px，保留关闭、拖动排序及 ⌘1–⌘9；标签过多时横向滚动。Browser 和文件预览工具栏均为 32px，使用 28px 控件，文件预览顶部总高为 104px。普通 Browser 地址可编辑，文件路径保持只读并通过文件夹入口选择文件。Focus 标题栏同样为 40px，保留退出入口及交通灯安全区。正文、弹窗和全局 34px 控件不缩放。
 
 ---
 
@@ -1730,7 +1712,7 @@ BrowserTab 是 Workspace 持有的本机网页视图记录，不复用代表 PTY
 - schema 14 增加 `filePreviewTabs` 集合，旧数据迁移为空集合。重启及窗口重开后恢复标签与顺序，在首次选择时读取最新内容；加载状态、错误、文件字节和 SSH 子进程属于运行时数据，不写入快照。成功删除 Workspace 后清理其预览标签及运行时。
 - 预览为只读。PDF 使用内置查看器支持翻页和缩放，协议支持 Range；HTML 支持内嵌 JavaScript、Workspace 内的 JS/module 文件和基于内嵌数据的动态图表（含表达式编译与 Blob Worker），同时阻止 fetch、XHR、WebSocket 等数据连接；Markdown 渲染标题、列表、表格、引用与代码块，关闭原始 HTML。不运行 Markdown 图表脚本。
 - 主文件、目录及关联资源均检查实际路径，拒绝越界、目标位于 Workspace 外的软链接和非普通文件。相对资源从当前文件目录解析，根相对资源从 Workspace 根目录解析；仅自动加载 Workspace 内资源，不请求 CDN。受支持的文件链接打开预览标签，用户点击的 HTTP(S) 链接打开普通 Browser 标签。
-- 工具栏采用约 43px 高的单行地址栏，显示只读的 Workspace 相对路径、刷新按钮及文件夹按钮。文件夹按钮从当前文件所在目录打开选择弹窗，选择文件后在当前标签切换 PDF、HTML、Markdown，保留标签 id、顺序及创建时间，持久化更新后的路径和格式。目标已在其他预览标签打开时切到已有标签；取消选择保留原页面，选择失败在弹窗内提示错误；Escape 关闭弹窗。切换格式时重建对应的隔离视图，避免复用错误的脚本设置。刷新重新读取文件和关联资源；切换标签保留页面，不轮询 SSH。HTML/Markdown 上限 5 MiB，PDF 和单个关联资源上限 50 MiB，超限报错且不截断。文件缓存总量上限 256 MiB，最多同时进行四个读取请求；关闭标签或窗口释放其缓存并取消请求，旧请求结果不得覆盖新内容或重建标签。
+- 工具栏采用 32px 高的单行地址栏，显示只读的 Workspace 相对路径、刷新按钮及文件夹按钮。文件夹按钮从当前文件所在目录打开选择弹窗，选择文件后在当前标签切换 PDF、HTML、Markdown，保留标签 id、顺序及创建时间，持久化更新后的路径和格式。目标已在其他预览标签打开时切到已有标签；取消选择保留原页面，选择失败在弹窗内提示错误；Escape 关闭弹窗。切换格式时重建对应的隔离视图，避免复用错误的脚本设置。刷新重新读取文件和关联资源；切换标签保留页面，不轮询 SSH。HTML/Markdown 上限 5 MiB，PDF 和单个关联资源上限 50 MiB，超限报错且不截断。文件缓存总量上限 256 MiB，最多同时进行四个读取请求；关闭标签或窗口释放其缓存并取消请求，旧请求结果不得覆盖新内容或重建标签。
 - Renderer 仅使用校验过的窄 IPC：浏览 Workspace 文件、打开/关闭预览、刷新、布局和运行状态。文件视图使用独立内存 session、沙箱 WebContentsView 和专用协议，无 Node 或应用 preload，禁止权限、下载及任意导航；弹窗、菜单和拖动期间隐藏原生视图。
 
 验收覆盖本地与真实 SSH 的三种文件、中文及特殊文件名、关联资源和相对路径、软链接边界、PDF 二进制与 Range、HTML 内嵌数据动态图表、Workspace 脚本加载、Markdown/SVG 脚本及外部连接阻止、刷新与断线重试、重复打开、混合排序与快捷键、旧快照迁移、窗口重开和 Workspace 删除清理，以及浅深色、窄窗口、交通灯、拖动区、弹窗遮挡和 Terminal 生命周期回归。

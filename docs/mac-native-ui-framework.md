@@ -820,12 +820,12 @@ Features
 
 - `src/renderer/src/styles/globals.css` 是字体、颜色、间距、尺寸和终端配色 token 的统一入口。业务组件消费语义变量；修改既有规则，避免在文件末尾叠加重复覆盖。系统 UI 字体保持平台默认平滑，不设置页面缩放来补偿字号。
 - 文字层级为 12/13/14/15/16/20px，对应辅助信息、控件、正文与导航、文档正文、局部标题和页面标题，字重使用 400/500/600。文档内标题独立按 28/22/18px 排版，正文行高 1.65，容器最大宽 800px。
-- 使用 4px 间距基准；控件高 34px、单行导航高 36px，控件/容器/弹窗圆角为 6/8/12px。浮层使用柔和阴影，列表和常驻控件通过背景与边框表达层次。主要内容不使用次级文字色来表达未选中状态。
+- 使用 4px 间距基准；普通控件高 34px、单行导航高 36px；Workspace 顶部单独使用 28px 紧凑控件，Header / Focus 标题栏高 40px、混合标签栏与 Browser / 文件工具栏各高 32px，控件/容器/弹窗圆角为 6/8/12px。浮层使用柔和阴影，列表和常驻控件通过背景与边框表达层次。主要内容不使用次级文字色来表达未选中状态。
 - 浅色为白色内容区与浅灰侧栏，深色为中性炭灰；黑白反色用于主要按钮，蓝色用于链接、焦点和插入位置。普通文字的对比度至少为 4.5:1。所有可交互控件需具备 hover、selected、focus-visible 和 disabled 状态。
 - 第三方 xterm 与 Milkdown 样式统一在 renderer 入口中先导入，应用样式最后导入；编辑器的字体、主题、焦点和滚动覆盖写在文档样式区域。
 - `terminal-appearance.ts` 从 CSS token 读取 xterm 字体与完整 ANSI 主题，终端始终保持深色，避免 xterm 与外层容器背景产生色差。仅调整显示选项，PTY 和 renderer/window 生命周期继续由既有架构管理。
 - `.terminal-host .xterm` 使用 `text-spacing-trim: space-all`，并继承到字符测量节点与显示行，禁用 Chromium 的中文标点压缩，避免 xterm DOM renderer 的测量与绘制宽度不一致、混排行尾累积偏移后被裁剪。终端视觉回归需包含接近右边缘的中英文与全角标点长行。
-- BrowserWindow 启动背景与 renderer 的浅/深色背景一致。窗口缩小后操作区换行，弹窗采用限制总高的 flex 布局，只有正文滚动；浏览器的原生视图继续根据实际内容矩形更新边界。
-- Workspace 文件预览与 Browser 共用原生 pane 的 renderer 布局同步机制：resize 保持原生视图可见，弹窗、菜单与拖动期间隐藏，切换时归还焦点。文件预览使用独立内存 session 和 `workspace-preview` 协议，不扩大普通 Browser 的 HTTP(S) 地址范围。协议在 app ready 前注册 standard/secure 特性，并绑定到对应预览 session；HTML 在沙箱内启用脚本以渲染内嵌数据，允许 Workspace 脚本和 Blob Worker，并通过 CSP 与 session 请求过滤阻止外部连接；Markdown 禁用脚本，所有文件预览均无应用 preload，PDF 独立启用内置查看器。预览工具栏为约 43px 高的单行地址栏，复用 Browser 风格的只读路径框和刷新控件，并提供文件夹按钮；点击文件夹从当前文件所在目录选择文件，在当前标签切换预览。工具栏和选择弹窗均不接受手动路径输入；弹窗打开时暂停标签快捷键并隐藏原生视图，取消后恢复。选择弹窗复用 Modal、语义 token 和 no-drag 控件，路径过长时省略，目录列表在弹窗内滚动。
+- BrowserWindow 启动背景与 renderer 的浅/深色背景一致。Workspace Header 在窄窗口中保持单行，名称和上下文省略并提供完整文字提示，标签横向滚动；其他页面操作区可换行。Workspace 只常显 Focus 与更多操作图标，完整上下文通过详情浮层查看，VS Code、tmux、New Workspace 与 Delete 收入菜单；状态合并为带悬停说明的计数标记。侧栏收起时展开按钮缩到 28px 并保持在 40px 标题栏内，交通灯安全区与 drag/no-drag 边界保留。弹窗采用限制总高的 flex 布局，只有正文滚动；浏览器的原生视图继续根据实际内容矩形更新边界。
+- Workspace 文件预览与 Browser 共用原生 pane 的 renderer 布局同步机制：resize 保持原生视图可见，弹窗、菜单与拖动期间隐藏，切换时归还焦点。文件预览使用独立内存 session 和 `workspace-preview` 协议，不扩大普通 Browser 的 HTTP(S) 地址范围。协议在 app ready 前注册 standard/secure 特性，并绑定到对应预览 session；HTML 在沙箱内启用脚本以渲染内嵌数据，允许 Workspace 脚本和 Blob Worker，并通过 CSP 与 session 请求过滤阻止外部连接；Markdown 禁用脚本，所有文件预览均无应用 preload，PDF 独立启用内置查看器。预览工具栏与 Browser 共用 32px 高的单行地址栏与 28px 控件，复用 Browser 风格的只读路径框和刷新控件，并提供文件夹按钮；点击文件夹从当前文件所在目录选择文件，在当前标签切换预览。工具栏和选择弹窗均不接受手动路径输入；弹窗打开时暂停标签快捷键并隐藏原生视图，取消后恢复。选择弹窗复用 Modal、语义 token 和 no-drag 控件，路径过长时省略，目录列表在弹窗内滚动。
 
 视觉回归需检查 Retina 像素比、实际生效字体、100% 应用缩放、浅/深色、1320×840 与 880×560 窗口、侧栏收起与 184px 最窄宽度，并保留代表性截图。交互验证覆盖交通灯与拖动区、焦点环、弹窗/抽屉、编辑与保存、TODO、浏览器遮挡及真实终端的完整生命周期。
