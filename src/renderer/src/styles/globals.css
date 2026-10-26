@@ -1224,6 +1224,8 @@ input, textarea, [contenteditable="true"], .selectable {
 .terminal-host .xterm {
   height: 100%;
   padding-right: 12px;
+  /* Keep CJK punctuation advances identical in xterm's measurement and rows. */
+  text-spacing-trim: space-all;
 }
 
 .terminal-host .xterm-viewport {
