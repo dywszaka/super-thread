@@ -3,9 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import type { FilePreviewTab, Workspace, WorkspaceFileLocation } from "@/shared/domain";
 import { Modal } from "./Modal";
 
-export function FilePreviewDialog({ workspace, onClose, onOpen }: { workspace: Workspace; onClose(): void; onOpen(tab: FilePreviewTab): void }): React.ReactNode {
+export function FilePreviewDialog({ workspace, previewId, initialDirectory = "", onClose, onOpen }: {
+  workspace: Workspace;
+  previewId?: string;
+  initialDirectory?: string;
+  onClose(): void;
+  onOpen(tab: FilePreviewTab): void;
+}): React.ReactNode {
   const [location, setLocation] = useState<WorkspaceFileLocation>();
-  const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const generation = useRef(0);
@@ -15,24 +20,26 @@ export function FilePreviewDialog({ workspace, onClose, onOpen }: { workspace: W
     try {
       const result = await window.desktop.browseWorkspaceFiles({ workspaceId: workspace.id, path: input });
       if (current !== generation.current) return;
-      if (result.kind === "directory") { setLocation(result); setPath(result.path === "." ? "" : result.path); }
+      if (result.kind === "directory") setLocation(result);
       else {
         if (!result.fileType) throw new Error("Choose a PDF, HTML, or Markdown file.");
-        const tab = await window.desktop.openFilePreview({ workspaceId: workspace.id, path: result.path });
+        const tab = previewId
+          ? await window.desktop.navigateFilePreview({ id: previewId, path: result.path })
+          : await window.desktop.openFilePreview({ workspaceId: workspace.id, path: result.path });
         if (current === generation.current) onOpen(tab);
       }
     } catch (cause) { if (current === generation.current) setError(String(cause)); }
     finally { if (current === generation.current) setBusy(false); }
   };
   useEffect(() => {
-    void visit("");
+    void visit(initialDirectory);
     return () => { generation.current++; };
-  }, [workspace.id]);
+  }, [workspace.id, initialDirectory, previewId]);
   const segments = location?.path === "." ? [] : location?.path.split("/") ?? [];
-  return <Modal open title="Open file preview" description={`Browse PDF, HTML, and Markdown files in ${workspace.name}.`} onClose={onClose}
-    onSubmit={(event) => { event.preventDefault(); if (!busy) void visit(path); }}
-    footer={<><button type="button" className="button" onClick={onClose}>Cancel</button><button type="submit" className="button primary" disabled={busy}>{busy ? "Loading…" : "Open path"}</button></>}>
-    <div className="file-picker-path"><input aria-label="Workspace file path" placeholder="Relative path or absolute path within this workspace" value={path} onChange={(event) => setPath(event.target.value)} spellCheck={false} /><button type="button" className="icon-button" aria-label="Refresh directory" disabled={busy} onClick={() => void visit(location?.path ?? "")}><RotateCw size={15} /></button></div>
+  return <Modal open title={previewId ? "Switch preview file" : "Open file preview"} description={`Choose a PDF, HTML, or Markdown file in ${workspace.name}.`} onClose={onClose}
+    onSubmit={(event) => event.preventDefault()}
+    footer={<button type="button" className="button" onClick={onClose}>Cancel</button>}>
+    <div className="file-picker-path"><input aria-label="Workspace file path" value={location?.path ?? (initialDirectory || ".")} readOnly spellCheck={false} /><button type="button" className="icon-button" aria-label="Refresh directory" disabled={busy} onClick={() => void visit(location?.path ?? initialDirectory)}><RotateCw size={15} /></button></div>
     <nav className="file-picker-breadcrumbs" aria-label="File location">
       <button type="button" disabled={busy} title={workspace.path} onClick={() => void visit("")}>{workspace.name}</button>
       {segments.map((segment, index) => <span key={index}> / <button type="button" disabled={busy} onClick={() => void visit(segments.slice(0, index + 1).join("/"))}>{segment}</button></span>)}

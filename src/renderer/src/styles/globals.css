@@ -3332,14 +3332,6 @@ input, textarea, [contenteditable="true"], .selectable {
   padding: var(--space-1) var(--space-3);
 }
 
-.file-preview-navigation-error {
-  margin: 0;
-  padding: var(--space-1) var(--space-3);
-  border-bottom: 1px solid var(--border);
-  overflow-wrap: anywhere;
-  font-size: var(--text-control);
-}
-
 .file-picker-path {
   display: flex;
   align-items: center;
