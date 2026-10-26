@@ -75,7 +75,7 @@ export class FilePreviewRuntime {
     const view = new WebContentsView({ webPreferences: {
       session: isolated, nodeIntegration: false, nodeIntegrationInSubFrames: false, nodeIntegrationInWorker: false,
       sandbox: true, contextIsolation: true, webSecurity: true, webviewTag: false,
-      javascript: tab.fileType === "pdf", plugins: tab.fileType === "pdf", navigateOnDragDrop: false
+      javascript: tab.fileType !== "markdown", plugins: tab.fileType === "pdf", navigateOnDragDrop: false
     } });
     const page: PreviewPage = { tab, view, session: isolated, token: randomUUID(), controller: new AbortController(), pending: new Map(), state: { id: tab.id, loading: true }, url: "", lastGesture: 0, visible: false };
     this.pages.set(tab.id, page);
@@ -84,7 +84,10 @@ export class FilePreviewRuntime {
     attachWorkspaceShortcuts(this.window, view.webContents);
     isolated.protocol.handle(FILE_PREVIEW_SCHEME, (request) => this.respond(page, request));
     isolated.webRequest.onBeforeRequest((details, callback) => {
-      const allowed = details.url.startsWith(`${FILE_PREVIEW_SCHEME}://${page.token}/`) || (tab.fileType === "pdf" && (details.url.startsWith("chrome-extension://") || details.url.startsWith("chrome://resources/"))) || details.url.startsWith("data:");
+      const allowed = details.url.startsWith(`${FILE_PREVIEW_SCHEME}://${page.token}/`)
+        || (tab.fileType === "html" && details.url.startsWith(`blob:${FILE_PREVIEW_SCHEME}://${page.token}/`))
+        || (tab.fileType === "pdf" && (details.url.startsWith("chrome-extension://") || details.url.startsWith("chrome://resources/")))
+        || details.url.startsWith("data:");
       callback({ cancel: !allowed });
     });
     const contents = view.webContents;
@@ -183,7 +186,7 @@ export class FilePreviewRuntime {
         bytes = Buffer.from(renderPreviewMarkdown(bytes.toString("utf8"), nativeTheme.shouldUseDarkColors));
         mime = "text/html; charset=utf-8";
       }
-      return previewByteResponse(bytes, mime, request.headers.get("range"), request.method);
+      return previewByteResponse(bytes, mime, request.headers.get("range"), request.method, page.tab.fileType === "html" ? "html" : "static");
     } catch (cause) {
       if (!controller.signal.aborted) {
         page.state.error = `${path === page.tab.path ? "Could not preview file" : `Could not load resource ${path}`}: ${String(cause)}`;

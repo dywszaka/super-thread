@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { WorkspaceService } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
-import { previewByteResponse, renderPreviewMarkdown, staticPreviewCsp } from "../src/main/runtime/file-preview-content";
+import { htmlPreviewCsp, previewByteResponse, previewMimeType, renderPreviewMarkdown, staticPreviewCsp } from "../src/main/runtime/file-preview-content";
 import type { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { workspaceFileInputSchema } from "../src/shared/contract";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../src/shared/domain";
@@ -82,4 +82,17 @@ test("PDF byte responses support full, bounded, suffix, HEAD and invalid ranges"
   for (const range of ["bytes=99-", "bytes=-0", "bytes=4-1", "bytes=0-1,3-4", "bytes=-"]) assert.equal(previewByteResponse(bytes, "application/pdf", range).status, 416);
   assert.equal((await previewByteResponse(bytes, "application/pdf", null, "HEAD").arrayBuffer()).byteLength, 0);
   assert.equal(previewByteResponse(bytes, "text/html", null).headers.get("content-security-policy"), staticPreviewCsp);
+});
+
+test("HTML scripts can render embedded data while connections remain blocked and Markdown/SVG stay static", () => {
+  const bytes = Buffer.from("<script>document.body.append('chart')</script>");
+  const html = previewByteResponse(bytes, "text/html; charset=utf-8", null, "GET", "html");
+  assert.equal(html.headers.get("content-security-policy"), htmlPreviewCsp);
+  assert.match(htmlPreviewCsp, /script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:/);
+  assert.match(htmlPreviewCsp, /connect-src 'none'/);
+  assert.match(htmlPreviewCsp, /worker-src 'self' blob:/);
+  assert.match(htmlPreviewCsp, /frame-src 'none'/);
+  assert.equal(previewByteResponse(bytes, "text/html", null).headers.get("content-security-policy"), staticPreviewCsp);
+  assert.equal(previewByteResponse(bytes, "image/svg+xml", null, "GET", "html").headers.get("content-security-policy"), staticPreviewCsp);
+  for (const path of ["chart.js", "lib/CHART.JS", "chart.mjs"]) assert.equal(previewMimeType(path), "text/javascript; charset=utf-8");
 });

@@ -2,10 +2,16 @@ import MarkdownIt from "markdown-it";
 import { extname } from "node:path";
 
 const markdown = new MarkdownIt({ html: false, linkify: true });
-export const staticPreviewCsp = "default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'";
+export const staticPreviewCsp = "default-src 'none'; connect-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'";
+// Report/chart libraries may compile expressions or create workers from embedded data.
+// These scripts stay inside the sandbox; data connections remain forbidden.
+export const htmlPreviewCsp = staticPreviewCsp
+  .replace("script-src 'none'", "script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:")
+  .replace("img-src 'self' data:", "img-src 'self' data: blob:") + "; worker-src 'self' blob:";
 export const previewMimeType = (path: string): string => ({
   ".pdf": "application/pdf", ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
   ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon", ".avif": "image/avif",
   ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf"
 }[extname(path).toLowerCase()] ?? "application/octet-stream");
@@ -20,9 +26,10 @@ export function renderPreviewMarkdown(source: string, dark: boolean): string {
 }
 
 /** Range responses let the native PDF viewer seek without another SSH transfer. */
-export function previewByteResponse(bytes: Buffer, contentType: string, range: string | null, method = "GET"): Response {
+export function previewByteResponse(bytes: Buffer, contentType: string, range: string | null, method = "GET", mode: "static" | "html" = "static"): Response {
   const headers = new Headers({ "Content-Type": contentType, "Content-Length": String(bytes.length), "Accept-Ranges": "bytes", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
-  if (contentType.startsWith("text/html") || contentType === "image/svg+xml") headers.set("Content-Security-Policy", staticPreviewCsp);
+  if (contentType.startsWith("text/html")) headers.set("Content-Security-Policy", mode === "html" ? htmlPreviewCsp : staticPreviewCsp);
+  if (contentType === "image/svg+xml") headers.set("Content-Security-Policy", staticPreviewCsp);
   let status = 200, body = bytes;
   if (range) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
