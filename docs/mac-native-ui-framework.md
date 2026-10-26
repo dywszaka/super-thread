@@ -826,6 +826,6 @@ Features
 - `terminal-appearance.ts` 从 CSS token 读取 xterm 字体与完整 ANSI 主题，终端始终保持深色，避免 xterm 与外层容器背景产生色差。仅调整显示选项，PTY 和 renderer/window 生命周期继续由既有架构管理。
 - `.terminal-host .xterm` 使用 `text-spacing-trim: space-all`，并继承到字符测量节点与显示行，禁用 Chromium 的中文标点压缩，避免 xterm DOM renderer 的测量与绘制宽度不一致、混排行尾累积偏移后被裁剪。终端视觉回归需包含接近右边缘的中英文与全角标点长行。
 - BrowserWindow 启动背景与 renderer 的浅/深色背景一致。窗口缩小后操作区换行，弹窗采用限制总高的 flex 布局，只有正文滚动；浏览器的原生视图继续根据实际内容矩形更新边界。
-- Workspace 文件预览与 Browser 共用原生 pane 的 renderer 布局同步机制：resize 保持原生视图可见，弹窗、菜单与拖动期间隐藏，切换时归还焦点。文件预览使用独立内存 session 和 `workspace-preview` 协议，不扩大普通 Browser 的 HTTP(S) 地址范围。协议在 app ready 前注册 standard/secure 特性，并绑定到对应预览 session；HTML 在沙箱内启用脚本以渲染内嵌数据，允许 Workspace 脚本和 Blob Worker，并通过 CSP 与 session 请求过滤阻止外部连接；Markdown 禁用脚本，所有文件预览均无应用 preload，PDF 独立启用内置查看器。选择弹窗复用 Modal、语义 token 和 no-drag 控件，路径过长时省略，目录列表在弹窗内滚动。
+- Workspace 文件预览与 Browser 共用原生 pane 的 renderer 布局同步机制：resize 保持原生视图可见，弹窗、菜单与拖动期间隐藏，切换时归还焦点。文件预览使用独立内存 session 和 `workspace-preview` 协议，不扩大普通 Browser 的 HTTP(S) 地址范围。协议在 app ready 前注册 standard/secure 特性，并绑定到对应预览 session；HTML 在沙箱内启用脚本以渲染内嵌数据，允许 Workspace 脚本和 Blob Worker，并通过 CSP 与 session 请求过滤阻止外部连接；Markdown 禁用脚本，所有文件预览均无应用 preload，PDF 独立启用内置查看器。预览工具栏为约 43px 高的单行地址栏，复用 Browser 输入框和刷新控件；输入 Workspace 相对路径并回车即可切换文件，错误提示保留当前页面，原生内容矩形跟随地址栏与错误提示高度更新。选择弹窗复用 Modal、语义 token 和 no-drag 控件，路径过长时省略，目录列表在弹窗内滚动。
 
 视觉回归需检查 Retina 像素比、实际生效字体、100% 应用缩放、浅/深色、1320×840 与 880×560 窗口、侧栏收起与 184px 最窄宽度，并保留代表性截图。交互验证覆盖交通灯与拖动区、焦点环、弹窗/抽屉、编辑与保存、TODO、浏览器遮挡及真实终端的完整生命周期。

@@ -190,6 +190,7 @@ export interface FilePreviewTab {
   updatedAt: string;
 }
 export interface WorkspaceFileInput { workspaceId: string; path: string; }
+export interface NavigateFilePreviewInput { id: string; path: string; }
 export interface WorkspaceFileEntry {
   name: string;
   path: string;

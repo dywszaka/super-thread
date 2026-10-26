@@ -4,7 +4,7 @@ import type { FilePreviewRuntime } from "../runtime/file-preview-runtime";
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { z } from "zod";
 import {
-  workspaceFileInputSchema,
+  workspaceFileInputSchema, navigateFilePreviewSchema,
   createTodoSchema, updateTodoSchema, todoTargetSchema,
   createBrowserSchema, navigateBrowserSchema, reorderWorkspaceTabsSchema, browserLayoutSchema, browserCommandSchema,
   addProjectSchema,
@@ -52,6 +52,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.writeClipboard, (_event, text) => clipboard.writeText(z.string().max(2_000_000).parse(text)));
   handle(channels.browseWorkspaceFiles, (_event, input) => service.browseWorkspaceFiles(workspaceFileInputSchema.parse(input)));
   handle(channels.openFilePreview, (_event, input) => service.openFilePreview(workspaceFileInputSchema.parse(input)));
+  handle(channels.navigateFilePreview, (_event, input) => previews.navigate(navigateFilePreviewSchema.parse(input)));
   handle(channels.closeFilePreview, (_event, id) => service.closeFilePreview(sessionIdSchema.parse(id)));
   handle(channels.refreshFilePreview, (_event, id) => previews.refresh(sessionIdSchema.parse(id)));
   handle(channels.filePreviewStates, () => previews.states());

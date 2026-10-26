@@ -6,6 +6,7 @@ import type { BrowserState, BrowserTab, FilePreviewState, FilePreviewTab, Termin
 const bridge: DesktopBridge = {
   browseWorkspaceFiles: (input) => ipcRenderer.invoke(channels.browseWorkspaceFiles, input),
   openFilePreview: (input) => ipcRenderer.invoke(channels.openFilePreview, input),
+  navigateFilePreview: (input) => ipcRenderer.invoke(channels.navigateFilePreview, input),
   closeFilePreview: (id) => ipcRenderer.invoke(channels.closeFilePreview, id),
   refreshFilePreview: (id) => ipcRenderer.invoke(channels.refreshFilePreview, id),
   filePreviewLayout: (input) => ipcRenderer.invoke(channels.filePreviewLayout, input),

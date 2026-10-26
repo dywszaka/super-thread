@@ -1,6 +1,6 @@
 import { normalizeBrowserUrl } from "../../shared/browser-url";
 import { WorkspaceFileRuntime } from "../runtime/workspace-file-runtime";
-import type { FilePreviewTab, WorkspaceFileInput, WorkspaceFileLocation } from "../../shared/domain";
+import type { FilePreviewTab, WorkspaceFileInput, WorkspaceFileLocation, NavigateFilePreviewInput } from "../../shared/domain";
 import type { BrowserTab, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput } from "../../shared/domain";
 import { EventEmitter } from "node:events";
 import { hostname } from "node:os";
@@ -113,6 +113,7 @@ type DirectoryRuntimeFactory = (device: Device, connection: DeviceConnection) =>
 type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
+  private readonly pendingFileNavigations = new Map<string, symbol>();
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
   private readonly pendingTmuxOpens = new Map<string, Promise<void>>();
   private readonly startingSessionIds = new Set<string>();
@@ -705,11 +706,40 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async closeFilePreview(id: string): Promise<void> {
+    this.pendingFileNavigations.delete(id);
     await this.store.update((draft) => {
       if (!draft.filePreviewTabs.some((tab) => tab.id === id)) throw new Error("File preview no longer exists");
       draft.filePreviewTabs = draft.filePreviewTabs.filter((tab) => tab.id !== id);
     });
     this.changed();
+  }
+
+  async navigateFilePreview(input: NavigateFilePreviewInput): Promise<FilePreviewTab> {
+    const request = Symbol();
+    this.pendingFileNavigations.set(input.id, request);
+    try {
+      const current = this.snapshot().filePreviewTabs.find((tab) => tab.id === input.id);
+      if (!current) throw new Error("File preview no longer exists");
+      const file = await this.browseWorkspaceFiles({ workspaceId: current.workspaceId, path: input.path });
+      if (file.kind !== "file" || !file.fileType) throw new Error("Select a PDF, HTML, or Markdown file");
+      let selected!: FilePreviewTab;
+      await this.store.update((draft) => {
+        if (this.pendingFileNavigations.get(input.id) !== request) throw new Error("File navigation was superseded or cancelled");
+        const tab = draft.filePreviewTabs.find((tab) => tab.id === input.id);
+        if (!tab) throw new Error("File preview no longer exists");
+        if (this.workspace(draft, tab.workspaceId).status !== "ready") throw new Error("Workspace is not ready");
+        const existing = draft.filePreviewTabs.find((other) => other.id !== tab.id && other.workspaceId === tab.workspaceId && other.path === file.path);
+        if (existing) { selected = existing; return; }
+        tab.path = file.path;
+        tab.fileType = file.fileType!;
+        tab.updatedAt = now();
+        selected = tab;
+      });
+      this.changed();
+      return selected;
+    } finally {
+      if (this.pendingFileNavigations.get(input.id) === request) this.pendingFileNavigations.delete(input.id);
+    }
   }
 
   async createBrowser(input: CreateBrowserInput): Promise<BrowserTab> {

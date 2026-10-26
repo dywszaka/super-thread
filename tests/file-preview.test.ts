@@ -3,15 +3,15 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { WorkspaceService } from "../src/main/application/workspace-service";
 import { JsonStore } from "../src/main/persistence/json-store";
 import { htmlPreviewCsp, previewByteResponse, previewMimeType, renderPreviewMarkdown, staticPreviewCsp } from "../src/main/runtime/file-preview-content";
 import type { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
-import { workspaceFileInputSchema } from "../src/shared/contract";
+import { navigateFilePreviewSchema, workspaceFileInputSchema } from "../src/shared/contract";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../src/shared/domain";
 
-test("preview tabs deduplicate canonical paths, mix ordering, restore metadata, and clean up with workspace", async (t) => {
+async function previewFixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), "preview-service-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, "report.md"), "# Report");
@@ -26,6 +26,11 @@ test("preview tabs deduplicate canonical paths, mix ordering, restore metadata, 
   await writeFile(path, JSON.stringify({ ...legacy, schemaVersion: 13 }));
   const service = new WorkspaceService(new JsonStore(path), Object.assign(new EventEmitter(), { has: () => false }) as unknown as TerminalRuntime, undefined, undefined, { sync() {}, reconnectAll() {}, setReconnectEnabled() {}, stop() {} });
   await service.initialize();
+  return { root, path, service };
+}
+
+test("preview tabs deduplicate canonical paths, mix ordering, restore metadata, and clean up with workspace", async (t) => {
+  const { path, service } = await previewFixture(t);
   assert.deepEqual(service.snapshot().filePreviewTabs, []);
   const [first, duplicate] = await Promise.all([service.openFilePreview({ workspaceId: "workspace", path: "report.md" }), service.openFilePreview({ workspaceId: "workspace", path: "alias.md" })]);
   assert.equal(first.id, duplicate.id);
@@ -54,6 +59,60 @@ test("preview bridge keeps filenames intact and rejects untrusted root or connec
   assert.equal(workspaceFileInputSchema.parse({ workspaceId: "w", path }).path, path);
   assert.equal(workspaceFileInputSchema.safeParse({ workspaceId: "w", path: "a\0.md" }).success, false);
   assert.equal(workspaceFileInputSchema.safeParse({ workspaceId: "w", path: "x", root: "/", host: "other" }).success, false);
+  assert.equal(navigateFilePreviewSchema.parse({ id: "preview", path }).path, path);
+  assert.equal(navigateFilePreviewSchema.safeParse({ id: "preview", path: "a\0.html" }).success, false);
+  assert.equal(navigateFilePreviewSchema.safeParse({ id: "preview", path, workspaceId: "other" }).success, false);
+});
+
+test("address navigation replaces the current preview and preserves tab identity, order and persisted path", async (t) => {
+  const { root, path, service } = await previewFixture(t);
+  await writeFile(join(root, "report.html"), "<h1>Report</h1>");
+  const first = await service.openFilePreview({ workspaceId: "workspace", path: "report.md" });
+  const next = await service.navigateFilePreview({ id: first.id, path: "./report.html" });
+  assert.equal(next.id, first.id);
+  assert.equal(next.order, first.order);
+  assert.equal(next.createdAt, first.createdAt);
+  assert.equal(next.path, "report.html");
+  assert.equal(next.fileType, "html");
+  assert.equal(service.snapshot().filePreviewTabs.length, 1);
+  assert.equal((await new JsonStore(path).load()).filePreviewTabs[0]?.path, "report.html");
+  for (const bad of ["missing.html", "../outside.md", "not-supported.ts", "."]) {
+    await assert.rejects(service.navigateFilePreview({ id: first.id, path: bad }));
+    assert.deepEqual(service.snapshot().filePreviewTabs, [next]);
+  }
+  const existing = await service.openFilePreview({ workspaceId: "workspace", path: "report.md" });
+  assert.equal((await service.navigateFilePreview({ id: first.id, path: "alias.md" })).id, existing.id);
+  assert.equal(service.snapshot().filePreviewTabs.length, 2);
+  assert.equal(service.snapshot().filePreviewTabs[0]?.path, "report.html");
+});
+
+test("late navigation cannot overwrite a newer path or recreate a closed preview", async (t) => {
+  const { root, service } = await previewFixture(t);
+  await writeFile(join(root, "report.html"), "<h1>Report</h1>");
+  const tab = await service.openFilePreview({ workspaceId: "workspace", path: "report.md" });
+  const browse = service.browseWorkspaceFiles.bind(service);
+  let release!: () => void;
+  let paused = false;
+  service.browseWorkspaceFiles = async (input) => {
+    const file = await browse(input);
+    if (input.path === "slow.html") { paused = true; await new Promise<void>((resolve) => { release = resolve; }); }
+    return file;
+  };
+  // Use a real file path for boundary checks, then delay its result like a slow SSH read.
+  await symlink(join(root, "report.html"), join(root, "slow.html"));
+  const old = service.navigateFilePreview({ id: tab.id, path: "slow.html" });
+  while (!paused) await new Promise<void>((resolve) => setImmediate(resolve));
+  const current = await service.navigateFilePreview({ id: tab.id, path: "alias.md" });
+  const superseded = assert.rejects(old, /superseded|cancelled/);
+  release(); await superseded;
+  assert.deepEqual(service.snapshot().filePreviewTabs, [current]);
+  paused = false;
+  const pending = service.navigateFilePreview({ id: tab.id, path: "slow.html" });
+  while (!paused) await new Promise<void>((resolve) => setImmediate(resolve));
+  await service.closeFilePreview(tab.id);
+  const cancelled = assert.rejects(pending, /cancelled|no longer exists/);
+  release(); await cancelled;
+  assert.deepEqual(service.snapshot().filePreviewTabs, []);
 });
 
 test("Markdown renders read-only tables and code while escaping raw HTML and preserving resource URLs", () => {

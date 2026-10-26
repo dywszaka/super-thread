@@ -3329,29 +3329,15 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .file-preview-toolbar {
   flex-wrap: nowrap;
+  padding: var(--space-1) var(--space-3);
 }
 
-.file-preview-path {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: var(--space-1);
-}
-
-.file-preview-path strong,
-.file-preview-path span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-preview-path strong {
-  font-weight: 500;
-}
-
-.file-preview-path span {
+.file-preview-navigation-error {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
   font-size: var(--text-control);
-  color: var(--muted-foreground);
 }
 
 .file-picker-path {

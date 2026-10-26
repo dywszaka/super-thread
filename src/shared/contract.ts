@@ -3,7 +3,7 @@ import { z } from "zod";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
-  FilePreviewTab, FilePreviewState, WorkspaceFileInput, WorkspaceFileLocation,
+  FilePreviewTab, FilePreviewState, WorkspaceFileInput, WorkspaceFileLocation, NavigateFilePreviewInput,
   SshTunnelRuntime,
   CreateTodoInput, UpdateTodoInput, TodoTarget,
   BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
@@ -37,6 +37,7 @@ import type {
 export const channels = {
   browseWorkspaceFiles: "workspace:files-browse",
   openFilePreview: "preview:open",
+  navigateFilePreview: "preview:navigate",
   closeFilePreview: "preview:close",
   refreshFilePreview: "preview:refresh",
   filePreviewLayout: "preview:layout",
@@ -297,12 +298,14 @@ export const workspaceFileInputSchema = z.object({
   workspaceId: z.string().min(1),
   path: z.string().max(8192).refine((path) => !path.includes("\0"), "Invalid file path")
 }).strict();
+export const navigateFilePreviewSchema = z.object({ id: z.string().min(1), path: workspaceFileInputSchema.shape.path }).strict();
 
 export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
   browseWorkspaceFiles(input: WorkspaceFileInput): Promise<WorkspaceFileLocation>;
   openFilePreview(input: WorkspaceFileInput): Promise<FilePreviewTab>;
+  navigateFilePreview(input: NavigateFilePreviewInput): Promise<FilePreviewTab>;
   closeFilePreview(id: string): Promise<void>;
   refreshFilePreview(id: string): Promise<void>;
   filePreviewLayout(input: BrowserLayoutInput): Promise<void>;

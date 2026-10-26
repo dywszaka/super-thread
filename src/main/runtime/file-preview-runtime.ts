@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, WebContentsView, nativeTheme, session, type Session, type WebContents } from "electron";
 import { channels } from "../../shared/contract";
-import type { BrowserLayoutInput, FilePreviewState, FilePreviewTab } from "../../shared/domain";
+import type { BrowserLayoutInput, FilePreviewState, FilePreviewTab, NavigateFilePreviewInput } from "../../shared/domain";
 import { MAX_PREVIEW_FILE_BYTES, MAX_PREVIEW_TEXT_BYTES, previewFileType } from "../../shared/file-preview";
 import type { WorkspaceService } from "../application/workspace-service";
 import { attachWorkspaceShortcuts } from "../windows/workspace-shortcuts";
@@ -40,8 +40,19 @@ export class FilePreviewRuntime {
       this.trackGestures(page, contents);
     });
     service.on("changed", () => {
-      const ids = new Set(service.snapshot().filePreviewTabs.map((tab) => tab.id));
-      for (const id of this.pages.keys()) if (!ids.has(id)) this.destroy(id);
+      const tabs = service.snapshot().filePreviewTabs;
+      for (const [id, page] of [...this.pages]) {
+        const tab = tabs.find((tab) => tab.id === id);
+        if (!tab) this.destroy(id);
+        else if (tab.path !== page.tab.path || tab.fileType !== page.tab.fileType) {
+          this.destroy(id);
+          // Recreate the sandbox when formats change, especially HTML → Markdown.
+          if (this.layout?.id === id && this.window && !this.window.isDestroyed()) {
+            this.create(tab);
+            this.applyLayout();
+          }
+        }
+      }
     });
     nativeTheme.on("updated", () => {
       for (const page of this.pages.values()) if (page.tab.fileType === "markdown") this.load(page);
@@ -195,6 +206,13 @@ export class FilePreviewRuntime {
       }
       return new Response(null, { status: 404 });
     }
+  }
+
+  async navigate(input: NavigateFilePreviewInput): Promise<FilePreviewTab> {
+    const previous = this.service.snapshot().filePreviewTabs.find((tab) => tab.id === input.id);
+    const selected = await this.service.navigateFilePreview(input);
+    if (selected.id === input.id && previous?.path === selected.path) this.refresh(selected.id);
+    return selected;
   }
 
   refresh(id: string): void {
