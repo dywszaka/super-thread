@@ -1,7 +1,9 @@
 import { setWorkspaceShortcutCount } from "../windows/workspace-shortcuts";
 import type { BrowserRuntime } from "../runtime/browser-runtime";
 import type { FilePreviewRuntime } from "../runtime/file-preview-runtime";
-import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { join } from "node:path";
+import { FilePreviewDownloader } from "../runtime/file-preview-download";
 import { z } from "zod";
 import {
   workspaceFileInputSchema, navigateFilePreviewSchema,
@@ -35,6 +37,7 @@ import { vscodeWorkspaceUrl } from "../runtime/vscode-workspace";
 const sessionIdSchema = z.string().min(1);
 
 export function registerIpcHandlers(service: WorkspaceService, finishDocumentClose: (window: BrowserWindow) => void, browsers: BrowserRuntime, previews: FilePreviewRuntime): void {
+  const downloads = new FilePreviewDownloader(service);
   const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown): void => {
     ipcMain.handle(channel, (event, ...args) => {
       const owner = BrowserWindow.fromWebContents(event.sender);
@@ -55,6 +58,30 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.navigateFilePreview, (_event, input) => previews.navigate(navigateFilePreviewSchema.parse(input)));
   handle(channels.closeFilePreview, (_event, id) => service.closeFilePreview(sessionIdSchema.parse(id)));
   handle(channels.refreshFilePreview, (_event, id) => previews.refresh(sessionIdSchema.parse(id)));
+  handle(channels.downloadFilePreview, async (event, input) => {
+    const id = sessionIdSchema.parse(input);
+    const owner = BrowserWindow.fromWebContents(event.sender)!;
+    const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    owner.once("closed", abort);
+    event.sender.once("destroyed", abort);
+    event.sender.once("render-process-gone", abort);
+    try {
+      return await downloads.download(id, async (name) => {
+        const result = await dialog.showSaveDialog(owner, {
+          title: "Download file",
+          defaultPath: join(app.getPath("downloads"), name),
+          buttonLabel: "Save",
+          properties: ["createDirectory", "showOverwriteConfirmation"]
+        });
+        return result.canceled ? null : result.filePath ?? null;
+      }, controller.signal);
+    } finally {
+      owner.removeListener("closed", abort);
+      event.sender.removeListener("destroyed", abort);
+      event.sender.removeListener("render-process-gone", abort);
+    }
+  });
   handle(channels.filePreviewStates, () => previews.states());
   handle(channels.filePreviewLayout, (_event, input) => previews.setLayout(browserLayoutSchema.parse(input)));
   handle(channels.createBrowser, (_event, input) => service.createBrowser(createBrowserSchema.parse(input)));

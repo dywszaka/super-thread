@@ -9,6 +9,7 @@ const bridge: DesktopBridge = {
   navigateFilePreview: (input) => ipcRenderer.invoke(channels.navigateFilePreview, input),
   closeFilePreview: (id) => ipcRenderer.invoke(channels.closeFilePreview, id),
   refreshFilePreview: (id) => ipcRenderer.invoke(channels.refreshFilePreview, id),
+  downloadFilePreview: (id) => ipcRenderer.invoke(channels.downloadFilePreview, id),
   filePreviewLayout: (input) => ipcRenderer.invoke(channels.filePreviewLayout, input),
   filePreviewStates: () => ipcRenderer.invoke(channels.filePreviewStates),
   onFilePreviewStateChanged: (listener) => {

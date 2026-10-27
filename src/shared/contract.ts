@@ -40,6 +40,7 @@ export const channels = {
   navigateFilePreview: "preview:navigate",
   closeFilePreview: "preview:close",
   refreshFilePreview: "preview:refresh",
+  downloadFilePreview: "preview:download",
   filePreviewLayout: "preview:layout",
   filePreviewStates: "preview:states",
   filePreviewStateChanged: "preview:state-changed",
@@ -308,6 +309,7 @@ export interface DesktopBridge {
   navigateFilePreview(input: NavigateFilePreviewInput): Promise<FilePreviewTab>;
   closeFilePreview(id: string): Promise<void>;
   refreshFilePreview(id: string): Promise<void>;
+  downloadFilePreview(id: string): Promise<boolean>;
   filePreviewLayout(input: BrowserLayoutInput): Promise<void>;
   filePreviewStates(): Promise<FilePreviewState[]>;
   onFilePreviewStateChanged(listener: (state: FilePreviewState) => void): () => void;
