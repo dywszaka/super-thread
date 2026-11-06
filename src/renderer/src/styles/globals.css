@@ -1428,9 +1428,73 @@ input, textarea, [contenteditable="true"], .selectable {
   padding: var(--space-6);
 }
 
+.work-thread-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 960px;
+  margin-bottom: var(--space-5);
+}
+
+.work-thread-search {
+  min-width: 0;
+  flex: 1 1 240px;
+  height: var(--control-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--muted-foreground);
+}
+
+.work-thread-search > svg {
+  flex: none;
+}
+
+.work-thread-search:focus-within {
+  border-color: var(--ring);
+}
+
+.work-thread-search:has(input:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.work-thread-search input {
+  min-width: 0;
+  width: 100%;
+  flex: 1;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-control);
+  outline: none;
+}
+
+.work-thread-search input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.work-thread-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.work-thread-search .icon-button {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
 .thread-status-filter {
   width: 280px;
-  margin-bottom: var(--space-5);
+  max-width: 100%;
 }
 
 .work-thread-cards {
@@ -1509,6 +1573,20 @@ input, textarea, [contenteditable="true"], .selectable {
   font-size: var(--text-xs);
 }
 
+.work-thread-search-excerpt {
+  color: var(--muted-foreground);
+  font-size: var(--text-control);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.work-thread-card mark {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--ring) 20%, var(--surface-raised));
+  border-radius: 2px;
+}
+
 .work-thread-card-actions {
   flex: 0 1 auto;
   display: flex;
@@ -1548,6 +1626,10 @@ input, textarea, [contenteditable="true"], .selectable {
 .work-thread-list-empty p {
   margin: 0;
   font-size: var(--text-xs);
+}
+
+.work-thread-list-empty > .button {
+  margin-top: var(--space-4);
 }
 
 .device-page {

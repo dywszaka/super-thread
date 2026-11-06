@@ -30,6 +30,8 @@ Development and packaged builds share persistent data at
 `~/Library/Application Support/super-thread/`. The domain snapshot is stored in
 `workspace-runtime.json` inside that directory.
 
+**Work Threads search:** Search active and archived threads by name or saved document text. Both status tabs keep the same query and show matching counts. Results retain document-update ordering, highlight matching names, and show highlighted document excerpts; click a result to open its document drawer. Search is local, case-insensitive, and treats punctuation literally. Unsaved drafts and TODOs are not included.
+
 ## Architecture
 
 - `src/main`: Electron native shell, persistence, device runtimes, Git and PTY ownership.

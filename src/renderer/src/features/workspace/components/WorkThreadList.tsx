@@ -1,13 +1,18 @@
-import { AppWindowMac, Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AppWindowMac, Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
-import { formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate } from "../selection";
+import { formatDocumentUpdate, workThreadDocumentUpdate } from "../selection";
+import { WorkThreadSearch, type SearchSegment } from "../work-thread-search";
 import { SidebarReopenButton } from "./Sidebar";
 import { WorkThreadDocument } from "./WorkThreadDocument";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
+
+function HighlightedText({ segments }: { segments: readonly SearchSegment[] }): React.ReactNode {
+  return segments.map((segment, index) => segment.highlight ? <mark key={index}>{segment.text}</mark> : segment.text);
+}
 
 /** First terminal (running preferred) of a work thread, or null when it has none. */
 const firstTerminalTarget = (snapshot: AppSnapshot, threadId: string): { workspaceId: string; sessionId: string } | null => {
@@ -24,6 +29,24 @@ const firstTerminalTarget = (snapshot: AppSnapshot, threadId: string): { workspa
 
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const [status, setStatus] = useState<WorkThreadStatus>("active");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isComposing, setIsComposing] = useState(false);
+  const [search] = useState(() => new WorkThreadSearch());
+  const searchField = useRef<HTMLInputElement | null>(null);
+  const results = useMemo(() => search.search(snapshot.workThreads, searchQuery), [search, snapshot.workThreads, searchQuery]);
+  const threads = results[status];
+  const clearSearch = (): void => {
+    setSearchInput("");
+    setSearchQuery("");
+    setIsComposing(false);
+    searchField.current?.focus();
+  };
+  useEffect(() => {
+    if (isComposing) return;
+    const timer = window.setTimeout(() => setSearchQuery(searchInput), 150);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, isComposing]);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
   const documentTrigger = useRef<HTMLButtonElement | null>(null);
@@ -34,7 +57,11 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   const setActiveSession = useWorkbenchStore((state) => state.setActiveSession);
   const documentThread = snapshot.workThreads.find((thread) => thread.id === documentId);
   const drawerOpen = documentOpen && Boolean(documentThread);
-  const closeDocument = (): void => { setDocumentOpen(false); documentTrigger.current?.focus(); };
+  const closeDocument = (): void => {
+    setDocumentOpen(false);
+    if (documentTrigger.current?.isConnected && !documentTrigger.current.disabled) documentTrigger.current.focus();
+    else searchField.current?.focus();
+  };
 
   useEffect(() => {
     if (drawerOpen || !documentId) return;
@@ -42,7 +69,6 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
     const timer = window.setTimeout(() => setDocumentId(null), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320);
     return () => window.clearTimeout(timer);
   }, [drawerOpen, documentId]);
-  const threads = workThreadsByDocumentUpdate(snapshot.workThreads.filter((thread) => thread.status === status));
 
   const archive = async (id: string, name: string): Promise<void> => {
     if (!confirm(`Archive “${name}”?\n\nIts workspaces will be hidden from active views. Running terminal sessions will continue.`)) return;
@@ -100,13 +126,22 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
       <div className="work-thread-content">
         <div className="work-thread-list-region">
           <section className="work-thread-page-body no-drag">
-            <div className="segmented thread-status-filter">
-              <button className={status === "active" ? "active" : ""} onClick={() => setStatus("active")}>Active ({snapshot.workThreads.filter((thread) => thread.status === "active").length})</button>
-              <button className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({snapshot.workThreads.filter((thread) => thread.status === "archived").length})</button>
+            <div className="work-thread-list-toolbar">
+              <div className="work-thread-search" role="search" aria-label="Search work threads">
+                <Search size={15} aria-hidden="true" />
+                <input ref={searchField} type="search" aria-label="Search names and documents" placeholder="Search names and documents…" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} onCompositionStart={() => setIsComposing(true)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} />
+                {searchInput && <button className="icon-button" type="button" aria-label="Clear search" onClick={clearSearch}><X size={14} /></button>}
+              </div>
+              <div className="segmented thread-status-filter" role="group" aria-label="Work thread status">
+                <button aria-pressed={status === "active"} className={status === "active" ? "active" : ""} onClick={() => setStatus("active")}>Active ({results.active.length})</button>
+                <button aria-pressed={status === "archived"} className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({results.archived.length})</button>
+              </div>
             </div>
             <div className="work-thread-cards">
-              {threads.length === 0 && <div className="work-thread-list-empty"><MessagesSquare size={28} /><h2>No {status} work threads</h2><p>{status === "active" ? "Create a work thread to group one or more workspaces." : "Archived work threads will appear here."}</p></div>}
-              {threads.map((thread) => {
+              {threads.length === 0 && (results.query
+                ? <div className="work-thread-list-empty" role="status"><Search size={28} /><h2>No matching work threads</h2><p>No {status} names or documents match your search.</p><button className="button" onClick={clearSearch}>Clear search</button></div>
+                : <div className="work-thread-list-empty"><MessagesSquare size={28} /><h2>No {status} work threads</h2><p>{status === "active" ? "Create a work thread to group one or more workspaces." : "Archived work threads will appear here."}</p></div>)}
+              {threads.map(({ thread, name, excerpt }) => {
                 const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
                 const busy = busyId === thread.id;
                 const terminalTarget = firstTerminalTarget(snapshot, thread.id);
@@ -114,7 +149,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                   <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
                     <button type="button" className="work-thread-card-main" aria-label={`Open document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" title="Open document" onClick={(event) => openDocument(event.currentTarget, thread)}>
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
-                      <span><strong>{thread.name}</strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small></span>
+                      <span><strong><HighlightedText segments={name} /></strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small>{excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}</span>
                     </button>
                     <div className="work-thread-card-actions">
                       <button className="icon-button" disabled={status === "archived"} title={terminalTarget ? "Open first terminal" : "Open document"} aria-label={`Open ${terminalTarget ? "first terminal" : "document"} for ${thread.name}`} onClick={() => openWorkThread(thread)}><AppWindowMac size={14} /></button>
