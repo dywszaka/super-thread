@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AppSnapshot, Session, Workspace, WorkThread } from "../../shared/domain";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../../shared/domain";
+import { appSettingsSchema } from "../../shared/contract";
 
 export class JsonStore {
   private writes: Promise<unknown> = Promise.resolve();
@@ -63,6 +64,7 @@ function migrateSnapshot(stored: StoredSnapshot): AppSnapshot {
     ...base,
     ...stored,
     schemaVersion: CURRENT_SCHEMA_VERSION,
+    settings: appSettingsSchema.parse({ ...base.settings, ...stored.settings }),
     workThreads: (stored.workThreads ?? base.workThreads).map(normalizeWorkThread),
     projects: stored.projects ?? base.projects,
     devices: stored.devices ?? base.devices,

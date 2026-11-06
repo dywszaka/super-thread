@@ -1,3 +1,4 @@
+import { WorkThreadAge } from "./WorkThreadAge";
 import { TodoList } from "./TodoList";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { Check, FileText, Loader2, Plus, X } from "lucide-react";
@@ -29,6 +30,7 @@ export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; on
           {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New Workspace</button>}
         </div>
       </header>
+      <div className="thread-document-age no-drag"><WorkThreadAge thread={thread} details /></div>
       <div className="thread-document-toolbar no-drag">
         <div className="segmented" role="tablist" aria-label="Work thread content" onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

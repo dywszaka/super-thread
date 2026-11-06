@@ -13,6 +13,7 @@ import { WorkspaceList } from "./components/WorkspaceList";
 import { ProjectList } from "./components/ProjectList";
 import { AllTodos } from "./components/TodoList";
 import { WorkThreadDocument } from "./components/WorkThreadDocument";
+import { WorkThreadAgeProvider } from "./components/WorkThreadAge";
 import { useDocumentAutosaveLifecycle } from "./document-autosave";
 import { visibleWorkspaces } from "./selection";
 
@@ -55,6 +56,8 @@ export function WorkspaceApp(): React.ReactNode {
   }), [client]);
   useEffect(() => window.desktop.setFocusMode(focusMode), [focusMode]);
   useEffect(() => window.desktop.onMenuAction((action) => {
+    if (useWorkbenchStore.getState().dialog) return;
+    if (action === "settings") store.openDialog("settings");
     if (action === "new-work-thread") store.openDialog("workThread");
     if (action === "new-workspace") store.openDialog("workspace");
     if (action === "add-project") store.openDialog("project");
@@ -71,7 +74,7 @@ export function WorkspaceApp(): React.ReactNode {
       : "All workspaces";
   const hasActiveThreads = snapshot.workThreads.some((thread) => thread.status === "active");
   return (
-    <div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""} ${focusMode ? "focus-mode" : ""}`}>
+    <WorkThreadAgeProvider settings={snapshot.settings}><div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""} ${focusMode ? "focus-mode" : ""}`}>
       {!focusMode && <Sidebar snapshot={snapshot} />}
       <div className="workbench">
         {focusMode ? <FocusTitlebar /> : store.scope.type === "all-todos" ? <AllTodos snapshot={snapshot} /> : store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : showingOverview ? <WorkspaceList snapshot={snapshot} /> : documentThread ? <WorkThreadDocument key={documentThread.id} thread={documentThread} /> : <>
@@ -85,7 +88,7 @@ export function WorkspaceApp(): React.ReactNode {
         </div>
       </div>
       <WorkspaceDialogs snapshot={snapshot} />
-    </div>
+    </div></WorkThreadAgeProvider>
   );
 }
 

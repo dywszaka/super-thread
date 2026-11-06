@@ -1,4 +1,4 @@
-import { ListTodo, Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server } from "lucide-react";
+import { ListTodo, Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, ReorderWorkThreadsInput, WorkThread, Workspace } from "@/shared/domain";
@@ -6,6 +6,7 @@ import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
 import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
+import { WorkThreadAge } from "./WorkThreadAge";
 import { RenameWorkThreadDialog } from "./RenameWorkThreadDialog";
 
 interface WorkThreadMenuState {
@@ -257,7 +258,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                     const index = group.findIndex((item) => item.id === thread.id);
                     const target = group[index + (event.key === "ArrowUp" ? -1 : 1)];
                     if (target) void reorderThread({ id: thread.id, targetId: target.id, placement: event.key === "ArrowUp" ? "before" : "after" });
-                  }} onClick={() => setWorkThreadFilter(thread.id)}>{thread.pinned ? <span className="thread-pinned-indicator" title="Pinned"><Pin size={14} /></span> : <MessagesSquare size={14} />}<em title={thread.name}>{thread.name}</em></button>
+                  }} onClick={() => setWorkThreadFilter(thread.id)}>{thread.pinned ? <span className="thread-pinned-indicator" title="Pinned"><Pin size={14} /></span> : <MessagesSquare size={14} />}<em title={thread.name}>{thread.name}</em><WorkThreadAge thread={thread} compact /></button>
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
@@ -272,6 +273,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
           })}
         </div>
       </nav>
+      <div className="sidebar-footer no-drag"><button className="scope-row" onClick={() => openDialog("settings")}><span><Settings size={15} /><em>Settings</em></span></button></div>
       {threadMenu && <div
         ref={threadMenuRef}
         className="work-thread-context-menu no-drag"

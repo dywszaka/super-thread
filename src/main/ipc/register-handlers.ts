@@ -13,6 +13,7 @@ import {
   addRemoteDeviceSchema,
   browseDirectorySchema,
   channels,
+  appSettingsSchema,
   documentLinkSchema,
   createSessionSchema,
   saveTerminalPresetSchema,
@@ -118,6 +119,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.deleteProject, (_event, id) => service.deleteProject(sessionIdSchema.parse(id)));
   handle(channels.setupProject, (_event, input) => service.setupProject(setupProjectSchema.parse(input)));
   handle(channels.createWorkThread, (_event, input) => service.createWorkThread(createWorkThreadSchema.parse(input)));
+  handle(channels.saveSettings, (_event, input) => service.saveSettings(appSettingsSchema.parse(input)));
   handle(channels.renameWorkThread, (_event, input) => service.renameWorkThread(renameWorkThreadSchema.parse(input)));
   handle(channels.saveWorkThreadDocument, (_event, input) => service.saveWorkThreadDocument(saveWorkThreadDocumentSchema.parse(input)));
   handle(channels.reorderWorkThreads, (_event, input) => service.reorderWorkThreads(reorderWorkThreadsSchema.parse(input)));

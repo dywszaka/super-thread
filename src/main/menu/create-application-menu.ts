@@ -8,7 +8,7 @@ export function createApplicationMenu(getWindow: () => BrowserWindow | null): vo
       label: app.name,
       submenu: [
         { role: "about" }, { type: "separator" },
-        { label: "Settings…", accelerator: "CmdOrCtrl+,", enabled: false },
+        { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => send("settings") },
         { type: "separator" }, { role: "services" }, { type: "separator" },
         { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }, { role: "quit" }
       ]

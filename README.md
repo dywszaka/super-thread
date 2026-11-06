@@ -32,6 +32,8 @@ Development and packaged builds share persistent data at
 
 **Work Threads search:** Search active and archived threads by name or saved document text. Both status tabs keep the same query and show matching counts. Results retain document-update ordering, highlight matching names, and show highlighted document excerpts; click a result to open its document drawer. Search is local, case-insensitive, and treats punctuation literally. Unsaved drafts and TODOs are not included.
 
+**Work Thread definitions and reminders:** New Work Thread includes an editable Markdown definition prefilled with Goal, Scope, and Completion Criteria sections. The submitted content becomes its autosaved, searchable Doc. Open Settings from the sidebar or `Cmd+,` to edit the template and reminder thresholds. Active threads show their age in the sidebar, list, and Doc, with a gentle reminder after 3 days and a stronger reminder after 7 days by default. Age runs from the original creation time, including archived time; archived threads show no reminders. Settings changes apply to future creation dialogs and immediately update reminder levels without changing existing documents.
+
 ## Architecture
 
 - `src/main`: Electron native shell, persistence, device runtimes, Git and PTY ownership.

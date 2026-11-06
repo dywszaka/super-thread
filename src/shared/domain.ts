@@ -1,3 +1,5 @@
+import { defaultAppSettings } from "./app-settings";
+
 export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
 export type WorkspaceStatus = "creating" | "ready" | "error";
@@ -8,7 +10,13 @@ export type SessionKind = ManagedSessionKind;
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input" | "unknown";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 14;
+export const CURRENT_SCHEMA_VERSION = 15;
+
+export interface AppSettings {
+  workThreadTemplate: string;
+  workThreadReminderDays: number;
+  workThreadStrongReminderDays: number;
+}
 
 export interface Todo {
   id: string;
@@ -210,6 +218,7 @@ export interface BrowserLayoutInput {
 
 export interface AppSnapshot {
   schemaVersion: number;
+  settings: AppSettings;
   workThreads: WorkThread[];
   projects: Project[];
   devices: Device[];
@@ -223,6 +232,7 @@ export interface AppSnapshot {
 
 export const emptySnapshot = (): AppSnapshot => ({
   schemaVersion: CURRENT_SCHEMA_VERSION,
+  settings: defaultAppSettings(),
   workThreads: [],
   projects: [],
   devices: [],
@@ -236,6 +246,7 @@ export const emptySnapshot = (): AppSnapshot => ({
 
 export interface CreateWorkThreadInput {
   name: string;
+  content?: string;
 }
 
 export interface RenameWorkThreadInput {

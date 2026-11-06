@@ -482,6 +482,16 @@ git -C /data/allen/llama.cpp remote get-url origin
 
 WorkThread 是组织 Workspace 的顶级对象，不是 Task、Workflow 或执行状态。
 
+### 定义模板与时长提醒
+
+- New work thread 同时填写名称和 Markdown 内容；内容预填可编辑模板，默认包含「目标、范围、完成标准」及引导文字。允许修改或清空，内容不是必填项。提交时名称与正文一次持久化为 WorkThread 和其 `document`，非空正文的 `documentUpdatedAt` 初始为创建时间；失败保留表单，成功打开 Doc，取消丢弃本次输入。
+- Settings 可从侧栏底部、应用菜单及 `Cmd+,` 打开，编辑模板与两个提醒阈值，提供保存、取消、恢复默认。恢复默认仅修改设置草稿，保存后生效；空模板有效。模板更新仅影响之后打开的创建弹窗，不覆盖已有 Doc 或正在填写的创建内容。
+- 应用设置保存在 `AppSnapshot.settings`：`workThreadTemplate`、`workThreadReminderDays`、`workThreadStrongReminderDays`，模板上限与 Doc 同为 2,000,000 字符且不裁剪空白；两个阈值须为正安全整数，且加强阈值大于首次阈值。默认 3 天／7 天。快照 schema 15 为旧快照补充默认设置，不修改既有 WorkThread、文档、TODO 或运行数据。
+- 时长从最初 `createdAt` 起按连续 24 小时累计，不因编辑、重命名、置顶、归档或恢复而重置。仅 active 条目展示时长与提醒；恢复后包括归档期间的时间。未来创建时间按零计算，无效时间不显示提醒。每分钟及窗口重新聚焦时刷新，修改阈值立即更新展示。
+- 侧栏显示 `<1d`、`3d` 等紧凑时长，列表显示完整时长，悬停可查看创建时间与建议；Doc 页面和列表 Doc 抽屉同时显示时长与达到阈值后的非阻断建议：检查完成标准，及时 review、合并及收尾，或拆分剩余工作。使用语义色与文字／图标共同区分中性、首次提醒和加强提醒。排序仍遵循原有规则。
+- 不增加通知弹窗、自动归档、自动拆分、review 状态或自动 Git 操作。描述直接使用已有文档的搜索能力，不另设独立描述字段。
+- Typed bridge 增加 `saveSettings(AppSettings): Promise<void>` 与 `settings` 菜单动作；`createWorkThread` 输入增加可选 `content`，省略时保持空文档兼容行为。IPC 输入在主进程校验，设置及创建使用现有串行原子保存机制。
+
 ```ts
 interface WorkThread {
   id: string

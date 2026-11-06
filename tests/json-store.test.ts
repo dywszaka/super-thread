@@ -5,6 +5,18 @@ import { join } from "node:path";
 import test from "node:test";
 import { JsonStore } from "../src/main/persistence/json-store";
 import { CURRENT_SCHEMA_VERSION } from "../src/shared/domain";
+import { defaultAppSettings } from "../src/shared/app-settings";
+
+test("schema 14 gains default settings without rewriting documents, TODOs, or creation time", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-settings-migration-"));
+  const path = join(directory, "state.json");
+  const thread = { id: "old", name: "Existing", status: "active", pinned: true, document: "\n# Keep\n", documentUpdatedAt: "2026-10-29T00:00:00Z", createdAt: "2026-10-25T00:00:00Z", updatedAt: "2026-10-29T00:00:00Z", todos: [{ id: "todo", title: "Keep", date: "2026-11-06", createdAt: "then", updatedAt: "then" }] };
+  await writeFile(path, JSON.stringify({ schemaVersion: 14, workThreads: [thread] }));
+  const loaded = await new JsonStore(path).load();
+  assert.deepEqual(loaded.settings, defaultAppSettings());
+  assert.deepEqual(JSON.parse(JSON.stringify(loaded.workThreads[0])), thread);
+  assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, 15);
+});
 
 test("JsonStore creates, updates, and reloads an atomic snapshot", async () => {
   const directory = await mkdtemp(join(tmpdir(), "superthread-store-"));

@@ -9,6 +9,8 @@ import { Field, Modal } from "./Modal";
 import { tunnelConflicts } from "@/shared/ssh-tunnels";
 import { SshTunnelFields } from "./SshTunnelFields";
 import { WorkspaceLinks } from "./WorkspaceLinks";
+import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/app-settings";
+import { SettingsDialog } from "./SettingsDialog";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -185,16 +187,17 @@ export function SetupProjectDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   );
 }
 
-export function NewWorkThreadDialog(): ReactNode {
+export function NewWorkThreadDialog({ template }: { template: string }): ReactNode {
   const { dialog, closeDialog, setWorkThreadFilter } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
+  const [content, setContent] = useState(template);
   const [touched, setTouched] = useState(false);
   const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault(); setBusy(true);
+    event.preventDefault(); if (busy) return; setBusy(true);
     try {
-      await window.desktop.createWorkThread({ name });
+      await window.desktop.createWorkThread({ name, content });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       const fresh = await window.desktop.snapshot();
       const created = fresh.workThreads.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
@@ -205,7 +208,8 @@ export function NewWorkThreadDialog(): ReactNode {
   };
   return (
     <Modal open={dialog === "workThread"} title="New work thread" description="Group one or more related workspaces." busy={busy} submitDisabled={!name.trim()} submitLabel="Create Work Thread" onClose={closeDialog} onSubmit={submit}>
-      <Field label="Name" error={touched && !name.trim() ? "Enter a work thread name." : undefined}><input value={name} onChange={(event) => setName(event.target.value)} onBlur={() => setTouched(true)} placeholder="Improve terminal workflow" maxLength={80} autoFocus /></Field>
+      <Field label="Name" error={touched && !name.trim() ? "Enter a work thread name." : undefined}><input value={name} disabled={busy} onChange={(event) => setName(event.target.value)} onBlur={() => setTouched(true)} placeholder="Improve terminal workflow" maxLength={80} autoFocus /></Field>
+      <Field label="Content" hint="Describe the goal, scope, and completion criteria in Markdown. This becomes the work thread’s Doc."><textarea className="markdown-input" value={content} disabled={busy} onChange={(event) => setContent(event.target.value)} maxLength={MAX_WORK_THREAD_DOCUMENT_LENGTH} rows={10} /></Field>
       <div className="callout"><MessagesSquare size={16} /><span>You can create the first workspace after the work thread is created.</span></div>
     </Modal>
   );
@@ -285,5 +289,6 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
 }
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} /><NewWorkThreadDialog /><NewWorkspaceDialog snapshot={snapshot} /></>;
+  const dialog = useWorkbenchStore((state) => state.dialog);
+  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog template={snapshot.settings.workThreadTemplate} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}<NewWorkspaceDialog snapshot={snapshot} /></>;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,61 @@ import { ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/co
 import type { ExternalTerminalRuntime } from "../src/main/runtime/iterm-runtime";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot, type Session } from "../src/shared/domain";
+import { defaultAppSettings } from "../src/shared/app-settings";
+
+test("creation persists the submitted document atomically and settings never rewrite it", async () => {
+  const { service, store } = await setup();
+  const content = "\n## Goal\n\nSearchable description 描述\n\n";
+  await service.createWorkThread({ name: "Defined", content });
+  const thread = service.snapshot().workThreads[0]!;
+  assert.equal(thread.document, content);
+  assert.equal(thread.documentUpdatedAt, thread.createdAt);
+  await service.saveSettings({ ...defaultAppSettings(), workThreadTemplate: "New template", workThreadReminderDays: 2, workThreadStrongReminderDays: 5 });
+  assert.deepEqual(service.snapshot().workThreads[0], thread);
+  await service.createWorkThread({ name: "Empty", content: "" });
+  await service.createWorkThread({ name: "Legacy caller" });
+  assert.equal(service.snapshot().workThreads[1]!.document, "");
+  assert.equal(service.snapshot().workThreads[2]!.document, "");
+  assert.equal(store.snapshot().workThreads[0]!.document, content);
+});
+
+test("settings updates and document saves preserve both writes and survive reload", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-settings-"));
+  const path = join(directory, "state.json");
+  const service = new WorkspaceService(new JsonStore(path));
+  await service.initialize();
+  await service.createWorkThread({ name: "Concurrent", content: "Before" });
+  const thread = service.snapshot().workThreads[0]!;
+  const settings = { ...defaultAppSettings(), workThreadTemplate: "", workThreadReminderDays: 1, workThreadStrongReminderDays: 4 };
+  await Promise.all([
+    service.saveSettings(settings),
+    service.saveWorkThreadDocument({ id: thread.id, content: "After" })
+  ]);
+  const loaded = await new JsonStore(path).load();
+  assert.deepEqual(loaded.settings, settings);
+  assert.equal(loaded.workThreads[0]!.document, "After");
+  await assert.rejects(() => service.saveSettings({ ...settings, workThreadReminderDays: 5 }));
+  assert.deepEqual(service.snapshot().settings, settings);
+});
+
+test("failed writes leave settings and creation unchanged and permit a complete retry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-settings-failure-"));
+  const path = join(directory, "state.json");
+  const service = new WorkspaceService(new JsonStore(path));
+  await service.initialize();
+  const before = service.snapshot();
+  await mkdir(`${path}.tmp`);
+  const settings = { ...defaultAppSettings(), workThreadTemplate: "Retry template" };
+  await assert.rejects(() => service.saveSettings(settings));
+  await assert.rejects(() => service.createWorkThread({ name: "Retry", content: "Complete document" }));
+  assert.deepEqual(service.snapshot(), before);
+  await rm(`${path}.tmp`, { recursive: true });
+  await service.saveSettings(settings);
+  await service.createWorkThread({ name: "Retry", content: "Complete document" });
+  const loaded = await new JsonStore(path).load();
+  assert.deepEqual(loaded.settings, settings);
+  assert.equal(loaded.workThreads[0]!.document, "Complete document");
+});
 
 async function setup(gitRuntime?: WorkspaceGitRuntime, terminals?: TerminalRuntime, commandRunner?: CommandRunner, externalTerminal?: ExternalTerminalRuntime): Promise<{ service: WorkspaceService; store: JsonStore }> {
   const directory = await mkdtemp(join(tmpdir(), "superthread-work-thread-"));

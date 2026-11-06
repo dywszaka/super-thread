@@ -3,7 +3,7 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 import type { WorkspaceScope } from "../features/workspace/selection";
 import type { ManagedSessionKind } from "@/shared/domain";
 
-type DialogName = "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
+type DialogName = "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
 const memoryStorage: StateStorage = {
   getItem: () => null,

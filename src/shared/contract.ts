@@ -1,5 +1,7 @@
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
 import { z } from "zod";
+import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
+export { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
@@ -10,6 +12,7 @@ import type {
   AddProjectInput,
   AddRemoteDeviceInput,
   AppSnapshot,
+  AppSettings,
   BrowseDirectoryInput,
   CreateSessionInput,
   CreateSessionResult,
@@ -63,6 +66,7 @@ export const channels = {
   browserCreated: "browser:created",
   reorderWorkspaceTabs: "workspace:reorder-tabs",
   snapshot: "app:snapshot",
+  saveSettings: "app:save-settings",
   finishDocumentClose: "window:finish-document-close",
   openDocumentLink: "document:open-link",
   selectDirectory: "dialog:select-directory",
@@ -182,8 +186,18 @@ export const browseDirectorySchema = z.object({
 }).strict();
 
 export const createWorkThreadSchema = z.object({
-  name: z.string().trim().min(1).max(80)
+  name: z.string().trim().min(1).max(80),
+  content: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH).optional()
 }).strict();
+
+export const appSettingsSchema = z.object({
+  workThreadTemplate: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH),
+  workThreadReminderDays: z.number().int().positive().safe(),
+  workThreadStrongReminderDays: z.number().int().positive().safe()
+}).strict().refine((settings) => settings.workThreadStrongReminderDays > settings.workThreadReminderDays, {
+  message: "The stronger reminder must start after the first reminder",
+  path: ["workThreadStrongReminderDays"]
+});
 
 export const todoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const date = new Date(`${value}T00:00:00Z`);
@@ -204,8 +218,6 @@ export const documentLinkSchema = z.string().url().refine((url) => {
   try { return ["http:", "https:", "mailto:"].includes(new URL(url).protocol); }
   catch { return false; }
 }, "Unsupported document link");
-
-export const MAX_WORK_THREAD_DOCUMENT_LENGTH = 2_000_000;
 
 export const saveWorkThreadDocumentSchema = z.object({
   id: z.string().min(1),
@@ -301,7 +313,7 @@ export const workspaceFileInputSchema = z.object({
 }).strict();
 export const navigateFilePreviewSchema = z.object({ id: z.string().min(1), path: workspaceFileInputSchema.shape.path }).strict();
 
-export type MenuAction = "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
+export type MenuAction = "settings" | "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
 
 export interface DesktopBridge {
   browseWorkspaceFiles(input: WorkspaceFileInput): Promise<WorkspaceFileLocation>;
@@ -333,6 +345,7 @@ export interface DesktopBridge {
   onBrowserCreated(listener: (tab: BrowserTab) => void): () => void;
   platform: NodeJS.Platform;
   snapshot(): Promise<AppSnapshot>;
+  saveSettings(input: AppSettings): Promise<void>;
   finishDocumentClose(): void;
   openDocumentLink(url: string): Promise<void>;
   selectDirectory(): Promise<string | null>;

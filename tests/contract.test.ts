@@ -1,6 +1,29 @@
 import { documentLinkSchema, saveWorkThreadDocumentSchema, MAX_WORK_THREAD_DOCUMENT_LENGTH } from "../src/shared/contract";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { appSettingsSchema, createWorkThreadSchema } from "../src/shared/contract";
+import { defaultAppSettings } from "../src/shared/app-settings";
+
+test("creation accepts optional Markdown without trimming it and bounds the content", () => {
+  const content = "  ## Goal\n\n    code\n\n";
+  assert.equal(createWorkThreadSchema.parse({ name: " Name ", content }).content, content);
+  assert.deepEqual(createWorkThreadSchema.parse({ name: "Name" }), { name: "Name" });
+  assert.equal(createWorkThreadSchema.safeParse({ name: "Name", content: "" }).success, true);
+  assert.equal(createWorkThreadSchema.safeParse({ name: "Name", content: "x".repeat(MAX_WORK_THREAD_DOCUMENT_LENGTH + 1) }).success, false);
+});
+
+test("settings allow empty templates and reject invalid or unordered reminder thresholds", () => {
+  const defaults = defaultAppSettings();
+  assert.equal(appSettingsSchema.parse({ ...defaults, workThreadTemplate: "" }).workThreadTemplate, "");
+  for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(appSettingsSchema.safeParse({ ...defaults, workThreadReminderDays: value }).success, false);
+    assert.equal(appSettingsSchema.safeParse({ ...defaults, workThreadStrongReminderDays: value }).success, false);
+  }
+  assert.equal(appSettingsSchema.safeParse({ ...defaults, workThreadStrongReminderDays: 3 }).success, false);
+  assert.equal(appSettingsSchema.safeParse({ ...defaults, workThreadStrongReminderDays: 2 }).success, false);
+  assert.equal(appSettingsSchema.safeParse({ ...defaults, workThreadTemplate: "x".repeat(MAX_WORK_THREAD_DOCUMENT_LENGTH + 1) }).success, false);
+  assert.equal(appSettingsSchema.safeParse({ ...defaults, unexpected: true }).success, false);
+});
 import { reorderWorkThreadsSchema, addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkThreadSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {

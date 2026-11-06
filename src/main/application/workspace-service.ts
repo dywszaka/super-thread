@@ -11,6 +11,7 @@ import type {
   AddProjectInput,
   AddRemoteDeviceInput,
   AppSnapshot,
+  AppSettings,
   BrowseDirectoryInput,
   CreateSessionResult,
   CreateSessionInput,
@@ -40,7 +41,7 @@ import type {
   WorkThread,
   Workspace
 } from "../../shared/domain";
-import { createTodoSchema, updateTodoSchema, todoTargetSchema } from "../../shared/contract";
+import { appSettingsSchema, createWorkThreadSchema, createTodoSchema, updateTodoSchema, todoTargetSchema } from "../../shared/contract";
 import { sortedWorkThreads } from "../../shared/work-thread-order";
 import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runner";
@@ -357,14 +358,20 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
+  async saveSettings(input: AppSettings): Promise<void> {
+    const settings = appSettingsSchema.parse(input);
+    await this.store.update((draft) => { draft.settings = settings; });
+    this.changed();
+  }
+
   async createWorkThread(input: CreateWorkThreadInput): Promise<void> {
+    input = createWorkThreadSchema.parse(input);
     const name = input.name.trim();
-    const snapshot = this.snapshot();
-    if (snapshot.workThreads.some((item) => canonicalName(item.name) === canonicalName(name))) {
-      throw new Error(`A work thread named ${name} already exists`);
-    }
     const timestamp = now();
     await this.store.update((draft) => {
+      if (draft.workThreads.some((item) => canonicalName(item.name) === canonicalName(name))) {
+        throw new Error(`A work thread named ${name} already exists`);
+      }
       draft.workThreads.push({
         id: id("thread"),
         name,
@@ -373,7 +380,8 @@ export class WorkspaceService extends EventEmitter {
         sidebarOrder: draft.workThreads.some((thread) => thread.sidebarOrder !== undefined)
           ? Math.max(...draft.workThreads.map((thread) => thread.sidebarOrder ?? -1)) + 1
           : undefined,
-        document: "",
+        document: input.content ?? "",
+        documentUpdatedAt: input.content ? timestamp : undefined,
         todos: [],
         createdAt: timestamp,
         updatedAt: timestamp
