@@ -1041,6 +1041,8 @@ Workspaces
 
 Work Threads 与 Workspaces 是两个独立可折叠的分组，默认展开，分别保存折叠状态。折叠时保留当前页面与线程节点的展开状态，分组的新建按钮始终可用。Workspaces 分组只列出独立 Workspace，线程所属 Workspace 继续显示在对应线程下。
 
+侧栏的 Workspace 统一使用两行布局：第一行显示 Workspace 名称，第二行显示「Device 名称 · Project 名称」，同项目在不同设备上的 Workspace 可直接通过设备名称区分。保留本机／远程图标，设备名称始终显示，不依赖颜色或悬停辨认。窄侧栏中设备名称最多占上下文行的 65%，项目名使用剩余空间，两者独立省略；悬停整行及无障碍名称提供完整 Workspace、Device 和 Project 信息。线程内与独立 Workspace 使用相同规则，保留现有分组、排序和点击／右键行为。
+
 Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档；展开后的 Workspace 提供右键菜单，用于编辑 Workspace 信息，其中只有名称可以修改。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：

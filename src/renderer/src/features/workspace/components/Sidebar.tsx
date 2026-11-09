@@ -196,10 +196,19 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
     const Icon = device?.type === "remote" ? Server : Laptop;
     const projectName = workspaceProjectName(snapshot, workspace);
+    const deviceName = device?.name ?? "Unknown device";
+    const context = `${deviceName} · ${projectName}`;
     return (
-      <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && inScope ? "selected" : ""}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => openWorkspace(workspace)}>
-        <Icon size={13} />
-        <span><strong title={workspace.name}>{workspace.name}</strong><small title={projectName}>{projectName}</small></span>
+      <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && inScope ? "selected" : ""}`} title={`${workspace.name}\n${context}`} aria-label={`${workspace.name}, Device: ${deviceName}, Project: ${projectName}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => openWorkspace(workspace)}>
+        <Icon size={13} aria-hidden="true" />
+        <span className="workspace-tree-label">
+          <strong>{workspace.name}</strong>
+          <small className="workspace-tree-context">
+            <span className="workspace-tree-device">{deviceName}</span>
+            <span className="workspace-tree-separator" aria-hidden="true">·</span>
+            <span className="workspace-tree-project">{projectName}</span>
+          </small>
+        </span>
       </button>
     );
   };

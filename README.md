@@ -49,6 +49,8 @@ On macOS, closing the window leaves the application runtime alive, so PTY sessio
 
 The sidebar has independently collapsible **Work Threads** and **Workspaces** sections. The Workspaces section lists standalone workspaces and its add button creates one without a work thread. **All workspaces** also includes workspaces in active work threads.
 
+Sidebar workspace rows show the workspace name above **device · project**, with local/remote icons and full context on hover. Device and project names truncate independently in narrow sidebars so workspaces from the same project on different devices remain distinguishable.
+
 Workspace chrome stays compact: a 40px single-line header shows the workspace, device, and branch, with full context in its details dropdown. Focus remains an icon button; the actions menu contains VS Code, tmux in iTerm, New Workspace, Rename, and Delete. Tabs are 32px high, and Browser/File Preview toolbars are 32px high with 28px controls; narrow windows truncate names and scroll tabs without wrapping the header.
 
 Workspace tabs can contain multiple Terminals and Browsers in a shared, sortable tab bar. Browser tabs are local macOS web views owned by their Workspace, separate from PTY Sessions. Each saves its last HTTP(S) address and page title. Closing the main window destroys the web views; reopening the window or restarting the application restores every unclosed browser tab and automatically reloads its saved address, without restoring navigation history. Closing a browser tab removes its record; deleting a Workspace removes all its browser records.
