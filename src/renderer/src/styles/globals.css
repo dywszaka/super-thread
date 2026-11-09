@@ -2093,10 +2093,10 @@ input, textarea, [contenteditable="true"], .selectable {
 .dialog-content {
   position: fixed;
   z-index: 101;
-  left: 50%;
-  top: 50%;
+  inset: 0;
+  margin: auto;
   width: min(520px, calc(100vw - 48px));
-  transform: translate(-50%, -50%);
+  height: fit-content;
   background: var(--surface-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-dialog);
@@ -2224,6 +2224,8 @@ input, textarea, [contenteditable="true"], .selectable {
   padding: 10px;
   resize: vertical;
   font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
   line-height: 1.6;
 }
 
@@ -2873,7 +2875,7 @@ input, textarea, [contenteditable="true"], .selectable {
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -48%) scale(.98);
+    transform: translateY(8px) scale(.98);
   }
 }
 
