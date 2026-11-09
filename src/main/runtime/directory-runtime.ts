@@ -11,8 +11,7 @@ export class DirectoryRuntime {
   }
 
   async list(path?: string): Promise<DirectoryListing> {
-    const cwd = await this.resolveCwd(path);
-    const resolved = await this.runner.run("pwd", [], { cwd, timeoutMs: 15_000 }).then((result) => result.stdout);
+    const resolved = await this.resolve(path);
     const output = await this.runner.run("find", [".", "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-print"], { cwd: resolved, timeoutMs: 20_000 }).then((result) => result.stdout);
     const names = output.split("\n")
       .map((line) => line.trim())
@@ -27,6 +26,11 @@ export class DirectoryRuntime {
       parentPath: this.parentPath(resolved),
       entries: names.map((name) => ({ name, path: joinPath(resolved, name) }))
     };
+  }
+
+  async resolve(path?: string): Promise<string> {
+    const cwd = await this.resolveCwd(path);
+    return this.runner.run("pwd", ["-P"], { cwd, timeoutMs: 15_000 }).then((result) => result.stdout);
   }
 
   private async resolveCwd(path?: string): Promise<string | undefined> {

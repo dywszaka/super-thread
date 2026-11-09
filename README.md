@@ -1,6 +1,6 @@
 # SuperThread
 
-SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing Git projects across local and SSH devices, using a project's main checkout or creating isolated worktrees, and working in persistent terminal sessions and workspace browser tabs. Each WorkThread opens with an autosaved Markdown document in a single WYSIWYG pane that formats Markdown as you type. Each WorkThread also has dated TODOs next to its Document: incomplete items and the last seven days of completions appear in the thread, while All todos retains the complete history across active and archived threads. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake while a window is open.
+SuperThread is a macOS desktop MVP for organizing work into WorkThreads, managing project folders with optional Git across local and SSH devices, using a project's main checkout or creating isolated worktrees, and working in persistent terminal sessions and workspace browser tabs. Each WorkThread opens with an autosaved Markdown document in a single WYSIWYG pane that formats Markdown as you type. Each WorkThread also has dated TODOs next to its Document: incomplete items and the last seven days of completions appear in the thread, while All todos retains the complete history across active and archived threads. Remote devices can also own local and reverse SSH port-forwarding rules with automatic reconnect after network loss or system wake while a window is open.
 
 ## Run
 
@@ -34,6 +34,8 @@ Development and packaged builds share persistent data at
 
 **Work Thread definitions and reminders:** New Work Thread includes an editable Markdown definition prefilled with Goal, Scope, and Completion Criteria sections. The submitted content becomes its autosaved, searchable Doc. Open Settings from the sidebar or `Cmd+,` to edit the template and reminder thresholds. Active threads show their age in the sidebar, list, and Doc, with a gentle reminder after 3 days and a stronger reminder after 7 days by default. Age runs from the original creation time, including archived time; archived threads show no reminders. Settings changes apply to future creation dialogs and immediately update reminder levels without changing existing documents.
 
+**Projects:** Add any existing directory on a local or SSH device; Git and an origin remote are optional. Only the resolved path on the same device must be unique, so different paths can share a project name or Git remote. Symlink aliases resolve to the same directory. Ordinary folders use a direct-directory workspace; Git roots also support isolated worktrees. Existing projects and workspaces are preserved, and new worktree paths use the project ID to keep duplicate display names separate.
+
 ## Architecture
 
 - `src/main`: Electron native shell, persistence, device runtimes, Git and PTY ownership.
@@ -41,7 +43,7 @@ Development and packaged builds share persistent data at
 - `src/renderer`: React workbench, semantic design tokens, project/work-thread navigation, workspace and terminal switchers.
 - `src/shared`: domain model and validated IPC contract.
 
-The implementation deliberately keeps the MVP domain to `WorkThread`, `Project`, `Device`, `Workspace`, `Session`, `BrowserTab`, and `FilePreviewTab`. A Workspace can stand alone or belong to a WorkThread; a project is identified by its canonical Git remote; physical checkouts belong to devices; worktrees, terminals, and file previews belong to workspaces.
+The implementation deliberately keeps the MVP domain to `WorkThread`, `Project`, `Device`, `Workspace`, `Session`, `BrowserTab`, and `FilePreviewTab`. A Workspace can stand alone or belong to a WorkThread; projects are imported by device and resolved directory, with optional Git metadata; physical directories belong to devices; worktrees, terminals, and file previews belong to workspaces.
 
 Embedded terminals support ordinary shells only; workspace tmux opens exclusively in iTerm. Remote terminals keep one interactive SSH connection and never create periodic SSH sessions for activity checks. The overview distinguishes local activity from remote connection counts.
 

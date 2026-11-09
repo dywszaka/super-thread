@@ -119,7 +119,7 @@ function EmptyWorkspace({ title, hasProjects, workThreadId }: { title: string; h
   return (
     <main className="empty-workspace">
       <div className="empty-titlebar drag"><SidebarReopenButton /><span className="no-drag">{title}</span><button className="button primary no-drag" onClick={open}><Plus size={14} /> {action}</button></div>
-      <section><div className="empty-art"><Server size={28} /><span /><FolderGit2 size={28} /></div><h1>{hasProjects ? "Create your first workspace" : "Bring in a Git project"}</h1><p>{hasProjects ? "Choose a project and device, then use its main checkout or create an isolated worktree." : "Import a local repository or clone one onto a connected device."}</p><button className="button primary large" onClick={open}><Plus size={15} /> {action}</button></section>
+      <section><div className="empty-art"><Server size={28} /><span /><FolderGit2 size={28} /></div><h1>{hasProjects ? "Create your first workspace" : "Add a project folder"}</h1><p>{hasProjects ? "Choose a project and device, then use its main checkout or create an isolated worktree." : "Add a folder with or without Git, or clone a repository."}</p><button className="button primary large" onClick={open}><Plus size={15} /> {action}</button></section>
     </main>
   );
 }

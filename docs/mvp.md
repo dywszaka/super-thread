@@ -24,9 +24,9 @@ Terminal Session / BrowserTab / FilePreviewTab
 其中：
 
 - WorkThread：组织一组相关 Workspace 的顶级对象
-- Project：逻辑 Git 项目
+- Project：项目记录，可对应普通目录或 Git 仓库
 - Device：实际执行工作的机器
-- Workspace：Project 在某个 Device 上的一份隔离 Working Copy
+- Workspace：Project 在某个 Device 上的工作目录，可直接使用项目目录或创建 Git worktree
 - Session：Workspace 中一个持久 Terminal / PTY
 - BrowserTab：Workspace 持有的本机网页视图及其最后访问地址
 - FilePreviewTab：Workspace 持有的只读文件预览标签，通过所属 Device 读取文件
@@ -49,33 +49,13 @@ MVP 不包含：
 
 # 2. Design Principles
 
-## 2.1 Project != Directory
+## 2.1 Project supports directories with optional Git
 
-Project 表示逻辑上的代码项目，而不是某台机器上的目录。
+Project 用于组织项目内容，不要求目录中存在 Git 或 origin remote。
 
-例如：
+新增项目时，由所选 Device 解析并验证实际目录，按 `(deviceId, resolvedPath)` 判重。路径去除 `.`、`..`、尾随分隔符并解析软链接；同一目录的别名不能重复添加。不同 Device 可以使用相同路径；不同目录可以使用相同 Project name 或 Git remote，不按 remote 自动合并。
 
-```text
-Project
-  llama.cpp
-
-Device
-  MacBook
-  dev-cuda
-```
-
-同一个 Project 可以存在于多个 Device：
-
-```text
-llama.cpp
-├── MacBook
-│   └── ~/code/llama.cpp
-│
-└── dev-cuda
-    └── /data/allen/llama.cpp
-```
-
-不能因为路径不同创建两个 Project。
+用户仍可通过 Set Up Project 显式把已有 Project 关联到其他 Device 的目录；已有 Project、checkout 与 Workspace 关联保留。
 
 ---
 
@@ -206,7 +186,7 @@ FilePreviewTab
 
 # 4. Project
 
-Project 是一个逻辑 Git Repository。
+Project 是项目记录，Git remote 与默认分支是可选元数据，不作为唯一标识。
 
 数据结构：
 
@@ -216,8 +196,9 @@ interface Project {
 
   name: string
 
-  // canonical git remote
-  repositoryUrl: string
+  // Optional Git metadata
+  repositoryUrl?: string
+  defaultBranch?: string
 
   createdAt: Date
   updatedAt: Date
@@ -248,9 +229,8 @@ device
 
 规则：
 
-- Project identity 仍然是 canonical git remote。
-- Project name 用于展示和 Workspace 路径目录段，必须在全局范围内忽略大小写唯一。
-- 不同 remote 如果检测出相同默认名称，Add Project 不创建 Project，也不执行不必要的 clone；用户需要输入一个安全且唯一的 Project name 后重试。
+- Add Project 以同一 Device 上解析后的实际目录唯一为约束；相同 remote、相同名称但不同路径可以分别添加。
+- Project name 用于展示，可以重名；同名项目在选择列表中展示 Device 与路径以便区分。新 worktree 路径使用 Project ID，避免重名或重命名造成目录冲突。
 - Project name 不能是 `.`、`..`，也不能包含路径分隔符。
 - All projects 页面用于新增、重命名和删除 Project，并展示其 checkout、workspace 与 device 关联。
 - 删除 Project 前必须先删除其全部 Workspace；删除只清理 SuperThread 中的 Project 与 checkout 记录，不删除设备上的仓库目录。
@@ -369,7 +349,7 @@ Runtime API 不应该感知 transport。
 
 ProjectCheckout 表示：
 
-> 一个 Project 在某个 Device 上的物理 checkout。
+> 一个 Project 在某个 Device 上的物理目录，可以是普通文件夹或 Git checkout。
 
 数据结构：
 
@@ -381,10 +361,14 @@ interface ProjectCheckout {
   deviceId: string
 
   path: string
+  isGit?: boolean
+  defaultBranch?: string
 
   createdAt: Date
 }
 ```
+
+`isGit` 在新记录中明确标识目录是否为 Git 根目录；旧记录缺少该字段时按原有 Git checkout 处理。普通目录不保存虚构的 remote 或 branch。
 
 例如：
 
@@ -406,10 +390,10 @@ llama.cpp
 唯一约束：
 
 ```text
-(projectId, deviceId)
+(deviceId, resolvedPath)
 ```
 
-MVP 一个 Project 在一个 Device 上最多存在一个 base checkout。
+同一 Device 的同一路径不能归属多个 Project。Set Up Project 仍为一个 Project 在每个 Device 关联一个 base 目录；若要在同一 Device 添加其他目录，使用 Add Project 创建独立记录。
 
 ---
 
@@ -451,7 +435,7 @@ git clone <repository-url> ~/code/llama.cpp
 
 Clone 是独立于 New Workspace 的 Project Setup 操作。Local 与 Remote Device 均可选择 base directory，并由所属 Device Runtime 在该目录下执行 `git clone`；远端使用 SSH 连接及该设备自身的 Git 凭据。
 
-### Import Existing Repository
+### Import Existing Directory
 
 如果已经存在：
 
@@ -467,14 +451,9 @@ Import Existing
 → Browse: /data/allen/llama.cpp
 ```
 
-Runtime 验证：
+Runtime 首先验证目录存在且可访问，并通过所属 Device 上的 `pwd -P` 解析实际路径（包括 `~` 和软链接）。Git 为可选能力：仅在所选目录本身为 Git 根目录时检测 origin 与默认分支；没有 origin 的仓库也可导入，没有 Git 命令或不是 Git 仓库的目录按普通目录导入。选择 Git 仓库的子目录时保留所选目录，不自动替换为仓库根目录。
 
-```bash
-git -C /data/allen/llama.cpp rev-parse --show-toplevel
-git -C /data/allen/llama.cpp remote get-url origin
-```
-
-验证成功后创建 ProjectCheckout。
+在串行持久化事务内检查 Device 与实际目录的唯一性后创建 ProjectCheckout；重复提交与并发导入不能生成重复记录。显式 Set Up Project 的 Import 同样只要求有效且未被占用的目录，不要求匹配 remote。没有 Git remote 的 Project 只能 Import，不能 Clone。
 
 ---
 
@@ -542,7 +521,7 @@ Workspace 是整个系统最核心的 runtime abstraction。
 
 定义：
 
-> Workspace 是 Project 在某个 Device 上的一份 Working Copy；可以直接使用 base checkout，也可以使用隔离的 Git worktree。
+> Workspace 是 Project 在某个 Device 上的工作目录；普通文件夹直接使用项目目录，Git 仓库也可以使用隔离的 Git worktree。
 
 数据结构：
 
@@ -585,7 +564,7 @@ interface Workspace {
   "name": "nvfp4-kernel",
   "projectId": "proj_llamacpp",
   "deviceId": "dev_cuda",
-  "path": "~/.superthread/workspaces/llama.cpp/nvfp4-kernel",
+  "path": "~/.superthread/workspaces/proj_llamacpp/nvfp4-kernel",
   "branch": "work/nvfp4-kernel",
   "baseBranch": "master",
   "status": "ready"
@@ -608,6 +587,7 @@ interface Workspace {
 
 Workspace 有两种创建模式：
 
+- 普通文件夹自动选择 `main`，禁用 worktree、base branch 和 Link files and folders；主进程同样拒绝普通目录的 worktree 与链接请求。终端、浏览器与文件预览继续可用，branch/baseBranch 为空，界面不展示空的 Git 分支项。
 - `main`：直接使用所选 `Project × Device` 的 base checkout，不创建 worktree 或分支。每个 `Project × Device` 最多只能有一个 main Workspace；跨入口共用此限制。已占用时提示现有 Workspace 的名称，有归属时同时显示所属 WorkThread。
 - `worktree`：从 base checkout 的本地 ref 创建隔离的 Git worktree 和 `work/{workspace-name}` 分支。
 
@@ -657,7 +637,7 @@ Runtime 执行：
 ```bash
 git -C /data/allen/llama.cpp worktree add \
   -b work/nvfp4-kernel \
-  ~/.superthread/workspaces/llama.cpp/nvfp4-kernel \
+  ~/.superthread/workspaces/proj_llamacpp/nvfp4-kernel \
   master
 ```
 
@@ -678,16 +658,16 @@ base checkout
 
         │
         ├── Workspace A
-        │   ~/.superthread/workspaces/llama.cpp/nvfp4-kernel
+        │   ~/.superthread/workspaces/proj_llamacpp/nvfp4-kernel
         │
         └── Workspace B
-            ~/.superthread/workspaces/llama.cpp/benchmark
+            ~/.superthread/workspaces/proj_llamacpp/benchmark
 ```
 
 本机和远程 Device 都使用所属 Device 用户的 home 目录：
 
 ```text
-~/.superthread/workspaces/{project-name}/{workspace-name}
+~/.superthread/workspaces/{project-id}/{workspace-name}
 ```
 
 Runtime 必须在对应 Device 上解析 home 目录，不能把带引号的字面 `~` 当作路径传给远程命令。
@@ -1221,7 +1201,7 @@ Projects
 MVP 两种方式：
 
 ```text
-Import Existing Repository
+Import Existing Directory
 ```
 
 或者：
@@ -1237,12 +1217,13 @@ Device: MacBook or dev-cuda
 /path/to/repo
 ```
 
-系统读取：
+系统解析目录并读取：
 
 ```text
-name
-origin URL
-default branch
+resolved path
+name (optional override, otherwise folder name)
+origin URL (optional)
+default branch (Git roots only)
 ```
 
 创建：
@@ -1253,7 +1234,7 @@ Project
 ProjectCheckout
 ```
 
-如果检测到不同 remote 的默认 name 与现有 Project name 大小写等价，表单保留当前输入并显示 Unique Project Name 字段。用户输入唯一名称后可以重试；没有名称冲突时保持原流程。
+Import 支持本机和远端普通文件夹、没有 origin 的 Git 仓库及完整 Git 仓库。只拒绝同一 Device 的重复实际路径；项目名称与 remote 可以重复。表单提供可选 Project name，并说明 Git 可选。失败保留输入；成功后 Project 列表显示 Device 与完整目录，普通文件夹不展示虚构的 Git 信息。Clone 继续使用 Git URL，并在完成后使用同样的目录判重。
 
 ---
 
@@ -1673,7 +1654,7 @@ Session
 不要让它们互相侵入：
 
 ```text
-Project ≠ local directory
+Project ≠ Git remote identity (directories belong to Device checkouts)
 
 Device ≠ SSH connection
 

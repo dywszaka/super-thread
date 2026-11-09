@@ -105,7 +105,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
       <button ref={detailsButton} className="workspace-identity no-drag" aria-label="Workspace details" aria-expanded={details} title={`${workspace.name} · ${device?.name ?? ""} · ${workspace.branch}`} onClick={() => { setDetails((open) => !open); setMenu(false); }}>
         <strong title={workspace.name}>{workspace.name}</strong>
         <ChevronDown size={14} className={details ? "rotated" : ""} />
-        <span className="workspace-context"><span>·</span><span title={device?.name}>{device?.name}</span><span>·</span><span title={workspace.branch}>{workspace.branch}</span></span>
+        <span className="workspace-context"><span>·</span><span title={device?.name}>{device?.name}</span>{workspace.branch && <><span>·</span><span title={workspace.branch}>{workspace.branch}</span></>}</span>
       </button>
       {attentionCount > 0 && <div className="session-summary no-drag" role="img" aria-label={sessionSummary} title={sessionSummary}><i className={failedRestoreCount ? "failed" : waitingCount ? "waiting" : "busy"} /><span>{attentionCount}</span></div>}
       <div className="header-actions no-drag">
@@ -119,7 +119,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
           <button className="danger" disabled={workspace.status === "creating"} onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button>
         </div>}</div>
       </div>
-      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name ?? (workspace.workThreadId ? "Unknown work thread" : "Standalone")}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Main checkout" : "Worktree"}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
+      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name ?? (workspace.workThreadId ? "Unknown work thread" : "Standalone")}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Project directory" : "Worktree"}</dd></div>{workspace.branch && <><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div></>}<div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
       {editing && <EditWorkspaceDialog snapshot={snapshot} workspace={workspace} onClose={() => setEditing(false)} />}
     </header>
   );

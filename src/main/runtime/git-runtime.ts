@@ -3,25 +3,30 @@ import { basename, join, posix } from "node:path";
 import type { Device, DeviceConnection, WorkspaceLinkCandidate } from "../../shared/domain";
 import { isWorkspaceLinkPath } from "../../shared/workspace-links";
 import { DeviceCommandRunner, type CommandRunner } from "./command-runner";
+import { DirectoryRuntime } from "./directory-runtime";
 
-export interface RepositoryInfo { root: string; name: string; remote: string; defaultBranch: string; }
+export interface RepositoryInfo { root: string; name: string; remote?: string; defaultBranch?: string; }
 export interface WorkspaceDeleteRisk { hasUncommittedChanges: boolean; hasUntrackedFiles: boolean; unmergedCommitCount: number; }
 
 export class GitRuntime {
   private readonly runner: CommandRunner;
-  constructor(private readonly device: Device, connection: DeviceConnection, runner?: CommandRunner) {
+  constructor(private readonly device: Device, private readonly connection: DeviceConnection, runner?: CommandRunner) {
     this.runner = runner ?? new DeviceCommandRunner(connection);
   }
 
   async inspect(repositoryPath: string): Promise<RepositoryInfo> {
-    const [root, remote, branch] = await Promise.all([
-      this.git(repositoryPath, ["rev-parse", "--show-toplevel"]),
-      this.git(repositoryPath, ["remote", "get-url", "origin"]),
-      this.git(repositoryPath, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-        .then((value) => value.replace(/^origin\//, ""))
-        .catch(() => this.git(repositoryPath, ["branch", "--show-current"]))
+    // Resolve the selected directory first: Git is optional, but an accessible directory is required.
+    const root = await new DirectoryRuntime(this.device, this.connection, this.runner).resolve(repositoryPath);
+    const name = (this.device.type === "remote" ? posix.basename(root) : basename(root)) || "project";
+    const gitRoot = await this.runner.run("sh", ["-c", "git rev-parse --show-toplevel 2>/dev/null || :"], { cwd: root }).then((result) => result.stdout);
+    // Importing a subdirectory must preserve that directory, rather than silently selecting its parent repository.
+    if (gitRoot !== root) return { root, name };
+    const [remote, branch] = await Promise.all([
+      this.runner.run("sh", ["-c", "git remote get-url origin 2>/dev/null || :"], { cwd: root }).then((result) => result.stdout),
+      this.runner.run("sh", ["-c", "git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || git branch --show-current"], { cwd: root })
+        .then((result) => result.stdout.replace(/^origin\//, ""))
     ]);
-    return { root, name: this.device.type === "remote" ? posix.basename(root) : basename(root), remote, defaultBranch: branch || "main" };
+    return { root, name, remote: remote || undefined, defaultBranch: branch || "HEAD" };
   }
 
   async clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo> {
@@ -31,11 +36,11 @@ export class GitRuntime {
     return this.inspect(target);
   }
 
-  async createWorktree(checkoutPath: string, projectName: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }> {
+  async createWorktree(checkoutPath: string, projectId: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }> {
     const home = await this.homeDirectory();
     const parent = this.device.type === "remote"
-      ? posix.join(home, ".superthread", "workspaces", projectName)
-      : join(home, ".superthread", "workspaces", projectName);
+      ? posix.join(home, ".superthread", "workspaces", projectId)
+      : join(home, ".superthread", "workspaces", projectId);
     const workspacePath = this.device.type === "remote" ? posix.join(parent, workspaceName) : join(parent, workspaceName);
     const branch = `work/${workspaceName}`;
     await this.runner.run("mkdir", ["-p", parent]);

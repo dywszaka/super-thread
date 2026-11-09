@@ -48,8 +48,8 @@ export interface WorkThread {
 export interface Project {
   id: string;
   name: string;
-  repositoryUrl: string;
-  defaultBranch: string;
+  repositoryUrl?: string;
+  defaultBranch?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,6 +111,9 @@ export interface ProjectCheckout {
   projectId: string;
   deviceId: string;
   path: string;
+  /** Absent in legacy snapshots, whose checkouts were always Git repositories. */
+  isGit?: boolean;
+  defaultBranch?: string;
   createdAt: string;
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -881,4 +881,57 @@ test("sidebar reordering rejects missing, archived, and cross-pin targets withou
   await assert.rejects(service.reorderWorkThreads({ id: "c", targetId: "a", placement: "before" }), /Only active/);
   await service.reorderWorkThreads({ id: "a", targetId: "a", placement: "after" });
   assert.deepEqual(service.snapshot(), before);
+});
+
+test("ordinary project folders create main workspaces without Git and survive reload and deletion", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-plain-workspace-"));
+  const projectPath = join(directory, "notes");
+  await mkdir(projectPath);
+  await writeFile(join(projectPath, "note.md"), "Keep this file");
+  const created: Session[] = [];
+  const { service, store } = await setup(undefined, fakeTerminals(created));
+  await service.addProject({ mode: "import", deviceId: "dev_local", path: projectPath });
+  const project = service.snapshot().projects[0]!;
+  const checkout = service.snapshot().checkouts[0]!;
+  assert.equal(checkout.isGit, false);
+  const alias = join(directory, "alias");
+  await symlink(projectPath, alias);
+  await assert.rejects(() => service.addProject({ mode: "import", deviceId: "dev_local", path: alias }), /already exists on this device/);
+  assert.equal(service.snapshot().projects.length, 1);
+  await assert.rejects(() => service.createWorkspace({ projectId: project.id, deviceId: "dev_local", name: "isolated", kind: "worktree", baseBranch: "main" }), /require a Git repository/);
+  await assert.rejects(() => service.listWorkspaceLinkCandidates({ projectId: project.id, deviceId: "dev_local" }), /requires a Git repository/);
+  assert.deepEqual(service.snapshot().workspaces, []);
+  const workspaceId = await service.createWorkspace({ projectId: project.id, deviceId: "dev_local", name: "notes", kind: "main" });
+  assert.equal(created[0]?.cwd, checkout.path);
+  assert.equal(service.snapshot().workspaces[0]?.branch, "");
+  assert.equal(service.snapshot().workspaces[0]?.baseBranch, "");
+  await store.load();
+  assert.equal(store.snapshot().checkouts[0]?.isGit, false);
+  assert.equal(store.snapshot().projects[0]?.repositoryUrl, undefined);
+  await service.deleteWorkspace(workspaceId, true);
+  await service.deleteProject(project.id);
+  assert.equal(await readFile(join(projectPath, "note.md"), "utf8"), "Keep this file");
+});
+
+test("same-name projects create worktrees under distinct project identities", async () => {
+  const namespaces: string[] = [];
+  const git = {
+    inspect: async (path: string) => ({ root: path, name: "demo", defaultBranch: "main" }),
+    clone: async () => { throw new Error("unused"); },
+    listWorkspaceLinkCandidates: async () => [],
+    linkWorktreePaths: async () => {},
+    createWorktree: async (_path: string, projectNamespace: string, name: string) => {
+      namespaces.push(projectNamespace);
+      return { path: `/work/${projectNamespace}/${name}`, branch: `work/${name}` };
+    },
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
+    deleteWorktree: async () => {}
+  };
+  const { service } = await setup(git, fakeTerminals());
+  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/one/demo" });
+  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/two/demo" });
+  const [first, second] = service.snapshot().projects;
+  await service.createWorkspace({ projectId: first!.id, deviceId: "dev_local", name: "first", kind: "worktree", baseBranch: "main" });
+  await service.createWorkspace({ projectId: second!.id, deviceId: "dev_local", name: "second", kind: "worktree", baseBranch: "main" });
+  assert.deepEqual(namespaces, [first!.id, second!.id]);
 });

@@ -22,7 +22,7 @@ This file is the concise navigation guide for coding agents working in SuperThre
 ## Architecture and ownership
 
 - Keep the MVP domain limited to `Project`, `Device`, `Workspace`, and `Session`; do not introduce Task, Agent, Workflow, Review, or SaaS concepts without an approved scope change.
-- Preserve the model boundary: Project is a logical Git repository, Device owns execution, Workspace owns the isolated worktree/runtime context, and Session owns a terminal process.
+- Preserve the model boundary: Project organizes directory-based work with optional Git metadata, Device owns execution, Workspace owns the isolated worktree/runtime context, and Session owns a terminal process.
 - Filesystem, Git, SSH, and PTY operations belong in `src/main`; renderer code must use the narrow typed bridge in `src/preload` and must not access Node directly.
 - Put cross-process types, validated channel names, and inputs in `src/shared`; validate untrusted IPC input before invoking services.
 - Keep UI features dependent on the workbench/design layer, never the reverse. Use semantic CSS tokens and preserve traffic-light insets, drag regions, and explicit `no-drag` controls.

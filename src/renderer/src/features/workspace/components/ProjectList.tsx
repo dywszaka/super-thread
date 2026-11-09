@@ -21,7 +21,7 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
   const remove = async (project: Project): Promise<void> => {
     const workspaceCount = snapshot.workspaces.filter((workspace) => workspace.projectId === project.id).length;
     if (workspaceCount > 0) return;
-    if (!confirm(`Delete the project “${project.name}” from SuperThread?\n\nIts checkout records will be removed, but repository files on your devices will not be deleted.`)) return;
+    if (!confirm(`Delete the project “${project.name}” from SuperThread?\n\nIts checkout records will be removed, but project files on your devices will not be deleted.`)) return;
     setBusyId(project.id);
     try {
       await window.desktop.deleteProject(project.id);
@@ -35,25 +35,26 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
     <main className="project-page">
       <header className="project-page-header drag">
         <SidebarReopenButton />
-        <div><h1>Projects</h1><p>Manage logical Git repositories and the devices where they are available.</p></div>
+        <div><h1>Projects</h1><p>Manage project directories across your devices. Git is optional.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button>
       </header>
       <section className="project-page-body no-drag">
         <div className="project-summary"><span><strong>{snapshot.projects.length}</strong> projects</span><span><strong>{snapshot.checkouts.length}</strong> checkouts</span><span><strong>{snapshot.workspaces.length}</strong> workspaces</span></div>
         <div className="project-cards">
-          {snapshot.projects.length === 0 && <div className="project-list-empty"><FolderGit2 size={28} /><h2>No projects yet</h2><p>Import an existing Git repository or clone one onto this Mac.</p><button className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button></div>}
+          {snapshot.projects.length === 0 && <div className="project-list-empty"><FolderGit2 size={28} /><h2>No projects yet</h2><p>Add an existing folder or clone a Git repository onto this Mac.</p><button className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button></div>}
           {snapshot.projects.map((project) => {
             const checkouts = snapshot.checkouts.filter((checkout) => checkout.projectId === project.id);
             const workspaces = snapshot.workspaces.filter((workspace) => workspace.projectId === project.id);
             const checkoutDevices = checkouts.map((checkout) => snapshot.devices.find((device) => device.id === checkout.deviceId)?.name).filter(Boolean);
+            const locations = checkouts.map((checkout) => `${snapshot.devices.find((device) => device.id === checkout.deviceId)?.name ?? "Device"}: ${checkout.path}`).join(" · ");
             const busy = busyId === project.id;
             const missingDevice = snapshot.devices.find((device) => !checkouts.some((checkout) => checkout.deviceId === device.id));
             return (
               <article className="project-card" key={project.id}>
                 <div className="project-card-icon"><FolderGit2 size={19} /></div>
                 <div className="project-card-content">
-                  <div className="project-card-title"><strong>{project.name}</strong><span>{project.defaultBranch}</span></div>
-                  <code>{project.repositoryUrl}</code>
+                  <div className="project-card-title"><strong>{project.name}</strong>{project.defaultBranch && <span>{project.defaultBranch}</span>}</div>
+                  <code title={locations || project.repositoryUrl}>{locations || project.repositoryUrl}</code>
                   <div className="project-usage"><span><HardDrive size={12} /> {checkouts.length} {checkouts.length === 1 ? "checkout" : "checkouts"}{checkoutDevices.length > 0 ? ` · ${checkoutDevices.join(", ")}` : ""}</span><span><GitBranch size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span></div>
                 </div>
                 <div className="project-card-actions">
@@ -93,9 +94,9 @@ function EditProjectDialog({ project, onClose }: { project?: Project; onClose():
   };
 
   return (
-    <Modal open={Boolean(project)} title="Edit project" description="The display name is used for future workspace paths. Existing workspace paths are unchanged." busy={busy} submitLabel="Save Changes" onClose={onClose} onSubmit={submit}>
+    <Modal open={Boolean(project)} title="Edit project" description="Project names can be reused. Renaming keeps project directories and workspaces unchanged." busy={busy} submitLabel="Save Changes" onClose={onClose} onSubmit={submit}>
       <Field label="Project name"><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoFocus /></Field>
-      <Field label="Repository"><input value={project?.repositoryUrl ?? ""} readOnly /></Field>
+      {project?.repositoryUrl && <Field label="Git remote"><input value={project.repositoryUrl} readOnly /></Field>}
     </Modal>
   );
 }

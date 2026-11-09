@@ -56,7 +56,6 @@ import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/log
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
-const canonicalRemote = (remote: string): string => remote.trim().replace(/\.git$/, "").replace(/^ssh:\/\//, "").toLowerCase();
 const canonicalName = (name: string): string => name.trim().toLowerCase();
 const unsafeProjectName = (name: string): string | null => {
   const trimmed = name.trim();
@@ -83,7 +82,7 @@ export function nextTmuxSessionName(baseName: string, occupied: Iterable<string>
 export interface WorkspaceGitRuntime {
   inspect(repositoryPath: string): Promise<RepositoryInfo>;
   clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo>;
-  createWorktree(checkoutPath: string, projectName: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
+  createWorktree(checkoutPath: string, projectId: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
   listWorkspaceLinkCandidates(checkoutPath: string): Promise<WorkspaceLinkCandidate[]>;
   linkWorktreePaths(checkoutPath: string, workspacePath: string, paths: string[]): Promise<void>;
   inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk>;
@@ -300,11 +299,8 @@ export class WorkspaceService extends EventEmitter {
       return;
     }
     const device = this.localDevice(snapshot);
-    const existing = snapshot.projects.find((project) => canonicalRemote(project.repositoryUrl) === canonicalRemote(input.repositoryUrl));
-    if (existing && snapshot.checkouts.some((item) => item.projectId === existing.id && item.deviceId === device.id)) {
-      throw new Error(`${existing.name} is already imported on this device`);
-    }
-    if (!existing) this.assertProjectNameAvailable(snapshot, requestedName || repositoryNameFromUrl(input.repositoryUrl));
+    const unsafe = unsafeProjectName(requestedName || repositoryNameFromUrl(input.repositoryUrl));
+    if (unsafe) throw new Error(unsafe);
     const info = await this.git(snapshot, device).clone(input.repositoryUrl, input.parentDirectory);
     await this.recordProjectAndCheckout(info, device.id, requestedName);
   }
@@ -315,9 +311,6 @@ export class WorkspaceService extends EventEmitter {
     const name = input.name.trim();
     const unsafe = unsafeProjectName(name);
     if (unsafe) throw new Error(unsafe);
-    if (snapshot.projects.some((item) => item.id !== project.id && canonicalName(item.name) === canonicalName(name))) {
-      throw new Error(`A project named ${name} already exists`);
-    }
     await this.store.update((draft) => {
       const item = draft.projects.find((candidate) => candidate.id === project.id);
       if (item) Object.assign(item, { name, updatedAt: now() });
@@ -345,14 +338,18 @@ export class WorkspaceService extends EventEmitter {
       throw new Error(`${project.name} is already set up on ${device.name}`);
     }
     const runtime = this.git(snapshot, device);
+    if (input.mode === "clone" && !project.repositoryUrl) throw new Error("This project has no Git remote. Import an existing directory instead.");
     const info = input.mode === "import"
       ? await runtime.inspect(input.path)
-      : await runtime.clone(project.repositoryUrl, input.parentDirectory);
-    if (canonicalRemote(info.remote) !== canonicalRemote(project.repositoryUrl)) {
-      throw new Error("The selected repository does not match this project’s origin remote");
-    }
+      : await runtime.clone(project.repositoryUrl!, input.parentDirectory);
     await this.store.update((draft) => {
-      draft.checkouts.push({ id: id("checkout"), projectId: project.id, deviceId: device.id, path: info.root, createdAt: now() });
+      this.project(draft, project.id);
+      this.device(draft, device.id);
+      if (draft.checkouts.some((item) => item.projectId === project.id && item.deviceId === device.id)) {
+        throw new Error(`${project.name} is already set up on ${device.name}`);
+      }
+      this.assertProjectPathAvailable(draft, device.id, info.root);
+      draft.checkouts.push({ id: id("checkout"), projectId: project.id, deviceId: device.id, path: info.root, isGit: info.defaultBranch !== undefined, defaultBranch: info.defaultBranch, createdAt: now() });
     });
     this.changed();
   }
@@ -528,6 +525,7 @@ export class WorkspaceService extends EventEmitter {
     this.project(snapshot, input.projectId);
     const checkout = snapshot.checkouts.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId);
     if (!checkout) throw new Error("Project is not set up on the selected device");
+    if (checkout.isGit === false) throw new Error("Linking worktree files requires a Git repository");
     return this.git(snapshot, device).listWorkspaceLinkCandidates(checkout.path);
   }
 
@@ -539,9 +537,9 @@ export class WorkspaceService extends EventEmitter {
       if (thread && thread.status !== "active") throw new Error("Work thread is archived. Restore it before adding a workspace.");
       const device = this.device(draft, input.deviceId);
       const project = this.project(draft, input.projectId);
-      this.assertProjectNameUsableForWorkspace(draft, project);
       const checkout = draft.checkouts.find((item) => item.projectId === project.id && item.deviceId === device.id);
       if (!checkout) throw new Error("Project is not set up on the selected device");
+      if (input.kind === "worktree" && checkout.isGit === false) throw new Error("Isolated worktrees require a Git repository. Use the project directory directly.");
       if (input.kind === "main") {
         const existing = draft.workspaces.find((item) => item.projectId === project.id && item.deviceId === device.id && item.kind === "main");
         if (existing) {
@@ -553,12 +551,13 @@ export class WorkspaceService extends EventEmitter {
       if (draft.workspaces.some((item) => item.deviceId === device.id && item.name === input.name)) {
         throw new Error(`A workspace named ${input.name} already exists on ${device.name}`);
       }
+      const checkoutBranch = checkout.isGit === false ? "" : checkout.defaultBranch ?? project.defaultBranch ?? "";
       draft.workspaces.push({
         id: workspaceId, name: input.name, ...(thread ? { workThreadId: thread.id } : {}),
         projectId: project.id, deviceId: device.id, checkoutId: checkout.id, kind: input.kind,
         path: input.kind === "main" ? checkout.path : "",
-        branch: input.kind === "main" ? project.defaultBranch : `work/${input.name}`,
-        baseBranch: input.kind === "main" ? project.defaultBranch : input.baseBranch,
+        branch: input.kind === "main" ? checkoutBranch : `work/${input.name}`,
+        baseBranch: input.kind === "main" ? checkoutBranch : input.baseBranch,
         status: input.kind === "main" ? "ready" : "creating", createdAt: timestamp, updatedAt: timestamp
       });
       if (thread) thread.updatedAt = timestamp;
@@ -579,7 +578,7 @@ export class WorkspaceService extends EventEmitter {
     const runtime = this.git(snapshot, this.device(snapshot, pending.deviceId));
     let created: { path: string; branch: string };
     try {
-      created = await runtime.createWorktree(checkout.path, project.name, input.name, input.baseBranch);
+      created = await runtime.createWorktree(checkout.path, project.id, input.name, input.baseBranch);
     } catch (error) {
       await this.removeWorkspaceMetadata(workspaceId);
       throw error;
@@ -1036,37 +1035,22 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private async recordProjectAndCheckout(info: RepositoryInfo, deviceId: string, requestedName?: string): Promise<void> {
-    const snapshot = this.snapshot();
-    const existing = snapshot.projects.find((project) => canonicalRemote(project.repositoryUrl) === canonicalRemote(info.remote));
-    if (existing && snapshot.checkouts.some((item) => item.projectId === existing.id && item.deviceId === deviceId)) {
-      throw new Error(`${existing.name} is already imported on this device`);
-    }
     const projectName = requestedName?.trim() || info.name;
-    if (!existing) this.assertProjectNameAvailable(snapshot, projectName);
+    const unsafe = unsafeProjectName(projectName);
+    if (unsafe) throw new Error(unsafe);
     await this.store.update((draft) => {
-      let project: Project | undefined = draft.projects.find((item) => canonicalRemote(item.repositoryUrl) === canonicalRemote(info.remote));
-      if (!project) {
-        project = { id: id("proj"), name: projectName, repositoryUrl: info.remote, defaultBranch: info.defaultBranch, createdAt: now(), updatedAt: now() };
-        draft.projects.push(project);
-      }
-      draft.checkouts.push({ id: id("checkout"), projectId: project.id, deviceId, path: info.root, createdAt: now() });
+      this.device(draft, deviceId);
+      this.assertProjectPathAvailable(draft, deviceId, info.root);
+      const project: Project = { id: id("proj"), name: projectName, repositoryUrl: info.remote, defaultBranch: info.defaultBranch, createdAt: now(), updatedAt: now() };
+      draft.projects.push(project);
+      draft.checkouts.push({ id: id("checkout"), projectId: project.id, deviceId, path: info.root, isGit: info.defaultBranch !== undefined, defaultBranch: info.defaultBranch, createdAt: now() });
     });
     this.changed();
   }
 
-  private assertProjectNameAvailable(snapshot: AppSnapshot, name: string): void {
-    const unsafe = unsafeProjectName(name);
-    if (unsafe) throw new Error(unsafe);
-    if (snapshot.projects.some((project) => canonicalName(project.name) === canonicalName(name))) {
-      throw new Error(`Project name conflict: A project named ${name.trim()} already exists. Enter a unique project name and retry.`);
-    }
-  }
-
-  private assertProjectNameUsableForWorkspace(snapshot: AppSnapshot, project: Project): void {
-    const unsafe = unsafeProjectName(project.name);
-    if (unsafe) throw new Error(`Cannot create a workspace until project ${project.name} has a safe unique name: ${unsafe}`);
-    if (snapshot.projects.some((item) => item.id !== project.id && canonicalName(item.name) === canonicalName(project.name))) {
-      throw new Error(`Cannot create a workspace because multiple projects are named ${project.name}. Use a unique project name before creating new workspaces.`);
+  private assertProjectPathAvailable(snapshot: AppSnapshot, deviceId: string, path: string): void {
+    if (snapshot.checkouts.some((checkout) => checkout.deviceId === deviceId && posix.resolve(checkout.path) === posix.resolve(path))) {
+      throw new Error(`A project at ${path} already exists on this device`);
     }
   }
 
