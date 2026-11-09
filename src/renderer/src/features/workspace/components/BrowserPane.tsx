@@ -1,9 +1,9 @@
 import { ArrowLeft, ArrowRight, Globe, LoaderCircle, RotateCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNativePaneLayout } from "../use-native-pane-layout";
 import type { BrowserState, BrowserTab } from "@/shared/domain";
 
-export function BrowserPane({ tab }: { tab: BrowserTab }): React.ReactNode {
+export function BrowserPane({ tab, shortcutsEnabled }: { tab: BrowserTab; shortcutsEnabled: boolean }): React.ReactNode {
   const [address, setAddress] = useState(tab.url);
   const [state, setState] = useState<BrowserState>({ id: tab.id, loading: false, canGoBack: false, canGoForward: false });
   const [error, setError] = useState("");
@@ -17,11 +17,15 @@ export function BrowserPane({ tab }: { tab: BrowserTab }): React.ReactNode {
     });
     return () => { disposed = true; unsubscribe(); };
   }, [tab.id]);
-  const command = async (command: "back" | "forward" | "reload"): Promise<void> => {
+  const command = useCallback(async (command: "back" | "forward" | "reload"): Promise<void> => {
     setError("");
     try { await window.desktop.browserCommand({ id: tab.id, command }); }
     catch (cause) { setError(String(cause)); }
-  };
+  }, [tab.id]);
+  useEffect(() => {
+    if (!shortcutsEnabled || !tab.url) return;
+    return window.desktop.onMenuAction((action) => { if (action === "reload-tab" && !document.querySelector(".dialog-overlay")) void command("reload"); });
+  }, [shortcutsEnabled, tab.url, command]);
   return <div className="browser-pane no-drag">
     <form className="browser-toolbar no-drag" onSubmit={async (event) => {
       event.preventDefault(); setError("");

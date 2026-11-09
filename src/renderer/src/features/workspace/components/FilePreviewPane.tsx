@@ -1,10 +1,10 @@
 import { Download, FileText, FolderOpen, LoaderCircle, RotateCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { FilePreviewState, FilePreviewTab } from "@/shared/domain";
 import { useNativePaneLayout } from "../use-native-pane-layout";
 
-export function FilePreviewPane({ tab, onChooseFile }: { tab: FilePreviewTab; onChooseFile(): void }): React.ReactNode {
+export function FilePreviewPane({ tab, onChooseFile, shortcutsEnabled }: { tab: FilePreviewTab; onChooseFile(): void; shortcutsEnabled: boolean }): React.ReactNode {
   const [state, setState] = useState<FilePreviewState>({ id: tab.id, loading: true });
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -22,11 +22,15 @@ export function FilePreviewPane({ tab, onChooseFile }: { tab: FilePreviewTab; on
     }).catch((cause) => { if (!disposed) setError(String(cause)); });
     return () => { disposed = true; unsubscribe(); };
   }, [tab.id, tab.path]);
-  const refresh = async (): Promise<void> => {
+  const refresh = useCallback(async (): Promise<void> => {
     setError("");
     try { await window.desktop.refreshFilePreview(tab.id); }
     catch (cause) { setError(String(cause)); }
-  };
+  }, [tab.id]);
+  useEffect(() => {
+    if (!shortcutsEnabled) return;
+    return window.desktop.onMenuAction((action) => { if (action === "reload-tab" && !document.querySelector(".dialog-overlay")) void refresh(); });
+  }, [shortcutsEnabled, refresh]);
   const download = async (): Promise<void> => {
     if (downloading) return;
     setDownloading(true);

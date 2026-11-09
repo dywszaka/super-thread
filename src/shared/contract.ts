@@ -313,7 +313,7 @@ export const workspaceFileInputSchema = z.object({
 }).strict();
 export const navigateFilePreviewSchema = z.object({ id: z.string().min(1), path: workspaceFileInputSchema.shape.path }).strict();
 
-export type MenuAction = "settings" | "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal";
+export type MenuAction = "settings" | "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal" | "close-tab" | "reload-tab";
 
 export interface DesktopBridge {
   browseWorkspaceFiles(input: WorkspaceFileInput): Promise<WorkspaceFileLocation>;
