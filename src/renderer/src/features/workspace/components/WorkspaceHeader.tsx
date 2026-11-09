@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Code2, ExternalLink, Focus, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Code2, ExternalLink, Focus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { SidebarReopenButton } from "./Sidebar";
+import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -12,12 +13,13 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const client = useQueryClient();
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [openingInVSCode, setOpeningInVSCode] = useState(false);
   const [openingTmux, setOpeningTmux] = useState(false);
   const detailsButton = useRef<HTMLButtonElement>(null);
   const detailsPopover = useRef<HTMLDivElement>(null);
   const menuAnchor = useRef<HTMLDivElement>(null);
-  const { enterFocusMode, openDialog, setActiveWorkspace } = useWorkbenchStore();
+  const { enterFocusMode, openWorkspaceDialog, scope } = useWorkbenchStore();
   const workThread = snapshot.workThreads.find((item) => item.id === workspace.workThreadId);
   const project = snapshot.projects.find((item) => item.id === workspace.projectId);
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
@@ -73,6 +75,12 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
       setOpeningTmux(false);
     }
   };
+  const clearDeletedWorkspace = (): void => {
+    const state = useWorkbenchStore.getState();
+    if (state.activeWorkspaceId !== workspace.id) return;
+    if (workspace.workThreadId) state.setActiveWorkspace(null);
+    else state.showAllWorkspaces();
+  };
   const remove = async (): Promise<void> => {
     setMenu(false);
     const consequence = workspace.kind === "main"
@@ -81,12 +89,12 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
     if (!confirm(`Delete workspace “${workspace.name}”?\n\n${consequence}`)) return;
     try {
       await window.desktop.deleteWorkspace(workspace.id);
-      setActiveWorkspace(null);
+      clearDeletedWorkspace();
       toast.success("Workspace deleted");
     } catch (error) {
       const text = cleanError(error);
       if (text.includes("Workspace delete blocked") && confirm(`${text}\n\nForce delete this worktree and branch?`)) {
-        try { await window.desktop.deleteWorkspace(workspace.id, true); setActiveWorkspace(null); toast.success("Workspace force deleted"); }
+        try { await window.desktop.deleteWorkspace(workspace.id, true); clearDeletedWorkspace(); toast.success("Workspace force deleted"); }
         catch (forceError) { toast.error(cleanError(forceError)); }
       } else toast.error(text);
     }
@@ -105,12 +113,14 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
         <div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions" title="Workspace actions" aria-expanded={menu}><MoreHorizontal size={17} /></button>{menu && <div className="context-menu">
           <button disabled={workspace.status !== "ready" || openingInVSCode} onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button>
           <button disabled={workspace.status !== "ready" || openingTmux} onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> {openingTmux ? "Opening…" : "tmux in iTerm"}</button>
-          <button onClick={() => { setMenu(false); openDialog("workspace"); }}><Plus size={14} /> New Workspace</button>
+          <button onClick={() => { setMenu(false); openWorkspaceDialog(scope.type === "work-thread" ? scope.id : undefined); }}><Plus size={14} /> New Workspace</button>
+          <button disabled={workspace.status === "creating"} onClick={() => { setMenu(false); setEditing(true); }}><Pencil size={14} /> Rename workspace…</button>
           <div className="context-menu-separator" />
-          <button className="danger" onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button>
+          <button className="danger" disabled={workspace.status === "creating"} onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button>
         </div>}</div>
       </div>
-      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Main checkout" : "Worktree"}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
+      {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name ?? (workspace.workThreadId ? "Unknown work thread" : "Standalone")}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Main checkout" : "Worktree"}</dd></div><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div><div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}
+      {editing && <EditWorkspaceDialog snapshot={snapshot} workspace={workspace} onClose={() => setEditing(false)} />}
     </header>
   );
 }

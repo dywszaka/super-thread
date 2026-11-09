@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { WorkspaceScope } from "../features/workspace/selection";
-import type { ManagedSessionKind } from "@/shared/domain";
+import type { ManagedSessionKind, Workspace } from "@/shared/domain";
+
+type SidebarSection = "workThreads" | "workspaces";
 
 type DialogName = "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
@@ -21,8 +23,10 @@ interface WorkbenchState {
   sidebarWidth: number;
   focusMode: boolean;
   expandedThreadIds: string[];
+  collapsedSidebarSections: Record<SidebarSection, boolean>;
   sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: ManagedSessionKind }>;
   dialog: DialogName;
+  workspaceDialogThreadId: string | null;
   setupProjectTarget: { projectId: string; deviceId: string } | null;
   showAllWorkspaces(): void;
   showAllProjects(): void;
@@ -30,7 +34,8 @@ interface WorkbenchState {
   showAllDevices(): void;
   showAllTodos(): void;
   setProjectFilter(id: string | null): void;
-  setWorkThreadFilter(id: string): void;
+  setWorkThreadFilter(id: string, workspaceId?: string): void;
+  openWorkspace(workspace: Pick<Workspace, "id" | "workThreadId">): void;
   setActiveWorkspace(id: string | null): void;
   setActiveSession(workspaceId: string, id: string | null): void;
   setSidebarCollapsed(collapsed: boolean): void;
@@ -38,15 +43,17 @@ interface WorkbenchState {
   enterFocusMode(): void;
   exitFocusMode(): void;
   toggleThreadExpanded(id: string): void;
+  toggleSidebarSection(section: SidebarSection): void;
   requestSessionCreate(workspaceId: string, kind: ManagedSessionKind): void;
   acknowledgeSessionCreateRequest(id: string): void;
-  openDialog(name: Exclude<DialogName, null>): void;
+  openDialog(name: Exclude<DialogName, "workspace" | null>): void;
+  openWorkspaceDialog(workThreadId?: string): void;
   openSetupProject(projectId: string, deviceId: string): void;
   closeDialog(): void;
 }
 
 export const useWorkbenchStore = create<WorkbenchState>()(
-  persist((set) => ({
+  persist((set, get) => ({
     scope: { type: "all-workspaces" },
     projectFilter: null,
     workThreadFilter: null,
@@ -56,9 +63,11 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     sidebarWidth: 240,
     focusMode: false,
     expandedThreadIds: [],
+    collapsedSidebarSections: { workThreads: false, workspaces: false },
     sessionCreateRequests: [],
     setupProjectTarget: null,
     dialog: null,
+    workspaceDialogThreadId: null,
     showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
     showAllProjects: () => set({ scope: { type: "all-projects" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
     showAllWorkThreads: () => set({ scope: { type: "all-work-threads" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
@@ -69,13 +78,17 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       projectFilter,
       workThreadFilter: null
     }),
-    setWorkThreadFilter: (workThreadFilter) => set((state) => ({
+    setWorkThreadFilter: (workThreadFilter, workspaceId) => set((state) => ({
       scope: { type: "work-thread", id: workThreadFilter },
-      activeWorkspaceId: null,
+      activeWorkspaceId: workspaceId ?? null,
       projectFilter: null,
       workThreadFilter,
       expandedThreadIds: state.expandedThreadIds.includes(workThreadFilter) ? state.expandedThreadIds : [...state.expandedThreadIds, workThreadFilter]
     })),
+    openWorkspace: (workspace) => {
+      if (workspace.workThreadId) get().setWorkThreadFilter(workspace.workThreadId, workspace.id);
+      else set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: workspace.id });
+    },
     setActiveWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId }),
     setActiveSession: (workspaceId, id) => set((state) => {
       const activeSessionIds = { ...state.activeSessionIds };
@@ -92,6 +105,9 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         ? state.expandedThreadIds.filter((item) => item !== id)
         : [...state.expandedThreadIds, id]
     })),
+    toggleSidebarSection: (section) => set(({ collapsedSidebarSections }) => ({
+      collapsedSidebarSections: { ...collapsedSidebarSections, [section]: !collapsedSidebarSections[section] }
+    })),
     requestSessionCreate: (workspaceId, kind) => set((state) => ({
       sessionCreateRequests: [...state.sessionCreateRequests, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, workspaceId, kind }]
     })),
@@ -99,6 +115,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       sessionCreateRequests: state.sessionCreateRequests.filter((request) => request.id !== id)
     })),
     openDialog: (dialog) => set({ dialog }),
+    openWorkspaceDialog: (workThreadId) => set({ dialog: "workspace", workspaceDialogThreadId: workThreadId ?? null }),
     openSetupProject: (projectId, deviceId) => set({ dialog: "setupProject", setupProjectTarget: { projectId, deviceId } }),
     closeDialog: () => set({ dialog: null })
   }), {
@@ -112,6 +129,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       activeSessionIds: state.activeSessionIds,
       sidebarCollapsed: state.sidebarCollapsed,
       sidebarWidth: state.sidebarWidth,
+      collapsedSidebarSections: state.collapsedSidebarSections,
       expandedThreadIds: state.expandedThreadIds
     })
   })

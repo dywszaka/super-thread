@@ -326,12 +326,11 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async deleteProject(projectId: string): Promise<void> {
-    const snapshot = this.snapshot();
-    this.project(snapshot, projectId);
-    if (snapshot.workspaces.some((workspace) => workspace.projectId === projectId)) {
-      throw new Error("Remove this project’s workspaces before deleting it");
-    }
     await this.store.update((draft) => {
+      this.project(draft, projectId);
+      if (draft.workspaces.some((workspace) => workspace.projectId === projectId)) {
+        throw new Error("Remove this project’s workspaces before deleting it");
+      }
       draft.checkouts = draft.checkouts.filter((checkout) => checkout.projectId !== projectId);
       draft.projects = draft.projects.filter((project) => project.id !== projectId);
     });
@@ -513,12 +512,11 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async deleteWorkThread(workThreadId: string): Promise<void> {
-    const snapshot = this.snapshot();
-    this.workThread(snapshot, workThreadId);
-    if (snapshot.workspaces.some((workspace) => workspace.workThreadId === workThreadId)) {
-      throw new Error("Remove every workspace from this work thread before deleting it");
-    }
     await this.store.update((draft) => {
+      this.workThread(draft, workThreadId);
+      if (draft.workspaces.some((workspace) => workspace.workThreadId === workThreadId)) {
+        throw new Error("Remove every workspace from this work thread before deleting it");
+      }
       draft.workThreads = draft.workThreads.filter((item) => item.id !== workThreadId);
     });
     this.changed();
@@ -533,37 +531,36 @@ export class WorkspaceService extends EventEmitter {
     return this.git(snapshot, device).listWorkspaceLinkCandidates(checkout.path);
   }
 
-  async createWorkspace(input: CreateWorkspaceInput): Promise<void> {
-    const snapshot = this.snapshot();
-    const workThread = this.workThread(snapshot, input.workThreadId);
-    if (workThread.status !== "active") throw new Error("Work thread is archived. Restore it before adding a workspace.");
-    const device = this.device(snapshot, input.deviceId);
-    const project = this.project(snapshot, input.projectId);
-    this.assertProjectNameUsableForWorkspace(snapshot, project);
-    const checkout = snapshot.checkouts.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId);
-    if (!checkout) throw new Error("Project is not set up on the selected device");
-    if (input.kind === "main") {
-      const existing = snapshot.workspaces.find((item) => item.projectId === input.projectId && item.deviceId === input.deviceId && item.kind === "main");
-      if (existing) {
-        const owner = snapshot.workThreads.find((item) => item.id === existing.workThreadId);
-        throw new Error(`The main workspace for ${project.name} on ${device.name} is already used by “${existing.name}” in “${owner?.name ?? "another work thread"}”`);
-      }
-    }
-    if (snapshot.workspaces.some((item) => item.deviceId === input.deviceId && item.name === input.name)) {
-      throw new Error(`A workspace named ${input.name} already exists on ${device.name}`);
-    }
+  async createWorkspace(input: CreateWorkspaceInput): Promise<string> {
     const workspaceId = id("ws");
     const timestamp = now();
-    const pending: Workspace = {
-      id: workspaceId, name: input.name, workThreadId: workThread.id, projectId: input.projectId, deviceId: input.deviceId,
-      checkoutId: checkout.id, kind: input.kind, path: input.kind === "main" ? checkout.path : "",
-      branch: input.kind === "main" ? project.defaultBranch : `work/${input.name}`,
-      baseBranch: input.kind === "main" ? project.defaultBranch : input.baseBranch,
-      status: input.kind === "main" ? "ready" : "creating", createdAt: timestamp, updatedAt: timestamp
-    };
-    await this.store.update((draft) => {
-      draft.workspaces.push(pending);
-      const thread = draft.workThreads.find((item) => item.id === workThread.id);
+    const snapshot = await this.store.update((draft) => {
+      const thread = input.workThreadId === undefined ? undefined : this.workThread(draft, input.workThreadId);
+      if (thread && thread.status !== "active") throw new Error("Work thread is archived. Restore it before adding a workspace.");
+      const device = this.device(draft, input.deviceId);
+      const project = this.project(draft, input.projectId);
+      this.assertProjectNameUsableForWorkspace(draft, project);
+      const checkout = draft.checkouts.find((item) => item.projectId === project.id && item.deviceId === device.id);
+      if (!checkout) throw new Error("Project is not set up on the selected device");
+      if (input.kind === "main") {
+        const existing = draft.workspaces.find((item) => item.projectId === project.id && item.deviceId === device.id && item.kind === "main");
+        if (existing) {
+          const owner = draft.workThreads.find((item) => item.id === existing.workThreadId);
+          const context = owner ? ` in “${owner.name}”` : "";
+          throw new Error(`The main workspace for ${project.name} on ${device.name} is already used by “${existing.name}”${context}`);
+        }
+      }
+      if (draft.workspaces.some((item) => item.deviceId === device.id && item.name === input.name)) {
+        throw new Error(`A workspace named ${input.name} already exists on ${device.name}`);
+      }
+      draft.workspaces.push({
+        id: workspaceId, name: input.name, ...(thread ? { workThreadId: thread.id } : {}),
+        projectId: project.id, deviceId: device.id, checkoutId: checkout.id, kind: input.kind,
+        path: input.kind === "main" ? checkout.path : "",
+        branch: input.kind === "main" ? project.defaultBranch : `work/${input.name}`,
+        baseBranch: input.kind === "main" ? project.defaultBranch : input.baseBranch,
+        status: input.kind === "main" ? "ready" : "creating", createdAt: timestamp, updatedAt: timestamp
+      });
       if (thread) thread.updatedAt = timestamp;
     });
     this.changed();
@@ -571,17 +568,20 @@ export class WorkspaceService extends EventEmitter {
       try {
         await this.createSession({ workspaceId, name: "Terminal 1" });
       } catch (error) {
-        await this.removeWorkspaceMetadata(workspaceId, workThread.id);
+        await this.removeWorkspaceMetadata(workspaceId);
         throw error;
       }
-      return;
+      return workspaceId;
     }
-    const runtime = this.git(snapshot, device);
+    const pending = this.workspace(snapshot, workspaceId);
+    const checkout = snapshot.checkouts.find((item) => item.id === pending.checkoutId)!;
+    const project = this.project(snapshot, pending.projectId);
+    const runtime = this.git(snapshot, this.device(snapshot, pending.deviceId));
     let created: { path: string; branch: string };
     try {
       created = await runtime.createWorktree(checkout.path, project.name, input.name, input.baseBranch);
     } catch (error) {
-      await this.removeWorkspaceMetadata(workspaceId, workThread.id);
+      await this.removeWorkspaceMetadata(workspaceId);
       throw error;
     }
     try {
@@ -594,7 +594,7 @@ export class WorkspaceService extends EventEmitter {
     } catch (error) {
       try {
         await runtime.deleteWorktree(checkout.path, created.path, created.branch, true);
-        await this.removeWorkspaceMetadata(workspaceId, workThread.id);
+        await this.removeWorkspaceMetadata(workspaceId);
       } catch (rollbackError) {
         await this.store.update((draft) => {
           const workspace = draft.workspaces.find((item) => item.id === workspaceId);
@@ -608,6 +608,7 @@ export class WorkspaceService extends EventEmitter {
       }
       throw error;
     }
+    return workspaceId;
   }
 
   /**
@@ -615,17 +616,15 @@ export class WorkspaceService extends EventEmitter {
    * name were fixed at creation, so renaming keeps every runtime identity intact.
    */
   async renameWorkspace(input: RenameWorkspaceInput): Promise<void> {
-    const snapshot = this.snapshot();
-    const workspace = this.workspace(snapshot, input.id);
     const name = input.name.trim();
     if (!name) throw new Error("Workspace name is required");
-    if (name === workspace.name) return;
-    if (snapshot.workspaces.some((item) => item.id !== workspace.id && item.deviceId === workspace.deviceId && item.name === name)) {
-      throw new Error(`A workspace named ${name} already exists on ${this.device(snapshot, workspace.deviceId).name}`);
-    }
     await this.store.update((draft) => {
-      const item = draft.workspaces.find((candidate) => candidate.id === workspace.id);
-      if (item) Object.assign(item, { name, updatedAt: now() });
+      const workspace = this.workspace(draft, input.id);
+      if (name === workspace.name) return;
+      if (draft.workspaces.some((item) => item.id !== workspace.id && item.deviceId === workspace.deviceId && item.name === name)) {
+        throw new Error(`A workspace named ${name} already exists on ${this.device(draft, workspace.deviceId).name}`);
+      }
+      Object.assign(workspace, { name, updatedAt: now() });
     });
     this.changed();
   }
@@ -637,7 +636,7 @@ export class WorkspaceService extends EventEmitter {
       for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
         this.terminals.kill(session.id);
       }
-      await this.removeWorkspaceMetadata(workspaceId, workspace.workThreadId);
+      await this.removeWorkspaceMetadata(workspaceId);
       return;
     }
     const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
@@ -646,7 +645,7 @@ export class WorkspaceService extends EventEmitter {
       for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
         this.terminals.kill(session.id);
       }
-      await this.removeWorkspaceMetadata(workspaceId, workspace.workThreadId);
+      await this.removeWorkspaceMetadata(workspaceId);
       return;
     }
     if (!checkout) throw new Error("Base checkout no longer exists");
@@ -663,19 +662,12 @@ export class WorkspaceService extends EventEmitter {
       this.terminals.kill(session.id);
     }
     await runtime.deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
-    await this.store.update((draft) => {
-      draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
-      draft.filePreviewTabs = draft.filePreviewTabs.filter((item) => item.workspaceId !== workspaceId);
-      draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
-      draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
-      const thread = draft.workThreads.find((item) => item.id === workspace.workThreadId);
-      if (thread) thread.updatedAt = now();
-    });
-    this.changed();
+    await this.removeWorkspaceMetadata(workspaceId);
   }
 
-  private async removeWorkspaceMetadata(workspaceId: string, workThreadId: string): Promise<void> {
+  private async removeWorkspaceMetadata(workspaceId: string): Promise<void> {
     await this.store.update((draft) => {
+      const workThreadId = draft.workspaces.find((item) => item.id === workspaceId)?.workThreadId;
       draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.filePreviewTabs = draft.filePreviewTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);

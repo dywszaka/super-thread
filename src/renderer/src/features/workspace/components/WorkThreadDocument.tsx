@@ -11,7 +11,7 @@ import { SidebarReopenButton } from "./Sidebar";
 
 export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; onClose?: () => void }): React.ReactNode {
   const [tab, setTab] = useState<"document" | "todos">("document");
-  const openDialog = useWorkbenchStore((state) => state.openDialog);
+  const openWorkspaceDialog = useWorkbenchStore((state) => state.openWorkspaceDialog);
   const document = useMemo(() => threadDocumentAutosave(thread.id, thread.document ?? ""), [thread.id]);
   const state = useSyncExternalStore(document.subscribe, document.getSnapshot);
   useEffect(() => {
@@ -27,7 +27,7 @@ export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; on
           <span className={`document-save-status ${state.status}`} role="status" aria-live="polite">
             {state.status === "saved" ? <><Check size={13} /> Saved</> : state.status === "error" ? "Save failed" : <><Loader2 className="spinning" size={13} /> {state.status === "saving" ? "Saving…" : "Unsaved changes"}</>}
           </span>
-          {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openDialog("workspace")}><Plus size={14} /> New Workspace</button>}
+          {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openWorkspaceDialog(thread.id)}><Plus size={14} /> New Workspace</button>}
         </div>
       </header>
       <div className="thread-document-age no-drag"><WorkThreadAge thread={thread} details /></div>

@@ -10,6 +10,7 @@ import { tunnelConflicts } from "@/shared/ssh-tunnels";
 import { SshTunnelFields } from "./SshTunnelFields";
 import { WorkspaceLinks } from "./WorkspaceLinks";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/app-settings";
+import { workspaceNameSchema } from "@/shared/contract";
 import { SettingsDialog } from "./SettingsDialog";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
@@ -215,73 +216,98 @@ export function NewWorkThreadDialog({ template }: { template: string }): ReactNo
   );
 }
 
-export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  const { dialog, closeDialog, projectFilter, workThreadFilter, activeWorkspaceId, setActiveWorkspace, openSetupProject } = useWorkbenchStore();
+function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
+  const { closeDialog, projectFilter, workspaceDialogThreadId, activeWorkspaceId, openWorkspace, openSetupProject, openDialog } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const activeWorkspace = snapshot.workspaces.find((item) => item.id === activeWorkspaceId);
   const activeWorkThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
-  const [workThreadId, setWorkThreadId] = useState(workThreadFilter || activeWorkThreads[0]?.id || "");
-  const [projectId, setProjectId] = useState(projectFilter || snapshot.projects[0]?.id || "");
-  const [deviceId, setDeviceId] = useState(snapshot.devices[0]?.id || "");
+  const [workThreadId, setWorkThreadId] = useState(workspaceDialogThreadId ?? "");
+  const [projectId, setProjectId] = useState(projectFilter || activeWorkspace?.projectId || snapshot.projects[0]?.id || "");
+  const [deviceId, setDeviceId] = useState(activeWorkspace?.deviceId || snapshot.devices[0]?.id || "");
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"main" | "worktree">("worktree");
-  const resolvedWorkThreadId = resolveSelectionId(workThreadId, workThreadFilter, activeWorkThreads);
+  const workThread = activeWorkThreads.find((item) => item.id === workThreadId);
   const resolvedProjectId = resolveSelectionId(projectId, projectFilter, snapshot.projects);
   const resolvedDeviceId = resolveSelectionId(deviceId, null, snapshot.devices);
   const project = snapshot.projects.find((item) => item.id === resolvedProjectId);
   const device = snapshot.devices.find((item) => item.id === resolvedDeviceId);
   const [baseBranch, setBaseBranch] = useState(project?.defaultBranch || "main");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const checkout = useMemo(() => snapshot.checkouts.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId), [snapshot, resolvedProjectId, resolvedDeviceId]);
-  const mainWorkspace = useMemo(() => snapshot.workspaces.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId && item.kind === "main"), [snapshot, resolvedProjectId, resolvedDeviceId]);
+  const checkout = snapshot.checkouts.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId);
+  const mainWorkspace = snapshot.workspaces.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId && item.kind === "main");
+  const mainWorkspaceThread = snapshot.workThreads.find((item) => item.id === mainWorkspace?.workThreadId);
   const [linkSelection, setLinkSelection] = useState<{ checkoutId: string; paths: string[] }>({ checkoutId: "", paths: [] });
   const linkPaths = linkSelection.checkoutId === checkout?.id ? linkSelection.paths : [];
+  const parsedName = workspaceNameSchema.safeParse(name);
+  const valid = Boolean(checkout && (!workspaceDialogThreadId || workThread) &&
+    parsedName.success && (kind === "main" ? !mainWorkspace : baseBranch.trim()));
 
-  useEffect(() => { setLinkSelection({ checkoutId: checkout?.id || "", paths: [] }); }, [dialog, checkout?.id]);
-
-  useEffect(() => {
-    setBaseBranch(project?.defaultBranch || "main");
-  }, [resolvedProjectId]);
-
-  useEffect(() => {
-    if (dialog !== "workspace") return;
-    const activeWorkspace = snapshot.workspaces.find((item) => item.id === activeWorkspaceId);
-    setWorkThreadId(workThreadFilter || activeWorkspace?.workThreadId || activeWorkThreads[0]?.id || "");
-    setProjectId(projectFilter || activeWorkspace?.projectId || snapshot.projects[0]?.id || "");
-    setDeviceId(activeWorkspace?.deviceId || snapshot.devices[0]?.id || "");
-    setKind("worktree");
-    setTouched({});
-  }, [dialog, workThreadFilter, projectFilter, activeWorkspaceId, snapshot.workspaces, snapshot.projects, snapshot.devices, activeWorkThreads]);
+  useEffect(() => { setLinkSelection({ checkoutId: checkout?.id || "", paths: [] }); }, [checkout?.id]);
 
   const updateProject = (value: string): void => {
     setProjectId(value);
     setBaseBranch(snapshot.projects.find((item) => item.id === value)?.defaultBranch || "main");
   };
   const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault(); setBusy(true);
+    event.preventDefault();
+    if (!valid || !parsedName.success || busy) return;
+    setBusy(true);
     try {
-      if (!checkout) return;
-      const common = { workThreadId: resolvedWorkThreadId, projectId: resolvedProjectId, deviceId: resolvedDeviceId, name };
-      await window.desktop.createWorkspace(kind === "main" ? { ...common, kind } : { ...common, kind, baseBranch, linkPaths });
+      const common = {
+        ...(workThread ? { workThreadId: workThread.id } : {}),
+        projectId: resolvedProjectId, deviceId: resolvedDeviceId, name: parsedName.data
+      };
+      const id = await window.desktop.createWorkspace(kind === "main" ? { ...common, kind } : { ...common, kind, baseBranch, linkPaths });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
-      const fresh = await window.desktop.snapshot();
-      const created = fresh.workspaces.find((item) => item.name === name && item.deviceId === resolvedDeviceId && item.workThreadId === resolvedWorkThreadId);
-      if (created) setActiveWorkspace(created.id);
-      toast.success(`Workspace ${name} created`); closeDialog(); setName("");
+      openWorkspace({ id, workThreadId: workThread?.id });
+      toast.success(`Workspace ${parsedName.data} created`);
+      closeDialog();
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
-  const noProjects = snapshot.projects.length === 0;
-  const noWorkThreads = activeWorkThreads.length === 0;
-  const validWorkspaceName = /^[a-zA-Z0-9._-]+$/.test(name);
-  const valid = !noProjects && !noWorkThreads && Boolean(checkout && validWorkspaceName && (kind === "main" ? !mainWorkspace : baseBranch.trim()));
+
   return (
-    <Modal open={dialog === "workspace"} title="New workspace" description="Use the project checkout directly or create an isolated Git worktree." busy={busy} submitDisabled={!valid} submitLabel="Create Workspace" onClose={closeDialog} onSubmit={submit}>
-      {noProjects ? <div className="empty-dialog"><GitBranch size={24} /><h3>Add a project first</h3><p>Import a repository before creating a workspace.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("project")}><Plus size={14} /> Add Project</button></div> : <>
-        {noWorkThreads ? <div className="empty-dialog"><MessagesSquare size={24} /><h3>Create a work thread first</h3><p>Every workspace belongs to one active work thread.</p><button type="button" className="button primary" onClick={() => useWorkbenchStore.getState().openDialog("workThread")}><Plus size={14} /> New Work Thread</button></div> : <>
-          <Field label="Work Thread"><select value={resolvedWorkThreadId} onChange={(event) => setWorkThreadId(event.target.value)} required>{activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-          <div className="form-grid two"><Field label="Project"><select value={resolvedProjectId} onChange={(e) => updateProject(e.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Device"><select value={resolvedDeviceId} onChange={(e) => setDeviceId(e.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
-          {!checkout ? <div className="setup-panel"><div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div><button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button></div> : <><Field label="Workspace type"><div className="segmented"><button type="button" className={kind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button><button type="button" className={kind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Main checkout</button></div></Field><Field label="Name" hint={kind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`} error={touched.name && !validWorkspaceName ? "Use letters, numbers, dots, dashes, or underscores." : undefined}><input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} placeholder={kind === "main" ? project?.name : "nvfp4-kernel"} /></Field>{kind === "main" && mainWorkspace ? <div className="callout"><HardDrive size={16} /><span>The main checkout is already used by <strong>{mainWorkspace.name}</strong> in <strong>{snapshot.workThreads.find((item) => item.id === mainWorkspace.workThreadId)?.name}</strong>.</span></div> : kind === "worktree" && <Field label="Base branch" error={touched.baseBranch && !baseBranch.trim() ? "Enter a base branch." : undefined}><input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, baseBranch: true }))} placeholder="main" /></Field>}</>}
-          {checkout && kind === "worktree" && <WorkspaceLinks key={`${dialog}-${checkout.id}`} projectId={resolvedProjectId} deviceId={resolvedDeviceId} checkoutPath={checkout.path} selectedPaths={linkPaths} onChange={(paths) => setLinkSelection({ checkoutId: checkout.id, paths })} busy={busy} />}
+    <Modal open title="New workspace" description="Use the project checkout directly or create an isolated Git worktree." busy={busy} submitDisabled={!valid} submitLabel="Create Workspace" onClose={closeDialog} onSubmit={submit}>
+      {snapshot.projects.length === 0 ? (
+        <div className="empty-dialog">
+          <GitBranch size={24} /><h3>Add a project first</h3><p>Import a repository before creating a workspace.</p>
+          <button type="button" className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button>
+        </div>
+      ) : <>
+        {workspaceDialogThreadId && <Field label="Work Thread">
+          <select value={workThread?.id ?? ""} onChange={(event) => setWorkThreadId(event.target.value)} required>
+            {!workThread && <option value="" disabled>Select an active work thread</option>}
+            {activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </Field>}
+        <div className="form-grid two">
+          <Field label="Project"><select value={resolvedProjectId} onChange={(event) => updateProject(event.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+          <Field label="Device"><select value={resolvedDeviceId} onChange={(event) => setDeviceId(event.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+        </div>
+        {!checkout ? (
+          <div className="setup-panel">
+            <div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div>
+            <button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button>
+          </div>
+        ) : <>
+          <Field label="Workspace type">
+            <div className="segmented">
+              <button type="button" className={kind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button>
+              <button type="button" className={kind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Main checkout</button>
+            </div>
+          </Field>
+          <Field label="Name" hint={kind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`} error={touched.name && !parsedName.success ? "Use letters, numbers, dots, dashes, or underscores." : undefined}>
+            <input value={name} onChange={(event) => setName(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} maxLength={80} placeholder={kind === "main" ? project?.name : "nvfp4-kernel"} />
+          </Field>
+          {kind === "main" && mainWorkspace && (
+            <div className="callout"><HardDrive size={16} /><span>The main checkout is already used by <strong>{mainWorkspace.name}</strong>{mainWorkspaceThread && <> in <strong>{mainWorkspaceThread.name}</strong></>}.</span></div>
+          )}
+          {kind === "worktree" && <>
+            <Field label="Base branch" error={touched.baseBranch && !baseBranch.trim() ? "Enter a base branch." : undefined}>
+              <input value={baseBranch} onChange={(event) => setBaseBranch(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, baseBranch: true }))} placeholder="main" />
+            </Field>
+            <WorkspaceLinks key={checkout.id} projectId={resolvedProjectId} deviceId={resolvedDeviceId} checkoutPath={checkout.path} selectedPaths={linkPaths} onChange={(paths) => setLinkSelection({ checkoutId: checkout.id, paths })} busy={busy} />
+          </>}
         </>}
       </>}
     </Modal>
@@ -290,5 +316,5 @@ export function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
   const dialog = useWorkbenchStore((state) => state.dialog);
-  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog template={snapshot.settings.workThreadTemplate} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}<NewWorkspaceDialog snapshot={snapshot} /></>;
+  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog template={snapshot.settings.workThreadTemplate} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
 }

@@ -42,6 +42,15 @@ test("SetupProject requires the path that matches the selected setup mode", () =
   assert.equal(setupProjectSchema.safeParse({ projectId: "project-1", deviceId: "dev_local", mode: "clone", path: "/Users/me/code/demo" }).success, false);
 });
 
+test("CreateWorkspace accepts an omitted thread but rejects an empty or null thread ID", () => {
+  const base = { projectId: "project-1", deviceId: "dev_local", name: "standalone" };
+  assert.deepEqual(createWorkspaceSchema.parse({ ...base, kind: "main" }), { ...base, kind: "main" });
+  assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "worktree", baseBranch: "main" }).success, true);
+  for (const workThreadId of ["", null]) {
+    assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "main", workThreadId }).success, false);
+  }
+});
+
 test("CreateWorkspace distinguishes a main checkout from an isolated worktree", () => {
   const base = { workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local", name: "demo" };
   assert.equal(createWorkspaceSchema.safeParse({ ...base, kind: "main" }).success, true);

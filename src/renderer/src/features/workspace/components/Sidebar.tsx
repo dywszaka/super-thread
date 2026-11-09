@@ -32,16 +32,19 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     sidebarCollapsed,
     sidebarWidth,
     expandedThreadIds,
+    collapsedSidebarSections,
     showAllWorkspaces,
     showAllProjects,
     showAllWorkThreads,
     showAllDevices,
     showAllTodos,
     setWorkThreadFilter,
-    setActiveWorkspace,
+    openWorkspace,
     setSidebarCollapsed,
     setSidebarWidth,
     toggleThreadExpanded,
+    toggleSidebarSection,
+    openWorkspaceDialog,
     openDialog
   } = useWorkbenchStore();
   const resizing = useRef(false);
@@ -58,6 +61,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   const [threadMenuBusy, setThreadMenuBusy] = useState(false);
   const activeThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
   const allActiveWorkspaces = useMemo(() => visibleWorkspaces(snapshot, { type: "all-workspaces" }), [snapshot]);
+  const standaloneWorkspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === undefined);
   const editingWorkspace = snapshot.workspaces.find((workspace) => workspace.id === editingWorkspaceId);
   const renamingThread = snapshot.workThreads.find((thread) => thread.id === renamingThreadId);
 
@@ -107,6 +111,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
 
   const openWorkspaceMenu = (event: React.MouseEvent, workspace: Workspace): void => {
     event.preventDefault();
+    if (workspace.status === "creating") return;
     const width = 220;
     const height = 44;
     setThreadMenu(null);
@@ -187,6 +192,18 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
     return { id: source.id, targetId: thread.id, placement: event.clientY < row.top + row.height / 2 ? "before" : "after" };
   };
 
+  const workspaceRow = (workspace: Workspace, inScope: boolean): React.ReactNode => {
+    const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
+    const Icon = device?.type === "remote" ? Server : Laptop;
+    const projectName = workspaceProjectName(snapshot, workspace);
+    return (
+      <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && inScope ? "selected" : ""}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => openWorkspace(workspace)}>
+        <Icon size={13} />
+        <span><strong title={workspace.name}>{workspace.name}</strong><small title={projectName}>{projectName}</small></span>
+      </button>
+    );
+  };
+
   if (sidebarCollapsed) return null;
 
   return (
@@ -209,8 +226,8 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
         </div>
 
         <div className="sidebar-separator" />
-        <div className="section-heading"><span>Work Threads</span><button className="mini-action" onClick={() => openDialog("workThread")} title="New work thread"><Plus size={14} /></button></div>
-        <div className="scope-list thread-list">
+        <SidebarSectionHeading title="Work Threads" listId="sidebar-work-threads" collapsed={collapsedSidebarSections.workThreads} onToggle={() => toggleSidebarSection("workThreads")} createLabel="New work thread" onCreate={() => openDialog("workThread")} />
+        <div id="sidebar-work-threads" className="scope-list thread-list" hidden={collapsedSidebarSections.workThreads}>
           {activeThreads.length === 0 && <p className="sidebar-empty">No active work threads</p>}
           {activeThreads.map((thread) => {
             const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
@@ -262,15 +279,17 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                 </div>
                 {isExpanded && <div className="thread-children">
                   {workspaces.length === 0 && <p className="thread-empty">No workspaces</p>}
-                  {workspaces.map((workspace) => {
-                    const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
-                    const Icon = device?.type === "remote" ? Server : Laptop;
-                    return <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && isSelected ? "selected" : ""}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => { setWorkThreadFilter(thread.id); setActiveWorkspace(workspace.id); }}><Icon size={13} /><span><strong title={workspace.name}>{workspace.name}</strong><small title={workspaceProjectName(snapshot, workspace)}>{workspaceProjectName(snapshot, workspace)}</small></span></button>;
-                  })}
+                  {workspaces.map((workspace) => workspaceRow(workspace, isSelected))}
                 </div>}
               </div>
             );
           })}
+        </div>
+        <div className="sidebar-separator" />
+        <SidebarSectionHeading title="Workspaces" listId="sidebar-workspaces" collapsed={collapsedSidebarSections.workspaces} onToggle={() => toggleSidebarSection("workspaces")} createLabel="New standalone workspace" onCreate={() => openWorkspaceDialog()} />
+        <div id="sidebar-workspaces" className="scope-list" hidden={collapsedSidebarSections.workspaces}>
+          {standaloneWorkspaces.length === 0 && <p className="sidebar-empty">No standalone workspaces</p>}
+          {standaloneWorkspaces.map((workspace) => workspaceRow(workspace, scope.type === "all-workspaces" || scope.type === "project"))}
         </div>
       </nav>
       <div className="sidebar-footer no-drag"><button className="scope-row" onClick={() => openDialog("settings")}><span><Settings size={15} /><em>Settings</em></span></button></div>
@@ -303,6 +322,23 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
       <EditWorkspaceDialog snapshot={snapshot} workspace={editingWorkspace} onClose={() => setEditingWorkspaceId(null)} />
       <RenameWorkThreadDialog thread={renamingThread} onClose={() => setRenamingThreadId(null)} />
     </aside>
+  );
+}
+
+function SidebarSectionHeading({ title, listId, collapsed, onToggle, createLabel, onCreate }: {
+  title: string;
+  listId: string;
+  collapsed: boolean;
+  onToggle(): void;
+  createLabel: string;
+  onCreate(): void;
+}): React.ReactNode {
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  return (
+    <div className="section-heading">
+      <button type="button" className="sidebar-section-toggle" onClick={onToggle} aria-expanded={!collapsed} aria-controls={listId}><Chevron size={13} />{title}</button>
+      <button type="button" className="mini-action" onClick={onCreate} title={createLabel} aria-label={createLabel}><Plus size={14} /></button>
+    </div>
   );
 }
 

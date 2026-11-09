@@ -30,7 +30,7 @@ test("work threads sort pinned first and keep creation order otherwise", () => {
   assert.deepEqual(workThreadsByDocumentUpdate(custom).map((thread) => thread.id), workThreadsByDocumentUpdate(threads).map((thread) => thread.id));
 });
 
-const workspace = (id: string, workThreadId: string, projectId: string): Workspace => ({
+const workspace = (id: string, workThreadId: string | undefined, projectId: string): Workspace => ({
   id,
   name: id,
   workThreadId,
@@ -54,11 +54,12 @@ test("workspace scopes exclude workspaces in archived work threads", () => {
   snapshot.workspaces.push(
     workspace("workspace-a", "thread-active", "project-a"),
     workspace("workspace-b", "thread-active", "project-b"),
-    workspace("workspace-hidden", "thread-archived", "project-a")
+    workspace("workspace-hidden", "thread-archived", "project-a"),
+    workspace("standalone", undefined, "project-a")
   );
 
-  assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-workspaces" }).map((item) => item.id), ["workspace-a", "workspace-b"]);
-  assert.deepEqual(visibleWorkspaces(snapshot, { type: "project", id: "project-a" }).map((item) => item.id), ["workspace-a"]);
+  assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-workspaces" }).map((item) => item.id), ["workspace-a", "workspace-b", "standalone"]);
+  assert.deepEqual(visibleWorkspaces(snapshot, { type: "project", id: "project-a" }).map((item) => item.id), ["workspace-a", "standalone"]);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "work-thread", id: "thread-active" }).map((item) => item.id), ["workspace-a", "workspace-b"]);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "work-thread", id: "thread-archived" }), []);
   assert.deepEqual(visibleWorkspaces(snapshot, { type: "all-work-threads" }), []);

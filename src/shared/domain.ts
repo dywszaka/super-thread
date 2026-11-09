@@ -129,7 +129,7 @@ export interface DirectoryListing {
 export interface Workspace {
   id: string;
   name: string;
-  workThreadId: string;
+  workThreadId?: string;
   projectId: string;
   deviceId: string;
   checkoutId: string;
@@ -301,7 +301,7 @@ export interface BrowseDirectoryInput {
 }
 
 interface CreateWorkspaceBaseInput {
-  workThreadId: string;
+  workThreadId?: string;
   projectId: string;
   deviceId: string;
   name: string;

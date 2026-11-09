@@ -260,7 +260,7 @@ test("renaming a workspace rejects an empty, unknown, or device-duplicate name",
   assert.equal(service.snapshot().workspaces.map((workspace) => workspace.name).join(","), "demo,benchmark");
 });
 
-test("failed workspace creation removes the pending workspace record", async () => {
+test("failed standalone workspace creation removes the pending workspace record", async () => {
   const fakeGit: WorkspaceGitRuntime = {
     inspect: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
     clone: async () => ({ root: "", name: "", remote: "", defaultBranch: "main" }),
@@ -271,16 +271,13 @@ test("failed workspace creation removes the pending workspace record", async () 
     deleteWorktree: async () => {}
   };
   const { service, store } = await setup(fakeGit);
-  await service.createWorkThread({ name: "Failed creation" });
-  const threadId = service.snapshot().workThreads[0]?.id;
-  assert.ok(threadId);
   await store.update((draft) => {
     draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
   });
 
   await assert.rejects(
-    () => service.createWorkspace({ workThreadId: threadId, projectId: "project-1", deviceId: "dev_local", name: "broken", kind: "worktree", baseBranch: "main" }),
+    () => service.createWorkspace({ projectId: "project-1", deviceId: "dev_local", name: "broken", kind: "worktree", baseBranch: "main" }),
     /worktree creation failed/
   );
 
@@ -325,6 +322,40 @@ test("a Project x Device can have one main-checkout workspace", async () => {
   await service.deleteWorkspace(workspace!.id);
   assert.equal(deleteCalled, false);
   assert.deepEqual(service.snapshot().workspaces, []);
+  assert.equal(service.snapshot().checkouts[0]?.path, "/tmp/demo");
+});
+
+test("standalone and thread creation share atomic workspace uniqueness rules", async () => {
+  const { service, store } = await setup(undefined, fakeTerminals());
+  await store.update((draft) => {
+    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
+  });
+  const main = { kind: "main" as const, projectId: "project-1", deviceId: "dev_local", name: "standalone" };
+  await assert.rejects(() => service.createWorkspace({ ...main, workThreadId: "missing" }), /work thread not found/i);
+  assert.deepEqual(service.snapshot().workspaces, []);
+
+  await service.createWorkThread({ name: "Other thread" });
+  const thread = service.snapshot().workThreads[0]!;
+  const [standalone, linked] = await Promise.allSettled([
+    service.createWorkspace(main),
+    service.createWorkspace({ ...main, name: "duplicate-main", workThreadId: thread.id })
+  ]);
+  assert.equal(standalone.status, "fulfilled");
+  assert.equal(linked.status, "rejected");
+  assert.match(String(linked.reason), /already used by “standalone”$/);
+  await assert.rejects(
+    () => service.createWorkspace({ ...main, kind: "worktree", baseBranch: "main", workThreadId: thread.id }),
+    /A workspace named standalone already exists/
+  );
+
+  await service.deleteWorkThread(thread.id);
+  const workspace = service.snapshot().workspaces[0]!;
+  assert.equal(workspace.id, standalone.value);
+  assert.equal("workThreadId" in workspace, false);
+  assert.equal(service.snapshot().sessions[0]?.workspaceId, workspace.id);
+  await service.deleteWorkspace(workspace.id);
+  assert.deepEqual(service.snapshot().sessions, []);
   assert.equal(service.snapshot().checkouts[0]?.path, "/tmp/demo");
 });
 

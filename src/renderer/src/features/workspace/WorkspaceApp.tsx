@@ -27,18 +27,24 @@ export function WorkspaceApp(): React.ReactNode {
     ? snapshot?.workThreads.find((thread) => thread.id === scope.id && thread.status === "active")
     : undefined;
   const filtered = useMemo(() => snapshot ? visibleWorkspaces(snapshot, scope) : [], [snapshot, scope]);
-  const active: Workspace | undefined = snapshot?.workspaces.find((item) => item.id === store.activeWorkspaceId && filtered.some((candidate) => candidate.id === item.id)) ?? filtered[0];
-  const showingOverview = scope.type === "all-workspaces" && !store.activeWorkspaceId;
+  const selected = filtered.find((workspace) => workspace.id === store.activeWorkspaceId);
+  const active: Workspace | undefined = selected ?? (scope.type === "all-workspaces" ? undefined : filtered[0]);
+  const hasSnapshot = Boolean(snapshot);
+  const showingOverview = scope.type === "all-workspaces" && !selected;
   const showingWorkspace = !showingOverview && !documentThread && scope.type !== "all-projects" && scope.type !== "all-work-threads" && scope.type !== "all-devices" && scope.type !== "all-todos";
   const showingTerminal = showingWorkspace && active?.status === "ready";
   const focusMode = store.focusMode && showingTerminal;
 
   useEffect(() => {
-    if (documentThread || showingOverview) return;
+    if (showingOverview) {
+      if (hasSnapshot && store.activeWorkspaceId) store.setActiveWorkspace(null);
+      return;
+    }
+    if (documentThread) return;
     if (store.scope.type === "all-todos" || store.scope.type === "all-projects" || store.scope.type === "all-work-threads" || store.scope.type === "all-devices") return;
     if (active && active.id !== store.activeWorkspaceId) store.setActiveWorkspace(active.id);
     if (!active && store.activeWorkspaceId) store.setActiveWorkspace(null);
-  }, [active?.id, store.scope.type, documentThread?.id, showingOverview]);
+  }, [active?.id, store.scope.type, documentThread?.id, showingOverview, hasSnapshot, store.activeWorkspaceId]);
   useEffect(() => {
     if (!showingTerminal && store.focusMode) store.exitFocusMode();
   }, [showingTerminal, store.focusMode]);
@@ -59,7 +65,10 @@ export function WorkspaceApp(): React.ReactNode {
     if (useWorkbenchStore.getState().dialog) return;
     if (action === "settings") store.openDialog("settings");
     if (action === "new-work-thread") store.openDialog("workThread");
-    if (action === "new-workspace") store.openDialog("workspace");
+    if (action === "new-workspace") {
+      const { scope, openWorkspaceDialog } = useWorkbenchStore.getState();
+      openWorkspaceDialog(scope.type === "work-thread" ? scope.id : undefined);
+    }
     if (action === "add-project") store.openDialog("project");
     if (action === "add-device") store.openDialog("device");
     if (action === "new-terminal" && showingTerminal && active) store.requestSessionCreate(active.id, "shell");
@@ -72,13 +81,12 @@ export function WorkspaceApp(): React.ReactNode {
     : scope.type === "work-thread"
       ? snapshot.workThreads.find((item) => item.id === scope.id)?.name
       : "All workspaces";
-  const hasActiveThreads = snapshot.workThreads.some((thread) => thread.status === "active");
   return (
     <WorkThreadAgeProvider settings={snapshot.settings}><div className={`app-frame ${store.sidebarCollapsed ? "sidebar-is-collapsed" : ""} ${focusMode ? "focus-mode" : ""}`}>
       {!focusMode && <Sidebar snapshot={snapshot} />}
       <div className="workbench">
         {focusMode ? <FocusTitlebar /> : store.scope.type === "all-todos" ? <AllTodos snapshot={snapshot} /> : store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : showingOverview ? <WorkspaceList snapshot={snapshot} /> : documentThread ? <WorkThreadDocument key={documentThread.id} thread={documentThread} /> : <>
-          {active ? <><WorkspaceHeader snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} hasWorkThreads={hasActiveThreads} />}
+          {active ? <><WorkspaceHeader key={active.id} snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} workThreadId={scope.type === "work-thread" ? scope.id : undefined} />}
         </>}
         <div className={`workspace-terminal-stack ${showingTerminal ? "active" : ""}`}>
           {snapshot.workspaces.filter((workspace) => workspace.status === "ready").map((workspace) => {
@@ -101,14 +109,17 @@ function FocusTitlebar(): React.ReactNode {
   );
 }
 
-function EmptyWorkspace({ title, hasProjects, hasWorkThreads }: { title: string; hasProjects: boolean; hasWorkThreads: boolean }): React.ReactNode {
-  const openDialog = useWorkbenchStore((state) => state.openDialog);
-  const dialog = !hasProjects ? "project" : !hasWorkThreads ? "workThread" : "workspace";
-  const action = !hasProjects ? "Add Project" : !hasWorkThreads ? "New Work Thread" : "New Workspace";
+function EmptyWorkspace({ title, hasProjects, workThreadId }: { title: string; hasProjects: boolean; workThreadId?: string }): React.ReactNode {
+  const { openDialog, openWorkspaceDialog } = useWorkbenchStore();
+  const action = hasProjects ? "New Workspace" : "Add Project";
+  const open = (): void => {
+    if (hasProjects) openWorkspaceDialog(workThreadId);
+    else openDialog("project");
+  };
   return (
     <main className="empty-workspace">
-      <div className="empty-titlebar drag"><SidebarReopenButton /><span className="no-drag">{title}</span><button className="button primary no-drag" onClick={() => openDialog(dialog)}><Plus size={14} /> {action}</button></div>
-      <section><div className="empty-art"><Server size={28} /><span /><FolderGit2 size={28} /></div><h1>{!hasProjects ? "Bring in a Git project" : !hasWorkThreads ? "Create your first work thread" : "Create your first workspace"}</h1><p>{!hasProjects ? "Import a local repository or clone one onto a connected device." : !hasWorkThreads ? "Use a work thread to group the workspaces that belong to the same effort." : "Choose a work thread, project, and device, then use its main checkout or create an isolated worktree."}</p><button className="button primary large" onClick={() => openDialog(dialog)}><Plus size={15} /> {action}</button></section>
+      <div className="empty-titlebar drag"><SidebarReopenButton /><span className="no-drag">{title}</span><button className="button primary no-drag" onClick={open}><Plus size={14} /> {action}</button></div>
+      <section><div className="empty-art"><Server size={28} /><span /><FolderGit2 size={28} /></div><h1>{hasProjects ? "Create your first workspace" : "Bring in a Git project"}</h1><p>{hasProjects ? "Choose a project and device, then use its main checkout or create an isolated worktree." : "Import a local repository or clone one onto a connected device."}</p><button className="button primary large" onClick={open}><Plus size={15} /> {action}</button></section>
     </main>
   );
 }

@@ -41,13 +41,15 @@ Development and packaged builds share persistent data at
 - `src/renderer`: React workbench, semantic design tokens, project/work-thread navigation, workspace and terminal switchers.
 - `src/shared`: domain model and validated IPC contract.
 
-The implementation deliberately keeps the MVP domain to `WorkThread`, `Project`, `Device`, `Workspace`, `Session`, `BrowserTab`, and `FilePreviewTab`. A WorkThread groups one or more workspaces; a project is identified by its canonical Git remote; physical checkouts belong to devices; worktrees, terminals, and file previews belong to workspaces.
+The implementation deliberately keeps the MVP domain to `WorkThread`, `Project`, `Device`, `Workspace`, `Session`, `BrowserTab`, and `FilePreviewTab`. A Workspace can stand alone or belong to a WorkThread; a project is identified by its canonical Git remote; physical checkouts belong to devices; worktrees, terminals, and file previews belong to workspaces.
 
 Embedded terminals support ordinary shells only; workspace tmux opens exclusively in iTerm. Remote terminals keep one interactive SSH connection and never create periodic SSH sessions for activity checks. The overview distinguishes local activity from remote connection counts.
 
 On macOS, closing the window leaves the application runtime alive, so PTY sessions and established SSH tunnels continue and terminals can be reattached when the window is reopened. Tunnel retry timers and wake reconnects are suspended until a window is reopened. Quitting the application terminates the local runtime; recovery across a full runtime restart is intentionally a post-MVP concern.
 
-Workspace chrome stays compact: a 40px single-line header shows the workspace, device, and branch, with full context in its details dropdown. Focus remains an icon button; the actions menu contains VS Code, tmux in iTerm, New Workspace, and Delete. Tabs are 32px high, and Browser/File Preview toolbars are 32px high with 28px controls; narrow windows truncate names and scroll tabs without wrapping the header.
+The sidebar has independently collapsible **Work Threads** and **Workspaces** sections. The Workspaces section lists standalone workspaces and its add button creates one without a work thread. **All workspaces** also includes workspaces in active work threads.
+
+Workspace chrome stays compact: a 40px single-line header shows the workspace, device, and branch, with full context in its details dropdown. Focus remains an icon button; the actions menu contains VS Code, tmux in iTerm, New Workspace, Rename, and Delete. Tabs are 32px high, and Browser/File Preview toolbars are 32px high with 28px controls; narrow windows truncate names and scroll tabs without wrapping the header.
 
 Workspace tabs can contain multiple Terminals and Browsers in a shared, sortable tab bar. Browser tabs are local macOS web views owned by their Workspace, separate from PTY Sessions. Each saves its last HTTP(S) address and page title. Closing the main window destroys the web views; reopening the window or restarting the application restores every unclosed browser tab and automatically reloads its saved address, without restoring navigation history. Closing a browser tab removes its record; deleting a Workspace removes all its browser records.
 

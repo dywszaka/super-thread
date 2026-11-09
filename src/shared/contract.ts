@@ -239,7 +239,7 @@ export const setWorkThreadPinnedSchema = z.object({
 export const workspaceNameSchema = z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/);
 
 const createWorkspaceBaseSchema = {
-  workThreadId: z.string().min(1),
+  workThreadId: z.string().min(1).optional(),
   projectId: z.string().min(1),
   deviceId: z.string().min(1),
   name: workspaceNameSchema
@@ -366,7 +366,7 @@ export interface DesktopBridge {
   archiveWorkThread(id: string): Promise<void>;
   restoreWorkThread(id: string): Promise<void>;
   deleteWorkThread(id: string): Promise<void>;
-  createWorkspace(input: CreateWorkspaceInput): Promise<void>;
+  createWorkspace(input: CreateWorkspaceInput): Promise<string>;
   listWorkspaceLinkCandidates(input: WorkspaceLinkInput): Promise<WorkspaceLinkCandidate[]>;
   renameWorkspace(input: RenameWorkspaceInput): Promise<void>;
   deleteWorkspace(id: string, force?: boolean): Promise<void>;

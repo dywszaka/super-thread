@@ -6,13 +6,13 @@
 
 MVP 只解决一个问题：
 
-> 用户可以用 WorkThread 组织相关工作，在不同 Device 上管理 Project，为 WorkThread 创建隔离的 Workspace，并在 Workspace 中创建和恢复持久 Terminal Session 与 Browser 标签。
+> 用户可以用 WorkThread 组织相关工作，在不同 Device 上管理 Project，创建独立 Workspace 或用 WorkThread 组织 Workspace，并在 Workspace 中创建和恢复持久 Terminal Session 与 Browser 标签。
 
 核心模型：
 
 ```text
 WorkThread
-   │ groups 1:N
+   │ optionally groups 1:N
    ▼
 Workspace ─── Project × Device
    │
@@ -179,7 +179,7 @@ FilePreviewTab
 
 ```text
                  WorkThread
-                      │ 1:N
+                      │ optional 1:N
                       ▼
                   Workspace
                       │ 1:N
@@ -512,7 +512,7 @@ interface WorkThread {
 
 - 名称在 active 与 archived 范围内忽略大小写唯一。
 - 侧栏右键 WorkThread 可重命名；名称去除首尾空格后须为 1–80 个字符，且不得与 active 或 archived 的其他 WorkThread 重名。重命名只更新名称和 `updatedAt`，保留文档、Workspace 和 Session。
-- 一个 Workspace 必须且只能属于一个 WorkThread。
+- 一个 Workspace 可以独立存在，也可以在创建时归属于一个活跃 WorkThread。旧快照保留原有关联。
 - WorkThread 可以暂时为空，也可以包含多个 Workspace。
 - 点击 WorkThread 默认打开 Document 页；即使还没有 Workspace，也可以独立写文档。Document 不在侧栏单独显示，点击 WorkThread 名称即可进入；其下只显示 Workspace 入口，继续打开终端。
 - 每个 WorkThread 拥有一份 Markdown 文档，使用飞书式单栏所见即所得编辑器，输入 Markdown 标记时原地转换成标题、列表、引用、加粗等格式，无需切换编辑和预览；支持选中文字后的格式工具栏、斜杠块菜单、表格和撤销/重做。底层仍以 Markdown 自动保存。文档不属于任何 Project 或 Device 的仓库文件。
@@ -552,7 +552,7 @@ interface Workspace {
 
   name: string
 
-  workThreadId: string
+  workThreadId?: string
   projectId: string
   deviceId: string
   checkoutId: string
@@ -594,9 +594,9 @@ interface Workspace {
 
 规则：
 
-- All workspaces 打开独立总览，不自动进入 Workspace；点击列表项后进入对应 Workspace。总览沿用 active 视图规则，隐藏归档 WorkThread 的 Workspace。页面与每行分别展示本机正在执行工作的 Terminal 数量（`status=running && activityStatus=busy`）以及已连接的远程 Terminal 数量（`status=running && activityStatus=unknown`）。远程不做忙闲探测，连接数不代表正在执行工作。按两者合计降序排列，同数量保持原顺序，并随运行状态更新。
+- All workspaces 打开独立总览，不自动进入 Workspace；点击列表项后进入对应 Workspace。总览和对应 Project 视图显示独立 Workspace 与活跃 WorkThread 的 Workspace，隐藏归档 WorkThread 的 Workspace。页面与每行分别展示本机正在执行工作的 Terminal 数量（`status=running && activityStatus=busy`）以及已连接的远程 Terminal 数量（`status=running && activityStatus=unknown`）。远程不做忙闲探测，连接数不代表正在执行工作。按两者合计降序排列，同数量保持原顺序，并随运行状态更新。
 - Workspace 名称在创建时决定 worktree 路径与 `work/{workspace-name}` 分支，且在同一 Device 上唯一。
-- 侧栏右键 Workspace 可编辑 Workspace 信息；只有名称可以修改，Project、Device、路径、分支与 Base branch 均只读。
+- 侧栏右键和 Workspace 操作菜单可编辑 Workspace 信息；只有名称可以修改，归属、Project、Device、路径、分支与 Base branch 均只读。
 - 重命名只更新展示名称与 `updatedAt`，不重命名目录、不改分支、不改 tmux session 名称，也不影响已存在的 Session 与其工作目录。
 - 重命名后的名称仍受与创建相同的约束：去除首尾空格、不能为空、不超过 80 个字符，只允许字母、数字、`.`、`_`、`-`，且不能与同一 Device 上其他 Workspace 重名。
 
@@ -604,9 +604,11 @@ interface Workspace {
 
 # 11. Workspace Creation
 
+侧栏 Workspaces 分组的加号和 All workspaces 的 New Workspace 打开独立创建表单，省略 Work Thread 字段。在线程内创建时默认选中当前活跃线程。⌘⇧N 按当前范围选择创建表单。独立 Workspace 创建成功后直接打开，详情显示 Standalone。
+
 Workspace 有两种创建模式：
 
-- `main`：直接使用所选 `Project × Device` 的 base checkout，不创建 worktree 或分支。每个 `Project × Device` 最多只能有一个 main Workspace；若已被其他 WorkThread 使用，创建必须被阻止，并提示现有 Workspace 与所属 WorkThread。
+- `main`：直接使用所选 `Project × Device` 的 base checkout，不创建 worktree 或分支。每个 `Project × Device` 最多只能有一个 main Workspace；跨入口共用此限制。已占用时提示现有 Workspace 的名称，有归属时同时显示所属 WorkThread。
 - `worktree`：从 base checkout 的本地 ref 创建隔离的 Git worktree 和 `work/{workspace-name}` 分支。
 
 用户：
@@ -1032,7 +1034,12 @@ Work Threads
   quant-test
   modelopt
 ▸ Benchmarks
+
+Workspaces
+  local-sandbox
 ```
+
+Work Threads 与 Workspaces 是两个独立可折叠的分组，默认展开，分别保存折叠状态。折叠时保留当前页面与线程节点的展开状态，分组的新建按钮始终可用。Workspaces 分组只列出独立 Workspace，线程所属 Workspace 继续显示在对应线程下。
 
 Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档；展开后的 Workspace 提供右键菜单，用于编辑 Workspace 信息，其中只有名称可以修改。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
@@ -1104,7 +1111,7 @@ nvfp4-kernel ▾ · dev-cuda · work/nvfp4-kernel       [Focus 图标] [⋯]
 
 Workspace 名称优先保留，Device 与 Branch 使用次级文字。宽度不足时省略并可悬停查看完整文字，Header 与操作区均不换行；侧栏收起时保留 macOS 交通灯与展开侧栏按钮的安全区。点击名称展开现有详情浮层，查看 WorkThread、Project、Device、Type、Branch、Base 与完整 Path。
 
-右侧保留 Focus 图标和 Workspace actions 菜单。菜单提供 `Open in VS Code`、`tmux in iTerm`、`New Workspace` 和 `Delete workspace`；标签栏 `＋` 仍负责新建 Terminal、Browser 和 File Preview。VS Code 对本地 Workspace 使用本地文件 URI，对 Remote Workspace 使用 Remote-SSH URI，并沿用 Device 已保存的 SSH user、host 和非默认 port；tmux 操作在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用 Focus 与外部打开操作；外部打开期间禁用对应菜单项。菜单或详情可通过 Escape 或点击外部关闭，Escape 将焦点归还入口。
+右侧保留 Focus 图标和 Workspace actions 菜单。菜单提供 `Open in VS Code`、`tmux in iTerm`、`New Workspace`、`Rename workspace…` 和 `Delete workspace`；标签栏 `＋` 仍负责新建 Terminal、Browser 和 File Preview。VS Code 对本地 Workspace 使用本地文件 URI，对 Remote Workspace 使用 Remote-SSH URI，并沿用 Device 已保存的 SSH user、host 和非默认 port；tmux 操作在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用 Focus 与外部打开操作；外部打开期间禁用对应菜单项。菜单或详情可通过 Escape 或点击外部关闭，Escape 将焦点归还入口。
 
 有需要注意的 Session 时只显示一个紧凑计数标记，汇总正在执行、等待输入与恢复失败的数量；悬停及辅助技术可读取各项数量，标记颜色优先表示恢复失败、其次等待输入。远程未知活动不推断为忙碌或等待。
 

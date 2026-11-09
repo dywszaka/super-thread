@@ -37,7 +37,7 @@ export function visibleWorkspaces(snapshot: AppSnapshot, scope: WorkspaceScope):
     snapshot.workThreads.filter((thread) => thread.status === "active").map((thread) => thread.id)
   );
   return snapshot.workspaces.filter((workspace) => {
-    if (!activeThreadIds.has(workspace.workThreadId)) return false;
+    if (workspace.workThreadId !== undefined && !activeThreadIds.has(workspace.workThreadId)) return false;
     if (scope.type === "project") return workspace.projectId === scope.id;
     if (scope.type === "work-thread") return workspace.workThreadId === scope.id;
     return true;

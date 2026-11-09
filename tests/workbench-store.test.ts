@@ -70,3 +70,23 @@ test("all workspaces clears workspace selection while preserving terminal select
   assert.equal(useWorkbenchStore.getState().activeWorkspaceId, null);
   assert.equal(useWorkbenchStore.getState().activeSessionIds["workspace-a"], "session-a");
 });
+
+test("sidebar sections collapse independently without changing navigation or thread expansion", () => {
+  const { setWorkThreadFilter, openWorkspace, toggleSidebarSection } = useWorkbenchStore.getState();
+  const { collapsedSidebarSections } = useWorkbenchStore.getInitialState();
+  assert.deepEqual(collapsedSidebarSections, { workThreads: false, workspaces: false });
+  useWorkbenchStore.setState({ collapsedSidebarSections, expandedThreadIds: [] });
+
+  setWorkThreadFilter("thread-a");
+  openWorkspace({ id: "standalone" });
+  toggleSidebarSection("workThreads");
+  assert.deepEqual(useWorkbenchStore.getState().collapsedSidebarSections, { workThreads: true, workspaces: false });
+  toggleSidebarSection("workspaces");
+  assert.deepEqual(useWorkbenchStore.getState().scope, { type: "all-workspaces" });
+  assert.equal(useWorkbenchStore.getState().activeWorkspaceId, "standalone");
+  assert.deepEqual(useWorkbenchStore.getState().expandedThreadIds, ["thread-a"]);
+
+  const partialize = useWorkbenchStore.persist.getOptions().partialize ?? ((state) => state);
+  const persisted = partialize(useWorkbenchStore.getState()) as Record<string, unknown>;
+  assert.deepEqual(persisted.collapsedSidebarSections, { workThreads: true, workspaces: true });
+});

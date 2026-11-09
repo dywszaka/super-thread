@@ -53,7 +53,7 @@ export function EditWorkspaceDialog({ snapshot, workspace, onClose }: { snapshot
     >
       <Field label="Name" hint="Letters, numbers, dots, dashes, and underscores only."><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoFocus /></Field>
       <div className="form-grid two">
-        <Field label="Work Thread"><input value={workThread?.name ?? ""} readOnly /></Field>
+        <Field label="Work Thread"><input value={workThread?.name ?? (workspace?.workThreadId ? "Unknown work thread" : "Standalone")} readOnly /></Field>
         <Field label="Project"><input value={project?.name ?? ""} readOnly /></Field>
       </div>
       <div className="form-grid two">

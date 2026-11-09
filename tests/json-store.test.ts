@@ -18,6 +18,21 @@ test("schema 14 gains default settings without rewriting documents, TODOs, or cr
   assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, 15);
 });
 
+test("persisted linked and standalone workspaces keep their ownership and tabs", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-workspace-ownership-"));
+  const path = join(directory, "state.json");
+  const workspace = { name: "demo", projectId: "project", deviceId: "device", checkoutId: "checkout", kind: "worktree", path: "/tmp/demo", branch: "work/demo", baseBranch: "main", status: "ready", createdAt: "then", updatedAt: "then" };
+  const workspaces = [
+    { ...workspace, id: "linked", workThreadId: "thread" },
+    { ...workspace, id: "standalone" }
+  ];
+  const browserTabs = [{ id: "browser", workspaceId: "standalone", title: "Browser", url: "https://example.com", order: 0, createdAt: "then", updatedAt: "then" }];
+  await writeFile(path, JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, workspaces, browserTabs }));
+  const snapshot = await new JsonStore(path).load();
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.workspaces)), workspaces);
+  assert.deepEqual(snapshot.browserTabs, browserTabs);
+});
+
 test("JsonStore creates, updates, and reloads an atomic snapshot", async () => {
   const directory = await mkdtemp(join(tmpdir(), "superthread-store-"));
   const path = join(directory, "state.json");
