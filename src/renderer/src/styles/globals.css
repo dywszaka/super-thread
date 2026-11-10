@@ -24,7 +24,7 @@
   --workspace-header-height: 40px;
   --workspace-tab-height: 32px;
   --workspace-toolbar-height: 32px;
-  --sidebar-row-height: 36px;
+  --sidebar-row-height: 32px;
   --radius-control: 8px;
   --radius: 12px;
   --radius-dialog: 16px;
@@ -196,11 +196,14 @@ input, textarea, [contenteditable="true"], .selectable {
   position: relative;
   width: 240px;
   min-width: 240px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--sidebar);
   color: var(--sidebar-foreground);
   border-right: 1px solid var(--border);
+  font-size: var(--text-control);
+  line-height: 1.35;
 }
 
 .sidebar-title {
@@ -286,15 +289,16 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: var(--space-2) var(--space-2);
 }
 
 .section-heading {
-  height: 40px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 8px 4px;
+  padding: 4px 8px 2px;
   color: var(--muted-foreground);
   text-transform: none;
   font-size: var(--text-xs);
@@ -380,13 +384,16 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .primary-scopes {
+  flex: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  margin-bottom: 8px;
+  gap: 0;
+  padding: 4px 8px 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .primary-scopes .scope-row.all {
+  height: 30px;
   margin: 0;
 }
 
@@ -394,7 +401,7 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -455,7 +462,7 @@ input, textarea, [contenteditable="true"], .selectable {
 .sidebar-separator {
   height: 1px;
   background: var(--border);
-  margin: var(--space-4) var(--space-2);
+  margin: var(--space-3) var(--space-2);
 }
 
 .thread-list {
@@ -535,7 +542,7 @@ input, textarea, [contenteditable="true"], .selectable {
   height: var(--sidebar-row-height);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   overflow: hidden;
   text-align: left;
 }
@@ -614,8 +621,8 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
-  margin: 4px 0 4px 24px;
+  gap: 2px;
+  margin: 2px 0 4px 20px;
   padding-left: 8px;
 }
 
@@ -631,16 +638,16 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .workspace-tree-row {
   min-width: 0;
-  min-height: 48px;
+  min-height: 42px;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 8px;
   color: var(--sidebar-foreground);
-  font-size: var(--text-base);
+  font-size: var(--text-control);
   text-align: left;
 }
 
@@ -663,7 +670,7 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 1px;
+  gap: 0;
   overflow: hidden;
 }
 
@@ -675,13 +682,14 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .workspace-tree-row strong {
-  font-size: var(--text-base);
+  font-size: var(--text-control);
   font-weight: var(--weight-regular);
   color: inherit;
 }
 
 .workspace-tree-row small {
   font-size: var(--text-xs);
+  line-height: 1.25;
   color: var(--muted-foreground);
 }
 

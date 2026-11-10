@@ -218,7 +218,14 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   return (
     <aside className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
       <div className="sidebar-title drag"><div className="brand no-drag"><img className="brand-mark" src={appIcon} alt="Super Thread" /></div><button className="sidebar-collapse no-drag" onClick={() => setSidebarCollapsed(true)} title="Hide sidebar"><ChevronLeft size={15} /></button></div>
-      <nav className="sidebar-scroll no-drag" onDragOver={(event) => {
+      <nav className="primary-scopes no-drag" aria-label="All items">
+        <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> <em title="All workspaces">All workspaces</em></span><b>{allActiveWorkspaces.length}</b></button>
+        <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> <em title="All projects">All projects</em></span><b>{snapshot.projects.length}</b></button>
+        <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> <em title="All work threads">All work threads</em></span><b>{snapshot.workThreads.length}</b></button>
+        <button className={`scope-row all ${scope.type === "all-todos" ? "selected" : ""}`} onClick={showAllTodos}><span><ListTodo size={15} /> <em title="All todos">All todos</em></span><b>{snapshot.workThreads.reduce((count, thread) => count + (thread.todos ?? []).filter((todo) => !todo.completedAt).length, 0)}</b></button>
+        <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> <em title="All devices">All devices</em></span><b>{snapshot.devices.length}</b></button>
+      </nav>
+      <nav className="sidebar-scroll no-drag" aria-label="Work threads and workspaces" onDragOver={(event) => {
         if (!draggedThreadId.current) return;
         const bounds = event.currentTarget.getBoundingClientRect();
         if (event.clientY < bounds.top + 28) event.currentTarget.scrollTop -= 10;
@@ -226,15 +233,6 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
       }} onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
       }}>
-        <div className="primary-scopes">
-          <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> <em title="All workspaces">All workspaces</em></span><b>{allActiveWorkspaces.length}</b></button>
-          <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> <em title="All projects">All projects</em></span><b>{snapshot.projects.length}</b></button>
-          <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> <em title="All work threads">All work threads</em></span><b>{snapshot.workThreads.length}</b></button>
-          <button className={`scope-row all ${scope.type === "all-todos" ? "selected" : ""}`} onClick={showAllTodos}><span><ListTodo size={15} /> <em title="All todos">All todos</em></span><b>{snapshot.workThreads.reduce((count, thread) => count + (thread.todos ?? []).filter((todo) => !todo.completedAt).length, 0)}</b></button>
-          <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> <em title="All devices">All devices</em></span><b>{snapshot.devices.length}</b></button>
-        </div>
-
-        <div className="sidebar-separator" />
         <SidebarSectionHeading title="Work Threads" listId="sidebar-work-threads" collapsed={collapsedSidebarSections.workThreads} onToggle={() => toggleSidebarSection("workThreads")} createLabel="New work thread" onCreate={() => openDialog("workThread")} />
         <div id="sidebar-work-threads" className="scope-list thread-list" hidden={collapsedSidebarSections.workThreads}>
           {activeThreads.length === 0 && <p className="sidebar-empty">No active work threads</p>}
