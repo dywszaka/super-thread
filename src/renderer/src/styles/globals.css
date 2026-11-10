@@ -7,7 +7,7 @@
   --text-xs: 12px;
   --text-control: 13px;
   --text-base: 14px;
-  --text-document: 15px;
+  --text-document: 16px;
   --text-subtitle: 16px;
   --text-title: 20px;
   --weight-regular: 400;
@@ -25,37 +25,39 @@
   --workspace-tab-height: 32px;
   --workspace-toolbar-height: 32px;
   --sidebar-row-height: 36px;
-  --radius-control: 6px;
-  --radius: 8px;
-  --radius-dialog: 12px;
+  --radius-control: 8px;
+  --radius: 12px;
+  --radius-dialog: 16px;
   --background: #ffffff;
-  --foreground: #202124;
+  --foreground: #242424;
   --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --muted: #f0f1f2;
-  --muted-foreground: #60636a;
-  --border: #e5e6e8;
-  --border-strong: #ced0d4;
-  --accent: #e5e7ea;
-  --accent-foreground: #202124;
-  --primary: #252629;
-  --primary-hover: #404247;
+  --surface-raised: #f9f9f9;
+  --control-background: #ffffff;
+  --chrome: #f9f9f9;
+  --muted: #f0f0f0;
+  --muted-foreground: #6b6b6b;
+  --border: #e8e8e8;
+  --border-strong: #d6d6d6;
+  --accent: #e7e7e7;
+  --accent-foreground: #242424;
+  --primary: #292929;
+  --primary-hover: #424242;
   --primary-foreground: #ffffff;
-  --ring: #2563eb;
-  --link: #245cce;
-  --sidebar: #f5f5f6;
-  --sidebar-foreground: #303238;
+  --ring: #3876d5;
+  --link: #3269b9;
+  --sidebar: #f5f5f5;
+  --sidebar-foreground: #363636;
   --danger: #b42335;
   --success: #27733f;
   --warning: #8a5b0a;
   --shadow: 0 16px 48px rgb(0 0 0 / 12%), 0 2px 8px rgb(0 0 0 / 6%);
-  --terminal-background: #18191b;
-  --terminal-foreground: #e3e5e8;
-  --terminal-surface: #222428;
-  --terminal-border: #393c42;
-  --terminal-muted: #a6abb4;
-  --terminal-cursor: #e3e5e8;
-  --terminal-selection-background: #3b4862;
+  --terminal-background: #181818;
+  --terminal-foreground: #e8e8e8;
+  --terminal-surface: #282828;
+  --terminal-border: #383838;
+  --terminal-muted: #aaaaaa;
+  --terminal-cursor: #e8e8e8;
+  --terminal-selection-background: #3e4d63;
   --terminal-font-size: 14px;
   --terminal-line-height: 1.3;
   --terminal-black: #45484f;
@@ -78,23 +80,25 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #1c1d1f;
-    --foreground: #eceef0;
-    --surface: #1c1d1f;
-    --surface-raised: #252629;
-    --muted: #2b2d31;
-    --muted-foreground: #a6abb4;
-    --border: #33353a;
-    --border-strong: #4b4e56;
-    --accent: #34373d;
-    --accent-foreground: #f0f1f3;
-    --primary: #eceef0;
-    --primary-hover: #d1d5db;
-    --primary-foreground: #202124;
-    --ring: #93b7ff;
-    --link: #a3c1ff;
-    --sidebar: #17181a;
-    --sidebar-foreground: #d7dbe0;
+    --background: #181818;
+    --foreground: #ececec;
+    --surface: #181818;
+    --surface-raised: #242424;
+    --control-background: #282828;
+    --chrome: #222222;
+    --muted: #2a2a2a;
+    --muted-foreground: #a3a3a3;
+    --border: #303030;
+    --border-strong: #424242;
+    --accent: #343434;
+    --accent-foreground: #f0f0f0;
+    --primary: #ececec;
+    --primary-hover: #d4d4d4;
+    --primary-foreground: #242424;
+    --ring: #80aaf0;
+    --link: #80aaf0;
+    --sidebar: #222222;
+    --sidebar-foreground: #dedede;
     --danger: #ff9aa2;
     --success: #92d2a0;
     --warning: #edc578;
@@ -114,6 +118,7 @@ html, body, #root {
 }
 
 html, body {
+  -webkit-font-smoothing: antialiased;
   font-family: var(--font-ui);
   color: var(--foreground);
   background: var(--background);
@@ -215,8 +220,8 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .brand-mark {
-  width: 23px;
-  height: 23px;
+  width: 20px;
+  height: 20px;
   flex: none;
   display: block;
   object-fit: contain;
@@ -281,15 +286,15 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-2);
 }
 
 .section-heading {
-  height: 36px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 8px 4px;
+  padding: 12px 8px 4px;
   color: var(--muted-foreground);
   text-transform: none;
   font-size: var(--text-xs);
@@ -367,7 +372,7 @@ input, textarea, [contenteditable="true"], .selectable {
 .scope-row.selected {
   background: var(--accent);
   box-shadow: none;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
 }
 
 .scope-row.all {
@@ -505,7 +510,7 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .thread-row.selected {
   color: var(--foreground);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
   background: var(--accent);
 }
 
@@ -647,7 +652,7 @@ input, textarea, [contenteditable="true"], .selectable {
 .workspace-tree-row.selected {
   background: var(--accent);
   color: var(--foreground);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
 }
 
 .workspace-tree-row > svg {
@@ -671,7 +676,7 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .workspace-tree-row strong {
   font-size: var(--text-base);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
   color: inherit;
 }
 
@@ -714,6 +719,7 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .sidebar-footer {
+  flex: none;
   padding: 8px;
   border-top: 1px solid var(--border);
 }
@@ -818,7 +824,7 @@ input, textarea, [contenteditable="true"], .selectable {
   justify-content: space-between;
   padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--chrome);
   gap: var(--space-2);
 }
 
@@ -942,8 +948,8 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .button {
-  border: 1px solid var(--border-strong);
-  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  background: var(--control-background);
   border-radius: var(--radius-control);
   min-height: var(--control-height);
   padding: 0 12px;
@@ -988,8 +994,8 @@ input, textarea, [contenteditable="true"], .selectable {
   padding: 0;
   display: inline-grid;
   place-items: center;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-raised);
+  border: 1px solid transparent;
+  background: transparent;
   border-radius: var(--radius-control);
   cursor: default;
   flex-shrink: 0;
@@ -1089,9 +1095,11 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: none;
   display: flex;
   align-items: stretch;
+  padding: 3px 4px 0;
+  gap: 4px;
   justify-content: space-between;
-  background: var(--surface);
-  border-bottom: 1px solid var(--terminal-border);
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
 }
 
 .terminal-tab-scroll {
@@ -1106,14 +1114,18 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 112px;
   max-width: 220px;
   border: 0;
-  border-right: 1px solid var(--border);
-  background: var(--muted);
-  color: var(--muted-foreground);
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+  background: transparent;
+  color: var(--foreground);
   padding: 0 var(--space-2);
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: var(--text-control);
+}
+
+.terminal-tab:hover {
+  background: var(--muted);
 }
 
 .terminal-tab.active {
@@ -1212,10 +1224,10 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .terminal-add {
   width: var(--workspace-tab-height);
-  height: calc(var(--workspace-tab-height) - 1px);
-  border-width: 0 0 0 1px;
-  border-radius: 0;
-  background: var(--surface);
+  height: calc(var(--workspace-tab-height) - 5px);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
 }
 
 .terminal-kind-menu {
@@ -1449,13 +1461,13 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-page-header {
-  min-height: 88px;
+  min-height: 76px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -1477,7 +1489,7 @@ input, textarea, [contenteditable="true"], .selectable {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-6) 28px;
 }
 
 .work-thread-list-toolbar {
@@ -1496,10 +1508,10 @@ input, textarea, [contenteditable="true"], .selectable {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border-strong);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--surface-raised);
+  background: var(--control-background);
   color: var(--muted-foreground);
 }
 
@@ -1567,6 +1579,10 @@ input, textarea, [contenteditable="true"], .selectable {
   flex-wrap: wrap;
 }
 
+.work-thread-card:hover {
+  border-color: var(--border-strong);
+}
+
 .work-thread-card-main {
   min-width: 0;
   flex: 1;
@@ -1615,6 +1631,7 @@ input, textarea, [contenteditable="true"], .selectable {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-base);
+  font-weight: var(--weight-medium);
 }
 
 .work-thread-card-main small {
@@ -1693,13 +1710,13 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .device-page-header {
-  min-height: 88px;
+  min-height: 76px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -1728,7 +1745,7 @@ input, textarea, [contenteditable="true"], .selectable {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-6) 28px;
 }
 
 .device-summary {
@@ -1822,6 +1839,7 @@ input, textarea, [contenteditable="true"], .selectable {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-base);
+  font-weight: var(--weight-medium);
 }
 
 .device-card-content code {
@@ -1902,13 +1920,13 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .project-page-header {
-  min-height: 88px;
+  min-height: 76px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -1930,7 +1948,7 @@ input, textarea, [contenteditable="true"], .selectable {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-6) 28px;
 }
 
 .project-summary {
@@ -2007,6 +2025,7 @@ input, textarea, [contenteditable="true"], .selectable {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-base);
+  font-weight: var(--weight-medium);
 }
 
 .project-card-title span {
@@ -2090,7 +2109,7 @@ input, textarea, [contenteditable="true"], .selectable {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgb(0 0 0 / 32%);
+  background: rgb(0 0 0 / 40%);
   animation: fade-in .12s ease-out;
 }
 
@@ -2166,7 +2185,7 @@ input, textarea, [contenteditable="true"], .selectable {
   gap: var(--space-2);
   padding: 12px 24px;
   border-top: 1px solid var(--border);
-  background: var(--surface);
+  background: transparent;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -2210,9 +2229,10 @@ input, textarea, [contenteditable="true"], .selectable {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
   outline: 0;
-  background: var(--surface-raised);
+  background: var(--control-background);
   color: var(--foreground);
-  font-size: var(--text-control);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
   min-width: 0;
 }
 
@@ -2237,12 +2257,6 @@ input, textarea, [contenteditable="true"], .selectable {
   margin: 0;
   color: var(--muted-foreground);
   font-size: var(--text-xs);
-}
-
-.sidebar-footer {
-  flex: none;
-  padding: 8px;
-  border-top: 1px solid var(--border);
 }
 
 .thread-age-display {
@@ -2712,7 +2726,7 @@ input, textarea, [contenteditable="true"], .selectable {
   gap: 2px;
   background: var(--muted);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 10px;
 }
 
 .segmented button {
@@ -2720,7 +2734,7 @@ input, textarea, [contenteditable="true"], .selectable {
   border: 0;
   background: transparent;
   color: var(--muted-foreground);
-  border-radius: var(--radius-control);
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2899,13 +2913,13 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-document-header {
-  min-height: 88px;
+  min-height: 76px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -2969,12 +2983,12 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .thread-document-toolbar {
   flex: none;
-  min-height: 60px;
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 24px;
+  padding: 10px 28px;
   color: var(--muted-foreground);
   font-size: var(--text-xs);
   flex-wrap: wrap;
@@ -3148,7 +3162,7 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 0;
   min-height: 0;
   flex: 1;
-  margin: 0 24px 24px;
+  margin: 0 16px 20px;
   overflow: auto;
   user-select: text;
   border: 0;
@@ -3159,7 +3173,7 @@ input, textarea, [contenteditable="true"], .selectable {
 .thread-document-editor .milkdown {
   --crepe-color-background: var(--surface);
   --crepe-color-on-background: var(--foreground);
-  --crepe-color-surface: var(--surface);
+  --crepe-color-surface: var(--surface-raised);
   --crepe-color-surface-low: var(--muted);
   --crepe-color-on-surface: var(--foreground);
   --crepe-color-on-surface-variant: var(--muted-foreground);
@@ -3169,7 +3183,7 @@ input, textarea, [contenteditable="true"], .selectable {
   --crepe-color-on-secondary: var(--foreground);
   --crepe-color-inverse: var(--surface-raised);
   --crepe-color-on-inverse: var(--foreground);
-  --crepe-color-inline-code: var(--link);
+  --crepe-color-inline-code: var(--foreground);
   --crepe-color-error: var(--danger);
   --crepe-color-hover: var(--accent);
   --crepe-color-selected: var(--accent);
@@ -3182,14 +3196,14 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .thread-document-editor .milkdown .ProseMirror {
   min-height: 240px;
-  padding: 24px 40px 64px;
+  padding: 28px 48px 72px;
   overflow-wrap: anywhere;
   -webkit-app-region: no-drag;
   font-family: var(--font-ui);
   font-size: var(--text-document);
-  line-height: 1.65;
+  line-height: 1.75;
   width: 100%;
-  max-width: 800px;
+  max-width: 840px;
   margin: 0 auto;
   min-width: 0;
 }
@@ -3199,10 +3213,10 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-document-editor .milkdown .ProseMirror pre {
-  padding: 12px;
+  padding: 16px 20px;
   overflow: auto;
   background: var(--muted);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
 }
 
 .thread-document-editor .milkdown .ProseMirror pre code {
@@ -3211,7 +3225,7 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-document-editor .milkdown .ProseMirror p {
-  line-height: 1.65;
+  line-height: 1.75;
 }
 
 .thread-document-editor .milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
@@ -3221,11 +3235,11 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-document-editor .milkdown .ProseMirror h1 {
-  font-size: 28px;
+  font-size: 26px;
 }
 
 .thread-document-editor .milkdown .ProseMirror h2 {
-  font-size: 22px;
+  font-size: 21px;
 }
 
 .thread-document-editor .milkdown .ProseMirror h3 {
@@ -3259,6 +3273,13 @@ input, textarea, [contenteditable="true"], .selectable {
 .thread-document-editor .milkdown .ProseMirror code {
   font-family: var(--font-mono);
   font-size: var(--text-control);
+}
+
+.thread-document-editor .milkdown .ProseMirror :not(pre) > code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--muted);
+  color: var(--foreground);
 }
 
 .thread-document-editor .milkdown .milkdown-code-block {
@@ -3379,7 +3400,8 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-card.document-is-open {
-  border-color: var(--ring);
+  border-color: var(--border-strong);
+  background: var(--muted);
 }
 
 .work-thread-document-slot {
@@ -3518,9 +3540,9 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 0;
   height: var(--chrome-control-height);
   padding: 0 9px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--surface-raised);
+  background: var(--control-background);
   color: var(--foreground);
   font-size: var(--text-control);
 }
