@@ -10,7 +10,7 @@ export type SessionKind = ManagedSessionKind;
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input" | "unknown";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 15;
+export const CURRENT_SCHEMA_VERSION = 16;
 
 export interface AppSettings {
   workThreadTemplate: string;
@@ -47,6 +47,7 @@ export interface WorkThread {
 
 export interface Project {
   id: string;
+  code: string;
   name: string;
   repositoryUrl?: string;
   defaultBranch?: string;
@@ -286,8 +287,8 @@ export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {
 }
 
 export type AddProjectInput =
-  | { mode: "import"; deviceId: string; path: string; projectName?: string }
-  | { mode: "clone"; repositoryUrl: string; parentDirectory: string; projectName?: string };
+  | { mode: "import"; deviceId: string; path: string; projectCode: string; projectName?: string }
+  | { mode: "clone"; repositoryUrl: string; parentDirectory: string; projectCode: string; projectName?: string };
 
 export type SetupProjectInput =
   | { projectId: string; deviceId: string; mode: "import"; path: string }
@@ -296,6 +297,7 @@ export type SetupProjectInput =
 export interface UpdateProjectInput {
   id: string;
   name: string;
+  code: string;
 }
 
 export interface BrowseDirectoryInput {

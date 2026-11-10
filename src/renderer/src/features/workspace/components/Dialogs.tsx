@@ -11,6 +11,7 @@ import { SshTunnelFields } from "./SshTunnelFields";
 import { WorkspaceLinks } from "./WorkspaceLinks";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/app-settings";
 import { workspaceNameSchema } from "@/shared/contract";
+import { projectCodeError } from "@/shared/project-code";
 import { SettingsDialog } from "./SettingsDialog";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
@@ -110,12 +111,14 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   const [deviceId, setDeviceId] = useState(snapshot.devices[0]?.id || "");
   const [parent, setParent] = useState("");
   const [projectName, setProjectName] = useState("");
+  const [projectCode, setProjectCode] = useState("");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const device = snapshot.devices.find((item) => item.id === deviceId);
   const localDevice = snapshot.devices.find((item) => item.type === "local");
-  const valid = mode === "import"
+  const codeError = projectCodeError(projectCode, snapshot.projects);
+  const valid = !codeError && (mode === "import"
     ? Boolean(deviceId && path.trim())
-    : Boolean(localDevice && url.trim() && parent.trim());
+    : Boolean(localDevice && url.trim() && parent.trim()));
   useEffect(() => {
     if (!snapshot.devices.some((item) => item.id === deviceId)) setDeviceId(snapshot.devices[0]?.id || "");
   }, [snapshot.devices, deviceId]);
@@ -123,10 +126,10 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
     event.preventDefault(); setBusy(true);
     try {
       const name = projectName.trim();
-      if (mode === "import") await window.desktop.addProject({ mode, deviceId, path, ...(name ? { projectName: name } : {}) });
-      else await window.desktop.addProject({ mode, repositoryUrl: url, parentDirectory: parent, ...(name ? { projectName: name } : {}) });
+      if (mode === "import") await window.desktop.addProject({ mode, deviceId, path, projectCode, ...(name ? { projectName: name } : {}) });
+      else await window.desktop.addProject({ mode, repositoryUrl: url, parentDirectory: parent, projectCode, ...(name ? { projectName: name } : {}) });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
-      toast.success("Project added"); closeDialog(); setPath(""); setUrl(""); setParent(""); setProjectName("");
+      toast.success("Project added"); closeDialog(); setPath(""); setUrl(""); setParent(""); setProjectName(""); setProjectCode("");
     } catch (error) {
       toast.error(message(error));
     } finally { setBusy(false); }
@@ -142,6 +145,7 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
         <Field label="Device"><select value={localDevice?.id || ""} disabled required>{localDevice && <option value={localDevice.id}>{localDevice.name}</option>}</select></Field>
         <Field label="Parent directory" error={touched.parent && !parent.trim() ? "Choose or enter a parent directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, parent: true }))}><DirectoryField value={parent} onChange={setParent} placeholder="/Users/you/code" /></div></Field>
       </>}
+      <Field label="Project code" hint="Required and unique across projects. Used as the folder name for new worktrees." error={touched.projectCode || projectCode ? codeError : undefined}><input value={projectCode} disabled={busy} onChange={(event) => setProjectCode(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, projectCode: true }))} placeholder="project-code" required maxLength={80} /></Field>
       <Field label="Project name (optional)" hint="Defaults to the folder name. Names can be reused."><input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="project-name" maxLength={80} /></Field>
     </Modal>
   );

@@ -41,7 +41,8 @@ import type {
   WorkThread,
   Workspace
 } from "../../shared/domain";
-import { appSettingsSchema, createWorkThreadSchema, createTodoSchema, updateTodoSchema, todoTargetSchema } from "../../shared/contract";
+import { addProjectSchema, updateProjectSchema, appSettingsSchema, createWorkThreadSchema, createTodoSchema, updateTodoSchema, todoTargetSchema } from "../../shared/contract";
+import { projectCodeError } from "../../shared/project-code";
 import { sortedWorkThreads } from "../../shared/work-thread-order";
 import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runner";
@@ -82,7 +83,7 @@ export function nextTmuxSessionName(baseName: string, occupied: Iterable<string>
 export interface WorkspaceGitRuntime {
   inspect(repositoryPath: string): Promise<RepositoryInfo>;
   clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo>;
-  createWorktree(checkoutPath: string, projectId: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
+  createWorktree(checkoutPath: string, projectCode: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
   listWorkspaceLinkCandidates(checkoutPath: string): Promise<WorkspaceLinkCandidate[]>;
   linkWorktreePaths(checkoutPath: string, workspacePath: string, paths: string[]): Promise<void>;
   inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk>;
@@ -290,30 +291,30 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async addProject(input: AddProjectInput): Promise<void> {
+    input = addProjectSchema.parse(input);
     const snapshot = this.snapshot();
+    this.assertProjectCodeAvailable(snapshot, input.projectCode);
     const requestedName = input.projectName?.trim();
     if (input.mode === "import") {
       const device = this.device(snapshot, input.deviceId);
       const info = await this.git(snapshot, device).inspect(input.path);
-      await this.recordProjectAndCheckout(info, device.id, requestedName);
+      await this.recordProjectAndCheckout(info, device.id, input.projectCode, requestedName);
       return;
     }
     const device = this.localDevice(snapshot);
     const unsafe = unsafeProjectName(requestedName || repositoryNameFromUrl(input.repositoryUrl));
     if (unsafe) throw new Error(unsafe);
     const info = await this.git(snapshot, device).clone(input.repositoryUrl, input.parentDirectory);
-    await this.recordProjectAndCheckout(info, device.id, requestedName);
+    await this.recordProjectAndCheckout(info, device.id, input.projectCode, requestedName);
   }
 
   async updateProject(input: UpdateProjectInput): Promise<void> {
-    const snapshot = this.snapshot();
-    const project = this.project(snapshot, input.id);
-    const name = input.name.trim();
-    const unsafe = unsafeProjectName(name);
-    if (unsafe) throw new Error(unsafe);
+    input = updateProjectSchema.parse(input);
+    const { name, code } = input;
     await this.store.update((draft) => {
-      const item = draft.projects.find((candidate) => candidate.id === project.id);
-      if (item) Object.assign(item, { name, updatedAt: now() });
+      const item = this.project(draft, input.id);
+      this.assertProjectCodeAvailable(draft, code, item.id);
+      Object.assign(item, { name, code, updatedAt: now() });
     });
     this.changed();
   }
@@ -578,7 +579,7 @@ export class WorkspaceService extends EventEmitter {
     const runtime = this.git(snapshot, this.device(snapshot, pending.deviceId));
     let created: { path: string; branch: string };
     try {
-      created = await runtime.createWorktree(checkout.path, project.id, input.name, input.baseBranch);
+      created = await runtime.createWorktree(checkout.path, project.code, input.name, input.baseBranch);
     } catch (error) {
       await this.removeWorkspaceMetadata(workspaceId);
       throw error;
@@ -1034,14 +1035,15 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  private async recordProjectAndCheckout(info: RepositoryInfo, deviceId: string, requestedName?: string): Promise<void> {
+  private async recordProjectAndCheckout(info: RepositoryInfo, deviceId: string, projectCode: string, requestedName?: string): Promise<void> {
     const projectName = requestedName?.trim() || info.name;
     const unsafe = unsafeProjectName(projectName);
     if (unsafe) throw new Error(unsafe);
     await this.store.update((draft) => {
       this.device(draft, deviceId);
       this.assertProjectPathAvailable(draft, deviceId, info.root);
-      const project: Project = { id: id("proj"), name: projectName, repositoryUrl: info.remote, defaultBranch: info.defaultBranch, createdAt: now(), updatedAt: now() };
+      this.assertProjectCodeAvailable(draft, projectCode);
+      const project: Project = { id: id("proj"), code: projectCode, name: projectName, repositoryUrl: info.remote, defaultBranch: info.defaultBranch, createdAt: now(), updatedAt: now() };
       draft.projects.push(project);
       draft.checkouts.push({ id: id("checkout"), projectId: project.id, deviceId, path: info.root, isGit: info.defaultBranch !== undefined, defaultBranch: info.defaultBranch, createdAt: now() });
     });
@@ -1052,6 +1054,11 @@ export class WorkspaceService extends EventEmitter {
     if (snapshot.checkouts.some((checkout) => checkout.deviceId === deviceId && posix.resolve(checkout.path) === posix.resolve(path))) {
       throw new Error(`A project at ${path} already exists on this device`);
     }
+  }
+
+  private assertProjectCodeAvailable(snapshot: AppSnapshot, code: string, excludeId?: string): void {
+    const error = projectCodeError(code, snapshot.projects, excludeId);
+    if (error) throw new Error(error);
   }
 
   private workspaceDeleteRisks(risk: WorkspaceDeleteRisk): string[] {

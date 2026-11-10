@@ -15,7 +15,7 @@ test("schema 14 gains default settings without rewriting documents, TODOs, or cr
   const loaded = await new JsonStore(path).load();
   assert.deepEqual(loaded.settings, defaultAppSettings());
   assert.deepEqual(JSON.parse(JSON.stringify(loaded.workThreads[0])), thread);
-  assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, 15);
+  assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, CURRENT_SCHEMA_VERSION);
 });
 
 test("persisted linked and standalone workspaces keep their ownership and tabs", async () => {
@@ -42,7 +42,7 @@ test("JsonStore creates, updates, and reloads an atomic snapshot", async () => {
   assert.deepEqual(initial.projects, []);
 
   await store.update((draft) => {
-    draft.projects.push({ id: "p1", name: "demo", repositoryUrl: "git@example/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "p1", name: "demo", code: "demo", repositoryUrl: "git@example/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   });
 
   const reloaded = new JsonStore(path);
@@ -145,4 +145,29 @@ test("removed Codex tabs migrate to stopped shells without probing or losing the
   assert.equal("tmuxWindowKey" in session, false);
   assert.deepEqual(JSON.parse(JSON.stringify((await new JsonStore(path).load()).sessions)), JSON.parse(JSON.stringify(snapshot.sessions)));
   assert.equal(JSON.parse(await readFile(path, "utf8")).schemaVersion, CURRENT_SCHEMA_VERSION);
+});
+
+test("schema 15 backfills unique project codes from remote names without changing historical workspaces", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-project-code-migration-"));
+  const path = join(directory, "state.json");
+  const project = { name: "Display name", createdAt: "then", updatedAt: "then" };
+  const workspaces = [{ id: "old-workspace", projectId: "p1", checkoutId: "checkout", deviceId: "device", kind: "worktree", name: "feature", path: "/home/me/.superthread/workspaces/proj_old/feature", branch: "work/feature", baseBranch: "main", status: "ready", createdAt: "then", updatedAt: "then" }];
+  await writeFile(path, JSON.stringify({ schemaVersion: 15, projects: [
+    { ...project, id: "p1", repositoryUrl: "git@github.com:team/demo.git" },
+    { ...project, id: "p2", repositoryUrl: "https://example.com/team/demo.git/" },
+    { ...project, id: "p3", repositoryUrl: "ssh://git@example.com/team/DEMO.git" },
+    { ...project, id: "p4", name: "Notes" },
+    { ...project, id: "p5", name: "../unsafe" },
+    { ...project, id: "p6", code: "demo-2" }
+  ], workspaces }));
+  const snapshot = await new JsonStore(path).load();
+  assert.deepEqual(snapshot.projects.map((item) => item.code), ["demo", "demo-3", "DEMO-4", "Notes", "..-unsafe", "demo-2"]);
+  assert.equal(snapshot.projects[0]!.name, "Display name");
+  assert.equal(snapshot.projects[0]!.updatedAt, "then");
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.workspaces)), workspaces);
+  assert.deepEqual((await new JsonStore(path).load()).projects, snapshot.projects);
+  const persisted = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(persisted.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.deepEqual(persisted.workspaces, workspaces);
+  assert.deepEqual(persisted.projects, snapshot.projects);
 });

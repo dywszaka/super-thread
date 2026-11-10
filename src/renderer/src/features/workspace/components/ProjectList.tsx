@@ -3,6 +3,7 @@ import { FolderGit2, GitBranch, HardDrive, Pencil, Plus, Trash2 } from "lucide-r
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Project } from "@/shared/domain";
+import { projectCodeError } from "@/shared/project-code";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
 import { SidebarReopenButton } from "./Sidebar";
@@ -53,14 +54,14 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
               <article className="project-card" key={project.id}>
                 <div className="project-card-icon"><FolderGit2 size={19} /></div>
                 <div className="project-card-content">
-                  <div className="project-card-title"><strong>{project.name}</strong>{project.defaultBranch && <span>{project.defaultBranch}</span>}</div>
+                  <div className="project-card-title"><strong>{project.name}</strong><span title={`Project code: ${project.code}`}>{project.code}</span>{project.defaultBranch && <span>{project.defaultBranch}</span>}</div>
                   <code title={locations || project.repositoryUrl}>{locations || project.repositoryUrl}</code>
                   <div className="project-usage"><span><HardDrive size={12} /> {checkouts.length} {checkouts.length === 1 ? "checkout" : "checkouts"}{checkoutDevices.length > 0 ? ` · ${checkoutDevices.join(", ")}` : ""}</span><span><GitBranch size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span></div>
                 </div>
                 <div className="project-card-actions">
                   {missingDevice && <button className="button" disabled={busy} onClick={() => openSetupProject(project.id, missingDevice.id)}><Plus size={14} /> Set up device</button>}
                   {workspaces.length > 0 && <button className="button" disabled={busy} onClick={() => setProjectFilter(project.id)}>View workspaces</button>}
-                  <button className="icon-button" disabled={busy} title="Edit project name" onClick={() => setEditingId(project.id)}><Pencil size={14} /></button>
+                  <button className="icon-button" disabled={busy} title="Edit project" onClick={() => setEditingId(project.id)}><Pencil size={14} /></button>
                   <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this project" : "Delete project"} onClick={() => void remove(project)}><Trash2 size={14} /></button>
                 </div>
               </article>
@@ -68,24 +69,26 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
           })}
         </div>
       </section>
-      <EditProjectDialog project={editing} onClose={() => setEditingId(null)} />
+      <EditProjectDialog project={editing} projects={snapshot.projects} onClose={() => setEditingId(null)} />
     </main>
   );
 }
 
-function EditProjectDialog({ project, onClose }: { project?: Project; onClose(): void }): React.ReactNode {
+function EditProjectDialog({ project, projects, onClose }: { project?: Project; projects: Project[]; onClose(): void }): React.ReactNode {
   const client = useQueryClient();
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { setName(project?.name ?? ""); }, [project?.id, project?.name]);
+  useEffect(() => { setName(project?.name ?? ""); setCode(project?.code ?? ""); }, [project?.id, project?.name, project?.code]);
+  const codeError = projectCodeError(code, projects, project?.id);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!project) return;
     setBusy(true);
     try {
-      await window.desktop.updateProject({ id: project.id, name });
+      await window.desktop.updateProject({ id: project.id, name, code });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       toast.success(`${name.trim()} updated`);
       onClose();
@@ -94,8 +97,9 @@ function EditProjectDialog({ project, onClose }: { project?: Project; onClose():
   };
 
   return (
-    <Modal open={Boolean(project)} title="Edit project" description="Project names can be reused. Renaming keeps project directories and workspaces unchanged." busy={busy} submitLabel="Save Changes" onClose={onClose} onSubmit={submit}>
+    <Modal open={Boolean(project)} title="Edit project" description="Project names can be reused. Code changes apply to new worktrees; existing workspace paths stay the same." busy={busy} submitDisabled={!name.trim() || Boolean(codeError)} submitLabel="Save Changes" onClose={onClose} onSubmit={submit}>
       <Field label="Project name"><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoFocus /></Field>
+      <Field label="Project code" hint="Required and unique across projects. Used as the folder name for new worktrees." error={codeError}><input value={code} disabled={busy} onChange={(event) => setCode(event.target.value)} required maxLength={80} /></Field>
       {project?.repositoryUrl && <Field label="Git remote"><input value={project.repositoryUrl} readOnly /></Field>}
     </Modal>
   );

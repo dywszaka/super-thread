@@ -37,8 +37,8 @@ test("GitRuntime records Git metadata for a project directory", async () => {
 
 test("GitRuntime creates an isolated worktree and work branch", async () => {
   const runner = new FakeRunner();
-  const created = await new GitRuntime(local, connection, runner).createWorktree("/code/demo", "demo", "feature-x", "main");
-  const expectedPath = `${homedir()}/.superthread/workspaces/demo/feature-x`;
+  const created = await new GitRuntime(local, connection, runner).createWorktree("/code/demo", "demo-code", "feature-x", "main");
+  const expectedPath = `${homedir()}/.superthread/workspaces/demo-code/feature-x`;
   assert.deepEqual(created, { path: expectedPath, branch: "work/feature-x" });
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes(`worktree add -b work/feature-x ${expectedPath} main`)));
   assert.equal(runner.calls.some((call) => call.args.includes("fetch")), false);
@@ -46,10 +46,10 @@ test("GitRuntime creates an isolated worktree and work branch", async () => {
 
 test("GitRuntime creates remote worktrees from the imported checkout without accessing origin", async () => {
   const runner = new FakeRunner();
-  const created = await new GitRuntime(remote, remoteConnection, runner).createWorktree("/srv/demo", "demo", "feature-x", "main");
-  assert.deepEqual(created, { path: "/home/builder/.superthread/workspaces/demo/feature-x", branch: "work/feature-x" });
+  const created = await new GitRuntime(remote, remoteConnection, runner).createWorktree("/srv/demo", "demo-code", "feature-x", "main");
+  assert.deepEqual(created, { path: "/home/builder/.superthread/workspaces/demo-code/feature-x", branch: "work/feature-x" });
   assert.ok(runner.calls.some((call) => call.program === "sh" && call.args.includes("printf %s \"$HOME\"")));
-  assert.ok(runner.calls.some((call) => call.args.join(" ").includes("-C /srv/demo worktree add -b work/feature-x /home/builder/.superthread/workspaces/demo/feature-x main")));
+  assert.ok(runner.calls.some((call) => call.args.join(" ").includes("-C /srv/demo worktree add -b work/feature-x /home/builder/.superthread/workspaces/demo-code/feature-x main")));
   assert.equal(runner.calls.some((call) => call.args.includes("fetch")), false);
 });
 
@@ -119,3 +119,13 @@ test("GitRuntime imports a remote folder even when Git is unavailable, but propa
   disconnected = true;
   await assert.rejects(() => runtime.inspect("/srv/notes"), /SSH connection failed/);
 });
+
+for (const [device, deviceConnection] of [[local, connection], [remote, remoteConnection]] as const) {
+  test(`GitRuntime rejects unsafe project codes before creating directories on ${device.type}`, async () => {
+    const runner = new FakeRunner();
+    for (const code of ["", "..", "../escape", "a/b", "a\\b", "a\0b"]) {
+      await assert.rejects(() => new GitRuntime(device, deviceConnection, runner).createWorktree("/code/demo", code, "feature", "main"));
+    }
+    assert.deepEqual(runner.calls, []);
+  });
+}

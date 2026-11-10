@@ -53,7 +53,7 @@ MVP 不包含：
 
 Project 用于组织项目内容，不要求目录中存在 Git 或 origin remote。
 
-新增项目时，由所选 Device 解析并验证实际目录，按 `(deviceId, resolvedPath)` 判重。路径去除 `.`、`..`、尾随分隔符并解析软链接；同一目录的别名不能重复添加。不同 Device 可以使用相同路径；不同目录可以使用相同 Project name 或 Git remote，不按 remote 自动合并。
+新增项目时，由所选 Device 解析并验证实际目录，按 `(deviceId, resolvedPath)` 判重。路径去除 `.`、`..`、尾随分隔符并解析软链接；同一目录的别名不能重复添加。不同 Device 可以使用相同路径；不同目录可以使用相同 Project name 或 Git remote，但必须填写不同的 Project code，不按 remote 自动合并。
 
 用户仍可通过 Set Up Project 显式把已有 Project 关联到其他 Device 的目录；已有 Project、checkout 与 Workspace 关联保留。
 
@@ -194,6 +194,7 @@ Project 是项目记录，Git remote 与默认分支是可选元数据，不作�
 interface Project {
   id: string
 
+  code: string
   name: string
 
   // Optional Git metadata
@@ -210,6 +211,7 @@ interface Project {
 ```json
 {
   "id": "proj_llamacpp",
+  "code": "llama.cpp",
   "name": "llama.cpp",
   "repositoryUrl": "git@github.com:ggml-org/llama.cpp.git"
 }
@@ -229,10 +231,13 @@ device
 
 规则：
 
-- Add Project 以同一 Device 上解析后的实际目录唯一为约束；相同 remote、相同名称但不同路径可以分别添加。
-- Project name 用于展示，可以重名；同名项目在选择列表中展示 Device 与路径以便区分。新 worktree 路径使用 Project ID，避免重名或重命名造成目录冲突。
+- Add Project 校验 code 全局唯一及同一 Device 上解析后的实际目录唯一；相同 remote、相同名称但不同路径可以使用不同 code 分别添加。
+- Project code 必填且全局唯一，去除首尾空白后保存，按 Unicode NFC 与大小写不敏感判重；最长 80 字符，不允许 `.`、`..`、路径分隔符或控制字符。Add Project 与 Edit Project 均提供 code 输入及校验，持久化事务内再次检查唯一性，防止并发冲突。
+- Project name 用于展示，可以重名；同名项目在选择列表中展示 Device 与路径以便区分。新 worktree 路径使用 `~/.superthread/workspaces/<project code>/<workspace name>`。
+- schema 16 为已有项目补齐 code：优先使用 Git remote URL 最后的仓库名，去掉 `.git`；无 remote 时使用 Project name。非法路径字符替换为 `-`，无有效名称时使用 `project`，重名追加 `-2`、`-3` 等数字后缀，并保留已有有效 code。
+- 修改 code 仅影响以后创建的 worktree。历史 Workspace 的记录、路径、分支与设备目录均不处理、不迁移。
 - Project name 不能是 `.`、`..`，也不能包含路径分隔符。
-- All projects 页面用于新增、重命名和删除 Project，并展示其 checkout、workspace 与 device 关联。
+- All projects 页面用于新增、编辑名称与 code、删除 Project，并展示其 checkout、workspace 与 device 关联。
 - 删除 Project 前必须先删除其全部 Workspace；删除只清理 SuperThread 中的 Project 与 checkout 记录，不删除设备上的仓库目录。
 
 ---
@@ -564,7 +569,7 @@ interface Workspace {
   "name": "nvfp4-kernel",
   "projectId": "proj_llamacpp",
   "deviceId": "dev_cuda",
-  "path": "~/.superthread/workspaces/proj_llamacpp/nvfp4-kernel",
+  "path": "~/.superthread/workspaces/llama.cpp/nvfp4-kernel",
   "branch": "work/nvfp4-kernel",
   "baseBranch": "master",
   "status": "ready"
@@ -637,7 +642,7 @@ Runtime 执行：
 ```bash
 git -C /data/allen/llama.cpp worktree add \
   -b work/nvfp4-kernel \
-  ~/.superthread/workspaces/proj_llamacpp/nvfp4-kernel \
+  ~/.superthread/workspaces/llama.cpp/nvfp4-kernel \
   master
 ```
 
@@ -658,10 +663,10 @@ base checkout
 
         │
         ├── Workspace A
-        │   ~/.superthread/workspaces/proj_llamacpp/nvfp4-kernel
+        │   ~/.superthread/workspaces/llama.cpp/nvfp4-kernel
         │
         └── Workspace B
-            ~/.superthread/workspaces/proj_llamacpp/benchmark
+            ~/.superthread/workspaces/llama.cpp/benchmark
 ```
 
 本机和远程 Device 都使用所属 Device 用户的 home 目录：

@@ -1,5 +1,6 @@
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
 import { z } from "zod";
+import { projectCodeSchema } from "./project-code";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
 export { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
 import { normalizeBrowserUrl } from "./browser-url";
@@ -151,12 +152,13 @@ export const projectNameSchema = z.string()
   .refine((value) => !/[\\/]/.test(value), "Project name cannot contain path separators");
 
 export const addProjectSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1), projectName: projectNameSchema.optional() }).strict(),
+  z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1), projectCode: projectCodeSchema, projectName: projectNameSchema.optional() }).strict(),
   z.object({
     mode: z.literal("clone"),
     repositoryUrl: z.string().trim().min(1),
     parentDirectory: z.string().trim().min(1),
-    projectName: projectNameSchema.optional()
+    projectName: projectNameSchema.optional(),
+    projectCode: projectCodeSchema
   }).strict()
 ]);
 
@@ -177,7 +179,8 @@ export const setupProjectSchema = z.discriminatedUnion("mode", [
 
 export const updateProjectSchema = z.object({
   id: z.string().min(1),
-  name: projectNameSchema
+  name: projectNameSchema,
+  code: projectCodeSchema
 }).strict();
 
 export const browseDirectorySchema = z.object({

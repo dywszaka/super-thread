@@ -27,12 +27,12 @@ test("settings allow empty templates and reject invalid or unordered reminder th
 import { reorderWorkThreadsSchema, addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkThreadSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
 test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
-  assert.equal(addProjectSchema.safeParse({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
-  assert.equal(addProjectSchema.safeParse({ mode: "import", path: "/srv/demo" }).success, false);
-  assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" }).success, true);
-  assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "demo-gpu" }).success, true);
-  assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "../demo" }).success, false);
-  assert.equal(addProjectSchema.safeParse({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", deviceId: "dev_remote", parentDirectory: "/srv" }).success, false);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "import", path: "/srv/demo" }).success, false);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "demo-gpu" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "../demo" }).success, false);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", deviceId: "dev_remote", parentDirectory: "/srv" }).success, false);
 });
 
 test("SetupProject requires the path that matches the selected setup mode", () => {
@@ -71,8 +71,8 @@ test("workspace links only accept checkout-relative paths on worktrees", () => {
 });
 
 test("UpdateProject accepts safe names and rejects path-like names", () => {
-  assert.equal(updateProjectSchema.safeParse({ id: "project-1", name: "Runtime Core" }).success, true);
-  assert.equal(updateProjectSchema.safeParse({ id: "project-1", name: "../runtime" }).success, false);
+  assert.equal(updateProjectSchema.safeParse({ code: "demo", id: "project-1", name: "Runtime Core" }).success, true);
+  assert.equal(updateProjectSchema.safeParse({ code: "demo", id: "project-1", name: "../runtime" }).success, false);
 });
 
 test("BrowseDirectory accepts a selected device and optional path", () => {
@@ -152,4 +152,16 @@ test("work thread moves validate identity and insertion placement", () => {
     { id: "a", targetId: "b", placement: "above" },
     { id: "a", targetId: "b", placement: "before", pinned: true }
   ]) assert.equal(reorderWorkThreadsSchema.safeParse(input).success, false);
+});
+
+test("project mutations require a safe project code at the IPC boundary", () => {
+  const input = { mode: "import", deviceId: "dev_local", path: "/code/demo" };
+  assert.equal(addProjectSchema.safeParse(input).success, false);
+  assert.equal(updateProjectSchema.safeParse({ id: "project", name: "Demo" }).success, false);
+  for (const code of ["", " ", ".", "..", "../demo", "a/b", "a\\b", "a\0b", "x".repeat(81)]) {
+    assert.equal(addProjectSchema.safeParse({ ...input, projectCode: code }).success, false);
+    assert.equal(updateProjectSchema.safeParse({ id: "project", name: "Demo", code }).success, false);
+  }
+  assert.equal(addProjectSchema.parse({ ...input, projectCode: " demo-core " }).projectCode, "demo-core");
+  assert.equal(updateProjectSchema.parse({ id: "project", name: "Demo", code: "demo.core-2" }).code, "demo.core-2");
 });

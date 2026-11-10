@@ -1,8 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { AppSnapshot, Session, Workspace, WorkThread } from "../../shared/domain";
+import type { AppSnapshot, Project, Session, Workspace, WorkThread } from "../../shared/domain";
 import { CURRENT_SCHEMA_VERSION, emptySnapshot } from "../../shared/domain";
 import { appSettingsSchema } from "../../shared/contract";
+import { canonicalProjectCode, projectCodeSchema, repositoryCodeFromUrl } from "../../shared/project-code";
 
 export class JsonStore {
   private writes: Promise<unknown> = Promise.resolve();
@@ -52,7 +53,8 @@ type StoredSession = Omit<Session, "kind"> & {
   tmuxSessionName?: string; tmuxClientSessionName?: string; tmuxWindowKey?: string; tmuxWindowName?: string;
   fallbackMessage?: string;
 };
-type StoredSnapshot = Omit<Partial<AppSnapshot>, "sessions"> & { sessions?: StoredSession[] };
+type StoredProject = Omit<Project, "code"> & { code?: string };
+type StoredSnapshot = Omit<Partial<AppSnapshot>, "sessions" | "projects"> & { sessions?: StoredSession[]; projects?: StoredProject[] };
 
 function migrateSnapshot(stored: StoredSnapshot): AppSnapshot {
   const base = emptySnapshot();
@@ -66,7 +68,7 @@ function migrateSnapshot(stored: StoredSnapshot): AppSnapshot {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     settings: appSettingsSchema.parse({ ...base.settings, ...stored.settings }),
     workThreads: (stored.workThreads ?? base.workThreads).map(normalizeWorkThread),
-    projects: stored.projects ?? base.projects,
+    projects: migrateProjects(stored.projects ?? []),
     devices: stored.devices ?? base.devices,
     connections: stored.connections ?? base.connections,
     checkouts: stored.checkouts ?? base.checkouts,
@@ -83,6 +85,33 @@ function migrateSnapshot(stored: StoredSnapshot): AppSnapshot {
     }
   }
   return data;
+}
+
+function migrateProjects(projects: StoredProject[]): Project[] {
+  // Reserve explicit codes first so legacy backfills cannot take an existing code.
+  const reserved = new Set(projects.flatMap((project) => {
+    const parsed = projectCodeSchema.safeParse(project.code);
+    return parsed.success ? [canonicalProjectCode(parsed.data)] : [];
+  }));
+  const assigned = new Set<string>();
+  return projects.map((project) => {
+    const parsed = projectCodeSchema.safeParse(project.code);
+    let code: string;
+    if (parsed.success && !assigned.has(canonicalProjectCode(parsed.data))) {
+      code = parsed.data;
+    } else {
+      const source = parsed.success ? parsed.data : (project.repositoryUrl ? repositoryCodeFromUrl(project.repositoryUrl) : "") || project.name;
+      const candidate = source.trim().replace(/[\\/\u0000-\u001f\u007f]/g, "-").slice(0, 80).trim();
+      const base = projectCodeSchema.safeParse(candidate).success ? candidate : "project";
+      code = base;
+      for (let suffix = 2; reserved.has(canonicalProjectCode(code)) || assigned.has(canonicalProjectCode(code)); suffix += 1) {
+        const ending = `-${suffix}`;
+        code = `${base.slice(0, 80 - ending.length)}${ending}`;
+      }
+    }
+    assigned.add(canonicalProjectCode(code));
+    return { ...project, code };
+  });
 }
 
 function normalizeWorkspace(workspace: Workspace, legacyTmuxSessionName?: string): Workspace {

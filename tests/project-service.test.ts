@@ -49,7 +49,7 @@ test("AddProject import records a checkout on the selected remote device", async
     }
   }));
 
-  await service.addProject({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" });
+  await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_remote", path: "/srv/demo" });
 
   assert.deepEqual(inspected, [{ deviceId: "dev_remote", path: "/srv/demo" }]);
   assert.equal(service.snapshot().projects[0]?.repositoryUrl, "git@example.com:team/demo.git");
@@ -66,7 +66,7 @@ test("AddProject clone always runs against the local device", async () => {
     }
   }));
 
-  await service.addProject({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" });
+  await service.addProject({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" });
 
   assert.deepEqual(clonedOn, ["dev_local"]);
   assert.equal(service.snapshot().checkouts[0]?.deviceId, "dev_local");
@@ -74,9 +74,9 @@ test("AddProject clone always runs against the local device", async () => {
 
 test("AddProject allows identical names and remotes at different paths on one device", async () => {
   const { service } = await setup(() => fakeGit());
-  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/code/demo" });
-  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/other/demo" });
-  await service.addProject({ mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/cloned" });
+  await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_local", path: "/code/demo" });
+  await service.addProject({ projectCode: "demo-2", mode: "import", deviceId: "dev_local", path: "/other/demo" });
+  await service.addProject({ projectCode: "demo-3", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/cloned" });
   assert.equal(service.snapshot().projects.length, 3);
   assert.deepEqual(service.snapshot().projects.map((project) => project.name), ["demo", "demo", "demo"]);
   assert.deepEqual(service.snapshot().checkouts.map((checkout) => checkout.path), ["/code/demo", "/other/demo", "/cloned/demo"]);
@@ -84,19 +84,19 @@ test("AddProject allows identical names and remotes at different paths on one de
 
 test("AddProject rejects duplicate device paths atomically, including concurrent imports", async () => {
   const { service } = await setup(() => fakeGit());
-  const input = { mode: "import" as const, deviceId: "dev_local", path: "/code/demo" };
+  const input = { projectCode: "demo", mode: "import" as const, deviceId: "dev_local", path: "/code/demo" };
   const results = await Promise.allSettled([service.addProject(input), service.addProject(input)]);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal(service.snapshot().projects.length, 1);
   assert.equal(service.snapshot().checkouts.length, 1);
-  await assert.rejects(() => service.addProject({ ...input, path: "/code/demo/./" }), /already exists on this device/);
-  await service.addProject({ ...input, deviceId: "dev_remote" });
+  await assert.rejects(() => service.addProject({ ...input, projectCode: "other", path: "/code/demo/./" }), /already exists on this device/);
+  await service.addProject({ ...input, projectCode: "demo-remote", deviceId: "dev_remote" });
   assert.equal(service.snapshot().projects.length, 2);
 });
 
 test("AddProject accepts plain folders and optional custom names without Git metadata", async () => {
   const { service } = await setup(() => fakeGit({ inspect: async (path) => ({ root: path, name: "demo" }) }));
-  await service.addProject({ mode: "import", deviceId: "dev_remote", path: "/srv/demo", projectName: "Notes" });
+  await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_remote", path: "/srv/demo", projectName: "Notes" });
   assert.equal(service.snapshot().projects[0]?.name, "Notes");
   assert.equal(service.snapshot().projects[0]?.repositoryUrl, undefined);
   assert.equal(service.snapshot().projects[0]?.defaultBranch, undefined);
@@ -115,7 +115,7 @@ test("SetupProject can clone a known project on a remote device", async () => {
     }
   }));
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   });
 
   await service.setupProject({ projectId: "project-1", deviceId: "dev_remote", mode: "clone", parentDirectory: "/srv" });
@@ -129,7 +129,7 @@ test("SetupProject import can add an existing remote checkout for a known projec
     inspect: async () => ({ root: "/srv/demo", name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" })
   }));
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   });
 
   await service.setupProject({ projectId: "project-1", deviceId: "dev_remote", mode: "import", path: "/srv/demo" });
@@ -143,22 +143,22 @@ test("projects can be renamed to duplicate display names while preserving safe n
   const { service, store } = await setup(() => fakeGit());
   await store.update((draft) => {
     draft.projects.push(
-      { id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" },
-      { id: "project-2", name: "runtime", repositoryUrl: "git@example.com:team/runtime.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" }
+      { id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" },
+      { id: "project-2", name: "runtime", code: "runtime", repositoryUrl: "git@example.com:team/runtime.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" }
     );
   });
 
-  await service.updateProject({ id: "project-1", name: "Demo Core" });
+  await service.updateProject({ code: "demo", id: "project-1", name: "Demo Core" });
   assert.equal(service.snapshot().projects.find((project) => project.id === "project-1")?.name, "Demo Core");
-  await service.updateProject({ id: "project-1", name: "RUNTIME" });
+  await service.updateProject({ code: "demo", id: "project-1", name: "RUNTIME" });
   assert.equal(service.snapshot().projects[0]?.name, "RUNTIME");
-  await assert.rejects(() => service.updateProject({ id: "project-1", name: "../runtime" }), /path separators/);
+  await assert.rejects(() => service.updateProject({ code: "demo", id: "project-1", name: "../runtime" }), /path separators/);
 });
 
 test("projects can only be deleted after their workspaces are removed", async () => {
   const { service, store } = await setup(() => fakeGit());
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:team/demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/code/demo", createdAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "feature", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
@@ -201,9 +201,46 @@ test("WorkspaceService browses directories through the selected device runtime",
 
 test("SetupProject cannot reuse a directory already registered to another project", async () => {
   const { service } = await setup(() => fakeGit());
-  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/code/demo" });
-  await service.addProject({ mode: "import", deviceId: "dev_remote", path: "/srv/demo" });
+  await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_local", path: "/code/demo" });
+  await service.addProject({ projectCode: "demo-remote", mode: "import", deviceId: "dev_remote", path: "/srv/demo" });
   const project = service.snapshot().projects[0]!;
   await assert.rejects(() => service.setupProject({ projectId: project.id, deviceId: "dev_remote", mode: "import", path: "/srv/demo" }), /already exists on this device/);
   assert.equal(service.snapshot().checkouts.length, 2);
+});
+
+test("project codes are required, path-safe, trimmed, and unique across devices and clone/import", async () => {
+  const { service } = await setup(() => fakeGit({ clone: async () => { throw new Error("Clone must not run"); } }));
+  const input = { mode: "import" as const, deviceId: "dev_local", path: "/code/demo", projectCode: "  demo-core  " };
+  for (const projectCode of ["", "  ", ".", "..", "../escape", "a/b", "a\\b", "a\0b", "x".repeat(81)]) {
+    await assert.rejects(() => service.addProject({ ...input, projectCode }));
+  }
+  await assert.rejects(() => service.addProject({ mode: "import", deviceId: "dev_local", path: "/code/demo" } as never), /required|Required/);
+  assert.equal(service.snapshot().projects.length, 0);
+  await service.addProject(input);
+  assert.equal(service.snapshot().projects[0]?.code, "demo-core");
+  await assert.rejects(() => service.addProject({ ...input, deviceId: "dev_remote", path: "/srv/demo", projectCode: "DEMO-CORE" }), /already exists/);
+  await assert.rejects(() => service.addProject({ mode: "clone", repositoryUrl: "git@example.com:demo.git", parentDirectory: "/code", projectCode: "demo-core" }), /already exists/);
+});
+
+test("concurrent imports and edits enforce project code uniqueness inside the serialized write", async () => {
+  const { service } = await setup(() => fakeGit());
+  const imported = await Promise.allSettled([
+    service.addProject({ mode: "import", deviceId: "dev_local", path: "/one/demo", projectCode: "same" }),
+    service.addProject({ mode: "import", deviceId: "dev_remote", path: "/two/demo", projectCode: "SAME" })
+  ]);
+  assert.equal(imported.filter((result) => result.status === "fulfilled").length, 1);
+  assert.match(String((imported.find((result) => result.status === "rejected") as PromiseRejectedResult).reason), /already exists/);
+  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/three/demo", projectCode: "other" });
+  const [first, second] = service.snapshot().projects;
+  const edited = await Promise.allSettled([
+    service.updateProject({ id: first!.id, name: "First", code: "shared" }),
+    service.updateProject({ id: second!.id, name: "Second", code: "SHARED" })
+  ]);
+  assert.equal(edited.filter((result) => result.status === "fulfilled").length, 1);
+  assert.match(String((edited.find((result) => result.status === "rejected") as PromiseRejectedResult).reason), /already exists/);
+  const before = service.snapshot();
+  await assert.rejects(() => service.updateProject({ id: first!.id, name: "Invalid", code: "" }));
+  assert.deepEqual(service.snapshot(), before);
+  await service.updateProject({ id: first!.id, name: "Renamed", code: `  ${before.projects[0]!.code}  ` });
+  assert.equal(service.snapshot().projects[0]!.code, before.projects[0]!.code);
 });

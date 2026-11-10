@@ -2,6 +2,7 @@ import os from "node:os";
 import { basename, join, posix } from "node:path";
 import type { Device, DeviceConnection, WorkspaceLinkCandidate } from "../../shared/domain";
 import { isWorkspaceLinkPath } from "../../shared/workspace-links";
+import { projectCodeSchema } from "../../shared/project-code";
 import { DeviceCommandRunner, type CommandRunner } from "./command-runner";
 import { DirectoryRuntime } from "./directory-runtime";
 
@@ -36,11 +37,12 @@ export class GitRuntime {
     return this.inspect(target);
   }
 
-  async createWorktree(checkoutPath: string, projectId: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }> {
+  async createWorktree(checkoutPath: string, projectCode: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }> {
+    projectCode = projectCodeSchema.parse(projectCode);
     const home = await this.homeDirectory();
     const parent = this.device.type === "remote"
-      ? posix.join(home, ".superthread", "workspaces", projectId)
-      : join(home, ".superthread", "workspaces", projectId);
+      ? posix.join(home, ".superthread", "workspaces", projectCode)
+      : join(home, ".superthread", "workspaces", projectCode);
     const workspacePath = this.device.type === "remote" ? posix.join(parent, workspaceName) : join(parent, workspaceName);
     const branch = `work/${workspaceName}`;
     await this.runner.run("mkdir", ["-p", parent]);

@@ -68,7 +68,7 @@ test("workspace scopes exclude workspaces in archived work threads", () => {
 
 test("workspace sidebar labels include the owning project name", () => {
   const snapshot = emptySnapshot();
-  snapshot.projects.push({ id: "project-a", name: "Runtime", repositoryUrl: "git@example.com:runtime.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+  snapshot.projects.push({ id: "project-a", name: "Runtime", code: "runtime", repositoryUrl: "git@example.com:runtime.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   const item = workspace("workspace-a", "thread-active", "project-a");
 
   assert.equal(workspaceProjectName(snapshot, item), "Runtime");

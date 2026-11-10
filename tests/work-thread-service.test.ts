@@ -98,7 +98,7 @@ function workspaceFixture(deviceId = "dev_local"): { threadId: string; projectId
 
 function addReadyWorkspace(snapshot: ReturnType<typeof emptySnapshot>, ids = workspaceFixture()): void {
   snapshot.workThreads.push({ id: ids.threadId, name: "Runtime", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
-  snapshot.projects.push({ id: ids.projectId, name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+  snapshot.projects.push({ id: ids.projectId, name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
   snapshot.checkouts.push({ id: ids.checkoutId, projectId: ids.projectId, deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
   snapshot.workspaces.push({
     id: ids.workspaceId, name: "demo", workThreadId: ids.threadId, projectId: ids.projectId, deviceId: "dev_local",
@@ -209,7 +209,7 @@ test("deleting the final workspace leaves its WorkThread intact", async () => {
   const threadId = service.snapshot().workThreads[0]?.id;
   assert.ok(threadId);
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "demo", workThreadId: threadId, projectId: "project-1", deviceId: "dev_local",
@@ -272,7 +272,7 @@ test("failed standalone workspace creation removes the pending workspace record"
   };
   const { service, store } = await setup(fakeGit);
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
   });
 
@@ -303,7 +303,7 @@ test("a Project x Device can have one main-checkout workspace", async () => {
   await service.createWorkThread({ name: "Other thread" });
   const [owner, other] = service.snapshot().workThreads;
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
   });
 
@@ -328,7 +328,7 @@ test("a Project x Device can have one main-checkout workspace", async () => {
 test("standalone and thread creation share atomic workspace uniqueness rules", async () => {
   const { service, store } = await setup(undefined, fakeTerminals());
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
   });
   const main = { kind: "main" as const, projectId: "project-1", deviceId: "dev_local", name: "standalone" };
@@ -518,7 +518,7 @@ test("deleting a workspace blocks dirty or unmerged work until force is confirme
   const threadId = service.snapshot().workThreads[0]?.id;
   assert.ok(threadId);
   await store.update((draft) => {
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "demo", workThreadId: threadId, projectId: "project-1", deviceId: "dev_local",
@@ -691,7 +691,7 @@ test("a remote session that exits during startup remains retryable in place", as
     draft.devices.push({ id: "dev_remote", name: "GPU host", type: "remote", status: "online", createdAt: "now" });
     draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } });
     draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_remote", path: "/srv/demo", createdAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_remote",
@@ -721,7 +721,7 @@ test("opening workspace tmux reports when tmux is missing", async () => {
     draft.devices.push({ id: "dev_remote", name: "GPU host", type: "remote", status: "online", createdAt: "now" });
     draft.connections.push({ deviceId: "dev_remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } });
     draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_remote", path: "/srv/demo", createdAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_remote",
@@ -788,7 +788,7 @@ test("resuming an exited session restarts it in place", async () => {
   const { service, store } = await setup(undefined, fakeTerminals(created));
   await store.update((draft) => {
     draft.workThreads.push({ id: "thread-1", name: "Runtime", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
-    draft.projects.push({ id: "project-1", name: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
+    draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });
     draft.workspaces.push({
       id: "workspace-1", name: "demo", workThreadId: "thread-1", projectId: "project-1", deviceId: "dev_local",
@@ -890,13 +890,13 @@ test("ordinary project folders create main workspaces without Git and survive re
   await writeFile(join(projectPath, "note.md"), "Keep this file");
   const created: Session[] = [];
   const { service, store } = await setup(undefined, fakeTerminals(created));
-  await service.addProject({ mode: "import", deviceId: "dev_local", path: projectPath });
+  await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_local", path: projectPath });
   const project = service.snapshot().projects[0]!;
   const checkout = service.snapshot().checkouts[0]!;
   assert.equal(checkout.isGit, false);
   const alias = join(directory, "alias");
   await symlink(projectPath, alias);
-  await assert.rejects(() => service.addProject({ mode: "import", deviceId: "dev_local", path: alias }), /already exists on this device/);
+  await assert.rejects(() => service.addProject({ projectCode: "alias", mode: "import", deviceId: "dev_local", path: alias }), /already exists on this device/);
   assert.equal(service.snapshot().projects.length, 1);
   await assert.rejects(() => service.createWorkspace({ projectId: project.id, deviceId: "dev_local", name: "isolated", kind: "worktree", baseBranch: "main" }), /require a Git repository/);
   await assert.rejects(() => service.listWorkspaceLinkCandidates({ projectId: project.id, deviceId: "dev_local" }), /requires a Git repository/);
@@ -913,7 +913,7 @@ test("ordinary project folders create main workspaces without Git and survive re
   assert.equal(await readFile(join(projectPath, "note.md"), "utf8"), "Keep this file");
 });
 
-test("same-name projects create worktrees under distinct project identities", async () => {
+test("same-name projects create worktrees under their unique project codes", async () => {
   const namespaces: string[] = [];
   const git = {
     inspect: async (path: string) => ({ root: path, name: "demo", defaultBranch: "main" }),
@@ -928,10 +928,16 @@ test("same-name projects create worktrees under distinct project identities", as
     deleteWorktree: async () => {}
   };
   const { service } = await setup(git, fakeTerminals());
-  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/one/demo" });
-  await service.addProject({ mode: "import", deviceId: "dev_local", path: "/two/demo" });
+  await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_local", path: "/one/demo" });
+  await service.addProject({ projectCode: "demo-2", mode: "import", deviceId: "dev_local", path: "/two/demo" });
   const [first, second] = service.snapshot().projects;
   await service.createWorkspace({ projectId: first!.id, deviceId: "dev_local", name: "first", kind: "worktree", baseBranch: "main" });
   await service.createWorkspace({ projectId: second!.id, deviceId: "dev_local", name: "second", kind: "worktree", baseBranch: "main" });
-  assert.deepEqual(namespaces, [first!.id, second!.id]);
+  assert.deepEqual(namespaces, ["demo", "demo-2"]);
+  const historicalWorkspaces = service.snapshot().workspaces;
+  await service.updateProject({ id: first!.id, name: "Renamed display", code: "new-code" });
+  assert.deepEqual(service.snapshot().workspaces, historicalWorkspaces);
+  await service.createWorkspace({ projectId: first!.id, deviceId: "dev_local", name: "third", kind: "worktree", baseBranch: "main" });
+  assert.deepEqual(namespaces, ["demo", "demo-2", "new-code"]);
+  assert.equal(service.snapshot().workspaces[2]!.path, "/work/new-code/third");
 });
