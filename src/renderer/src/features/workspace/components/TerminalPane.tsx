@@ -12,6 +12,7 @@ import { useWorkbenchStore } from "../../../state/workbench-store";
 import { CustomTerminalDialog } from "./CustomTerminalDialog";
 import { installTerminalClipboard } from "../terminal-clipboard";
 import { terminalAppearance } from "../terminal-appearance";
+import { WorkspaceShortcutHints } from "../workspace-shortcut-hints";
 
 interface PendingSession {
   id: string;
@@ -143,7 +144,7 @@ function PendingTerminalView({ pending, active, onRetry, onClose }: { pending: P
 export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSnapshot; workspace: Workspace; visible: boolean }): React.ReactNode {
   const client = useQueryClient();
   const { activeSessionIds, setActiveSession, sessionCreateRequests, acknowledgeSessionCreateRequest } = useWorkbenchStore();
-  const [commandHeld, setCommandHeld] = useState(false);
+  const [shortcutHintsVisible, setShortcutHintsVisible] = useState(false);
   const dialog = useWorkbenchStore((state) => state.dialog);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -164,6 +165,9 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   const tabs = useMemo(() => [...sessions, ...browsers, ...previews].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)), [sessions, browsers, previews]);
   const pendingForWorkspace = useMemo(() => pendingSessions.filter((item) => item.workspaceId === workspace.id), [pendingSessions, workspace.id]);
   const shortcutTabs = [...tabs, ...pendingForWorkspace];
+  // Runtime snapshot updates must not restart the Command hold timer.
+  const shortcutTabsRef = useRef(shortcutTabs);
+  shortcutTabsRef.current = shortcutTabs;
   const shortcutsEnabled = visible && !dialog && !customDialog && !fileDialog;
   useEffect(() => {
     if (!visible) return;
@@ -171,17 +175,17 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
     return () => window.desktop.setWorkspaceShortcutCount(0);
   }, [visible, shortcutsEnabled, shortcutTabs.length]);
   useEffect(() => {
-    if (!shortcutsEnabled) { setCommandHeld(false); return; }
+    if (!shortcutsEnabled) { setShortcutHintsVisible(false); return; }
+    const hints = new WorkspaceShortcutHints(setShortcutHintsVisible);
     const unsubscribe = window.desktop.onWorkspaceShortcut((shortcut) => {
-      setCommandHeld(shortcut.commandHeld);
-      const target = shortcut.tabIndex === undefined ? undefined : shortcutTabs[shortcut.tabIndex];
+      hints.update(shortcut);
+      const target = shortcut.tabIndex === undefined ? undefined : shortcutTabsRef.current[shortcut.tabIndex];
       if (target) setActiveSession(workspace.id, target.id);
     });
-    const clear = (): void => setCommandHeld(false);
-    window.addEventListener("blur", clear);
-    return () => { unsubscribe(); window.removeEventListener("blur", clear); };
-  }, [shortcutsEnabled, tabs, pendingForWorkspace, workspace.id, setActiveSession]);
-  const shortcutHint = (index: number): React.ReactNode => commandHeld && index < 9
+    window.addEventListener("blur", hints.clear);
+    return () => { unsubscribe(); window.removeEventListener("blur", hints.clear); hints.clear(); };
+  }, [shortcutsEnabled, workspace.id, setActiveSession]);
+  const shortcutHint = (index: number): React.ReactNode => shortcutHintsVisible && index < 9
     ? <kbd className="workspace-shortcut-hint" aria-label={`Command ${index + 1}`}>⌘{index + 1}</kbd> : null;
   const activeSessionId = activeSessionIds[workspace.id];
   const activeStoredSession = sessions.find((item) => item.id === activeSessionId);
