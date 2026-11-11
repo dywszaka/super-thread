@@ -2,6 +2,8 @@
 
 界面外观跟随系统浅色/深色模式，参考 Codex 使用中性灰层次、柔和边界与圆角选中态。正文为 14px，侧栏导航为 13px，文档为 16px / 1.75 行高，阅读区域最大宽度 840px；工作区工具栏保持紧凑尺寸。侧栏上方 All xxx 导航固定，下方 Work Threads 与 Workspaces 共用独立滚动区域，Settings 固定在底部。完整颜色与尺寸规范见 `docs/mac-native-ui-framework.md` 第 15 节。
 
+首次读取应用快照失败且重试耗尽时，启动动画退出，显示可复制的错误说明与 Reload 操作；恢复后重新加载可进入正常工作台。错误页面仍保留窗口拖动区与 no-drag 控件。
+
 ## 1. Goal
 
 构建一个面向本地及远程开发环境的 Workspace Manager。

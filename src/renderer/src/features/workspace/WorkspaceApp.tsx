@@ -74,8 +74,8 @@ export function WorkspaceApp(): React.ReactNode {
     if (action === "new-terminal" && showingTerminal && active) store.requestSessionCreate(active.id, "shell");
   }), [active?.id, showingTerminal]);
 
-  if (isLoading || !snapshot) return <div className="boot-screen drag"><div className="boot-logo"><Box size={22} /><span /></div></div>;
   if (error) throw error;
+  if (isLoading || !snapshot) return <div className="boot-screen drag"><div className="boot-logo"><Box size={22} /><span /></div></div>;
   const scopeTitle = scope.type === "project"
     ? snapshot.projects.find((item) => item.id === scope.id)?.name
     : scope.type === "work-thread"

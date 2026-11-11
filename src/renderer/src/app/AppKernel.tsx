@@ -15,8 +15,7 @@ class EmergencyErrorBoundary extends Component<{ children: ReactNode }, { error:
       <main className="error-screen">
         <div className="drag error-drag" />
         <section>
-          <span className="eyebrow">SuperThread could not start</span>
-          <h1>Something went wrong.</h1>
+          <h1>Could not open SuperThread</h1>
           <p className="selectable">{this.state.error.message}</p>
           <button className="button primary no-drag" onClick={() => location.reload()}>Reload</button>
         </section>
