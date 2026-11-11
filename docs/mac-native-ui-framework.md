@@ -822,6 +822,8 @@ Work Threads 内容区宽度以 ResizeObserver 测量；文档打开且宽度达
 
 Doc 标题栏是普通页面76px头部规则的明确例外：使用40px高度、16px标题与28px控件；内容切换栏为32px，普通年龄内联，提醒区域按文字自然增高。独立 Doc 的 drag 标题栏在侧栏收起时保留112px交通灯安全区；列表内 no-drag 详情不重复增加该安全区。无提醒和保存错误时，编辑器可视区域自 Doc 顶部72px开始。
 
+输入区域使用独立 `--input-border` / `--input-border-hover`，不加深容器边框。默认浅色输入边界相对填充约3.69:1、深色约4.00:1；搜索框的边界和焦点由外层容器绘制，普通字段使用立即出现的2px焦点轮廓。按下态消费 `--control-pressed`，主要按钮保持自身配色；禁用态使用独立填充/文字token及真实disabled属性。Settings无效阈值提供aria-invalid、边界色及错误文字，不能只依赖颜色表达失败。
+
 侧栏使用固定标题栏、固定 All xxx 导航、可滚动的 Work Threads / Workspaces 与固定 Settings 四段 flex 布局。只有中间列表区域滚动，拖动排序的边缘自动滚动也限定在该区域。侧栏名称为 13px / 1.35 行高，辅助上下文为 12px / 1.25 行高；All xxx 行高 30px、线程行高 32px、双行 Workspace 最小高 42px，图标与名称间距 6px。保持 184px 最小宽度时的名称省略、时长与置顶标记可见。
 
 - `src/renderer/src/styles/globals.css` 是字体、颜色、间距、尺寸和终端配色 token 的统一入口。业务组件消费语义变量；修改既有规则，避免在文件末尾叠加重复覆盖。系统 UI 字体使用 antialiased 平滑，不设置页面缩放来补偿字号。

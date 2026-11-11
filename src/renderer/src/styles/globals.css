@@ -38,6 +38,11 @@
   --muted-foreground: #6b6b6b;
   --border: #e8e8e8;
   --border-strong: #d6d6d6;
+  --input-border: #858585;
+  --input-border-hover: #6b6b6b;
+  --control-pressed: #dedede;
+  --control-disabled-background: #f0f0f0;
+  --control-disabled-foreground: #6b6b6b;
   --accent: #e7e7e7;
   --accent-foreground: #242424;
   --primary: #292929;
@@ -90,6 +95,11 @@
     --muted-foreground: #a3a3a3;
     --border: #303030;
     --border-strong: #424242;
+    --input-border: #858585;
+    --input-border-hover: #a3a3a3;
+    --control-pressed: #3b3b3b;
+    --control-disabled-background: #2a2a2a;
+    --control-disabled-foreground: #a3a3a3;
     --accent: #343434;
     --accent-foreground: #f0f0f0;
     --primary: #ececec;
@@ -142,8 +152,14 @@ strong, b, h1, h2, h3 {
 }
 
 button:disabled {
-  opacity: .5;
+  opacity: 1;
+  color: var(--control-disabled-foreground);
+  background: var(--control-disabled-background);
   cursor: default;
+}
+
+button:active:not(:disabled) {
+  background-color: var(--control-pressed);
 }
 
 button:focus-visible, summary:focus-visible, a:focus-visible, [tabindex]:focus-visible {
@@ -602,7 +618,8 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-context-menu button:disabled {
-  opacity: .55;
+  color: var(--control-disabled-foreground);
+  background: var(--control-disabled-background);
 }
 
 .work-thread-context-menu button svg:last-child {
@@ -977,10 +994,6 @@ input, textarea, [contenteditable="true"], .selectable {
   background: var(--muted);
 }
 
-.button:disabled {
-  opacity: .5;
-}
-
 .button.primary {
   color: var(--primary-foreground);
   background: var(--primary);
@@ -988,6 +1001,10 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .button.primary:hover {
+  background: var(--primary-hover);
+}
+
+.button.primary:active:not(:disabled) {
   background: var(--primary-hover);
 }
 
@@ -1011,6 +1028,12 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .icon-button:hover {
   background: var(--muted);
+}
+
+.button:disabled, .button.primary:disabled, .icon-button:disabled {
+  color: var(--control-disabled-foreground);
+  background: var(--control-disabled-background);
+  border-color: var(--border);
 }
 
 .context-menu {
@@ -1517,10 +1540,14 @@ input, textarea, [contenteditable="true"], .selectable {
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-control);
   background: var(--control-background);
   color: var(--muted-foreground);
+}
+
+.work-thread-search:hover:not(:focus-within) {
+  border-color: var(--input-border-hover);
 }
 
 .work-thread-search > svg {
@@ -1693,8 +1720,7 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .danger-button:disabled {
-  color: var(--muted-foreground);
-  opacity: .45;
+  color: var(--control-disabled-foreground);
 }
 
 .work-thread-list-empty {
@@ -2247,9 +2273,8 @@ input, textarea, [contenteditable="true"], .selectable {
   width: 100%;
   height: var(--control-height);
   padding: 0 10px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-control);
-  outline: 0;
   background: var(--control-background);
   color: var(--foreground);
   font-size: var(--text-base);
@@ -2257,9 +2282,25 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 0;
 }
 
+.field :is(input, select, textarea):hover:not(:disabled):not(:focus) {
+  border-color: var(--input-border-hover);
+}
+
+.field :is(input, select, textarea):disabled {
+  color: var(--control-disabled-foreground);
+  background: var(--control-disabled-background);
+  border-color: var(--border-strong);
+  cursor: default;
+}
+
+.field.invalid :is(input, select, textarea), .field [aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 .field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--ring);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 16%, transparent);
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 .field textarea.markdown-input {
@@ -3053,7 +3094,7 @@ input, textarea, [contenteditable="true"], .selectable {
 .todo-pane input:not([type="checkbox"]), .todo-pane select {
   min-width: 0;
   padding: 6px 10px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-control);
   background: var(--surface-raised);
   color: var(--foreground);
@@ -3526,7 +3567,7 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 0;
   height: var(--chrome-control-height);
   padding: 0 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-control);
   background: var(--control-background);
   color: var(--foreground);
@@ -3568,7 +3609,7 @@ input, textarea, [contenteditable="true"], .selectable {
   min-width: 0;
   height: var(--control-height);
   padding: 0 9px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-control);
   background: var(--surface-raised);
   color: var(--foreground);

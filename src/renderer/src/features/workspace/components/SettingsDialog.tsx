@@ -16,6 +16,8 @@ export function SettingsDialog({ settings }: { settings: AppSettings }): React.R
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const parsed = appSettingsSchema.safeParse({ workThreadTemplate: template, workThreadReminderDays: Number(reminder), workThreadStrongReminderDays: Number(strongReminder) });
+  const reminderValid = Number.isInteger(Number(reminder)) && Number(reminder) >= 1;
+  const strongReminderValid = Number.isInteger(Number(strongReminder)) && Number(strongReminder) > Number(reminder);
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!parsed.success || busy) return;
@@ -34,8 +36,8 @@ export function SettingsDialog({ settings }: { settings: AppSettings }): React.R
       <textarea className="markdown-input" value={template} disabled={busy} maxLength={MAX_WORK_THREAD_DOCUMENT_LENGTH} rows={10} onChange={(event) => setTemplate(event.target.value)} />
     </Field>
     <div className="form-grid two">
-      <Field label="First reminder (days)"><input type="number" min={1} step={1} value={reminder} disabled={busy} onChange={(event) => setReminder(event.target.value)} /></Field>
-      <Field label="Stronger reminder (days)"><input type="number" min={Number(reminder) + 1 || 2} step={1} value={strongReminder} disabled={busy} onChange={(event) => setStrongReminder(event.target.value)} /></Field>
+      <Field label="First reminder (days)"><input type="number" aria-invalid={!reminderValid} min={1} step={1} value={reminder} disabled={busy} onChange={(event) => setReminder(event.target.value)} /></Field>
+      <Field label="Stronger reminder (days)"><input type="number" aria-invalid={!strongReminderValid} min={Number(reminder) + 1 || 2} step={1} value={strongReminder} disabled={busy} onChange={(event) => setStrongReminder(event.target.value)} /></Field>
     </div>
     {!parsed.success && <p className="field-error" role="alert">Use positive whole days, with the stronger reminder after the first.</p>}
     <p className="settings-hint">Time is counted from creation, including time spent archived. Only active work threads show reminders.</p>
