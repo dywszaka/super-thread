@@ -56,6 +56,9 @@
   --success: #27733f;
   --warning: #8a5b0a;
   --shadow: 0 16px 48px rgb(0 0 0 / 12%), 0 2px 8px rgb(0 0 0 / 6%);
+  --shadow-control: 0 1px 3px rgb(0 0 0 / 8%);
+  --overlay-background: rgb(0 0 0 / 40%);
+  --terminal-tab-close-hover: rgb(255 255 255 / 10%);
   --terminal-background: #181818;
   --terminal-foreground: #e8e8e8;
   --terminal-surface: #282828;
@@ -152,7 +155,6 @@ strong, b, h1, h2, h3 {
 }
 
 button:disabled {
-  opacity: 1;
   color: var(--control-disabled-foreground);
   background: var(--control-disabled-background);
   cursor: default;
@@ -1232,7 +1234,7 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .terminal-tab .tab-close:hover {
   opacity: 1;
-  background: rgb(255 255 255 / 10%);
+  background: var(--terminal-tab-close-hover);
 }
 
 .terminal-tab-name-input {
@@ -2156,7 +2158,7 @@ input, textarea, [contenteditable="true"], .selectable {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgb(0 0 0 / 40%);
+  background: var(--overlay-background);
   animation: fade-in .12s ease-out;
 }
 
@@ -2808,7 +2810,7 @@ input, textarea, [contenteditable="true"], .selectable {
 .segmented button.active {
   background: var(--surface-raised);
   color: var(--foreground);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+  box-shadow: var(--shadow-control);
   font-weight: var(--weight-medium);
 }
 
@@ -3475,6 +3477,10 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .work-thread-document-slot.is-open {
   display: flex;
+}
+
+.work-thread-document-slot.is-open .work-thread-document-drawer {
+  animation: fade-in .12s ease-out;
 }
 
 .work-thread-document-drawer {
