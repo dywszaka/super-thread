@@ -1,5 +1,5 @@
-import { AppWindowMac, Archive, ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArchiveRestore, FileText, FolderGit2, MessagesSquare, Plus, Search, TerminalSquare, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -8,6 +8,7 @@ import { WorkThreadSearch, type SearchSegment } from "../work-thread-search";
 import { SidebarReopenButton } from "./Sidebar";
 import { WorkThreadAge } from "./WorkThreadAge";
 import { WorkThreadDocument } from "./WorkThreadDocument";
+import { WorkThreadActions } from "./WorkThreadActions";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -50,7 +51,12 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   }, [searchInput, isComposing]);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLElement>(null);
+  const listScroll = useRef(0);
+  const [compact, setCompact] = useState(false);
   const documentTrigger = useRef<HTMLButtonElement | null>(null);
+  const restoreListFocus = useRef(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const openDialog = useWorkbenchStore((state) => state.openDialog);
   const setWorkThreadFilter = useWorkbenchStore((state) => state.setWorkThreadFilter);
@@ -59,17 +65,31 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   const documentThread = snapshot.workThreads.find((thread) => thread.id === documentId);
   const drawerOpen = documentOpen && Boolean(documentThread);
   const closeDocument = (): void => {
+    restoreListFocus.current = true;
     setDocumentOpen(false);
-    if (documentTrigger.current?.isConnected && !documentTrigger.current.disabled) documentTrigger.current.focus();
-    else searchField.current?.focus();
+    setDocumentId(null);
   };
 
-  useEffect(() => {
-    if (drawerOpen || !documentId) return;
-    // Keep the editor mounted through the closing transition; reopening cancels cleanup.
-    const timer = window.setTimeout(() => setDocumentId(null), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320);
-    return () => window.clearTimeout(timer);
-  }, [drawerOpen, documentId]);
+  useLayoutEffect(() => {
+    const element = content.current;
+    if (!element) return;
+    const measure = (): void => setCompact(element.clientWidth < 960);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (drawerOpen && compact) return;
+    if (list.current) list.current.scrollTop = listScroll.current;
+    if (!drawerOpen && restoreListFocus.current) {
+      restoreListFocus.current = false;
+      const trigger = documentTrigger.current;
+      if (trigger?.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
+      else searchField.current?.focus({ preventScroll: true });
+    }
+  }, [drawerOpen, compact]);
 
   const archive = async (id: string, name: string): Promise<void> => {
     if (!confirm(`Archive “${name}”?\n\nIts workspaces will be hidden from active views. Running terminal sessions will continue.`)) return;
@@ -112,6 +132,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   // Clicking anywhere on the card body behaves like the Doc action: open the document drawer and
   // restore focus to the element that opened it on close.
   const openDocument = (trigger: HTMLButtonElement | null, thread: WorkThread): void => {
+    listScroll.current = list.current?.scrollTop ?? 0;
     documentTrigger.current = trigger;
     setDocumentId(thread.id);
     setDocumentOpen(true);
@@ -124,9 +145,9 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
         <div><h1>Work Threads</h1><p>Organize related workspaces without changing their runtime state.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("workThread")}><Plus size={14} /> New Work Thread</button>
       </header>
-      <div className="work-thread-content">
-        <div className="work-thread-list-region">
-          <section className="work-thread-page-body no-drag">
+      <div ref={content} className={`work-thread-content ${drawerOpen ? "has-document" : ""} ${compact ? "is-compact" : ""}`}>
+        <div className="work-thread-list-region" inert={drawerOpen && compact} aria-hidden={drawerOpen && compact}>
+          <section ref={list} className="work-thread-page-body no-drag" onScroll={(event) => { if (!compact || !drawerOpen) listScroll.current = event.currentTarget.scrollTop; }}>
             <div className="work-thread-list-toolbar">
               <div className="work-thread-search" role="search" aria-label="Search work threads">
                 <Search size={15} aria-hidden="true" />
@@ -150,15 +171,13 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                   <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
                     <button type="button" className="work-thread-card-main" aria-label={`Open document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" title="Open document" onClick={(event) => openDocument(event.currentTarget, thread)}>
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
-                      <span><strong><HighlightedText segments={name} /></strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><WorkThreadAge thread={thread} /><span>Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small>{excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}</span>
+                      <span><strong title={thread.name}><HighlightedText segments={name} /></strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><WorkThreadAge thread={thread} /><span className="thread-last-update">Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small>{excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}</span>
                     </button>
                     <div className="work-thread-card-actions">
-                      <button className="icon-button" disabled={status === "archived"} title={terminalTarget ? "Open first terminal" : "Open document"} aria-label={`Open ${terminalTarget ? "first terminal" : "document"} for ${thread.name}`} onClick={() => openWorkThread(thread)}><AppWindowMac size={14} /></button>
-                      {status === "active"
-                        ? <button className="button" disabled={busy} onClick={() => void archive(thread.id, thread.name)}><Archive size={14} /> Archive</button>
-                        : <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
+                      {terminalTarget && status === "active" && <button className="button thread-terminal-action" disabled={busy} title="Open first terminal" aria-label={`Open first terminal for ${thread.name}`} onClick={() => openWorkThread(thread)}><TerminalSquare size={14} /> Terminal</button>}
+                      {status === "archived" && <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
                       <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => openDocument(event.currentTarget, thread)}><FileText size={14} /> Doc</button>
-                      <button className="icon-button danger-button" disabled={busy || workspaces.length > 0} title={workspaces.length > 0 ? "Remove every workspace before deleting this work thread" : "Delete work thread"} onClick={() => void remove(thread.id, thread.name)}><Trash2 size={14} /></button>
+                      <WorkThreadActions name={thread.name} archived={status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
                     </div>
                   </article>
                 );
@@ -166,13 +185,11 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
             </div>
           </section>
         </div>
-        <div className={`work-thread-document-slot ${drawerOpen ? "is-open" : ""}`} inert={!drawerOpen} aria-hidden={!drawerOpen} onTransitionEnd={(event) => {
-          if (event.target === event.currentTarget && event.propertyName === "width" && !drawerOpen) setDocumentId(null);
-        }}>
+        <div className={`work-thread-document-slot ${drawerOpen ? "is-open" : ""}`} inert={!drawerOpen} aria-hidden={!drawerOpen}>
           {documentThread && <aside id="work-thread-document-drawer" className="work-thread-document-drawer no-drag" role="dialog" aria-modal="false" aria-label={`Document for ${documentThread.name}`} onKeyDown={(event) => {
             if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeDocument(); }
           }}>
-            <WorkThreadDocument key={documentThread.id} thread={documentThread} onClose={closeDocument} />
+            <WorkThreadDocument key={documentThread.id} thread={documentThread} onClose={closeDocument} backToList={compact} />
           </aside>}
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { WorkThreadAge } from "./WorkThreadAge";
 import { TodoList } from "./TodoList";
 import { MarkdownEditor } from "./MarkdownEditor";
-import { Check, FileText, Loader2, Plus, X } from "lucide-react";
+import { ArrowLeft, Check, FileText, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import type { WorkThread } from "@/shared/domain";
@@ -9,7 +9,7 @@ import { useWorkbenchStore } from "../../../state/workbench-store";
 import { threadDocumentAutosave } from "../document-autosave";
 import { SidebarReopenButton } from "./Sidebar";
 
-export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; onClose?: () => void }): React.ReactNode {
+export function WorkThreadDocument({ thread, onClose, backToList = false }: { thread: WorkThread; onClose?: () => void; backToList?: boolean }): React.ReactNode {
   const [tab, setTab] = useState<"document" | "todos">("document");
   const openWorkspaceDialog = useWorkbenchStore((state) => state.openWorkspaceDialog);
   const document = useMemo(() => threadDocumentAutosave(thread.id, thread.document ?? ""), [thread.id]);
@@ -27,7 +27,7 @@ export function WorkThreadDocument({ thread, onClose }: { thread: WorkThread; on
           <span className={`document-save-status ${state.status}`} role="status" aria-live="polite">
             {state.status === "saved" ? <><Check size={13} /> Saved</> : state.status === "error" ? "Save failed" : <><Loader2 className="spinning" size={13} /> {state.status === "saving" ? "Saving…" : "Unsaved changes"}</>}
           </span>
-          {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openWorkspaceDialog(thread.id)}><Plus size={14} /> New Workspace</button>}
+          {onClose ? backToList ? <button className="button" onClick={onClose}><ArrowLeft size={14} /> Back to list</button> : <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openWorkspaceDialog(thread.id)}><Plus size={14} /> New Workspace</button>}
         </div>
       </header>
       <div className="thread-document-age no-drag"><WorkThreadAge thread={thread} details /></div>

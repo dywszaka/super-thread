@@ -4,6 +4,8 @@
 
 首次读取应用快照失败且重试耗尽时，启动动画退出，显示可复制的错误说明与 Reload 操作；恢复后重新加载可进入正常工作台。错误页面仍保留窗口拖动区与 no-drag 控件。
 
+All work threads 中点击条目或 Doc 打开文档；仅有现存终端时显示 Terminal 入口。Archive / Delete 位于 More 菜单，Archived 列表保留 Restore。文档打开时，内容区至少 960px 才采用并排列表，列表宽为 `clamp(360px, 38%, 420px)`；更窄时文档占满内容区，可用 Back to list 或 Escape 返回并恢复筛选、滚动与焦点。跨断点 resize 不重建编辑器。关闭立即移除详情并通过既有自动保存刷新草稿，不依赖宽度过渡事件。
+
 ## 1. Goal
 
 构建一个面向本地及远程开发环境的 Workspace Manager。
