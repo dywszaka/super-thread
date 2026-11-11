@@ -8,6 +8,8 @@ All work threads 中点击条目或 Doc 打开文档；仅有现存终端时显�
 
 Doc 使用40px单行标题栏与32px Document/Todos 切换栏，保存反馈与关闭/返回始终可见。普通年龄并入切换栏；提醒及强提醒仍在标题下显示完整文字和语义色。格式通过 Document 的提示说明，正文仍为16px且保持原自动保存与错误重试行为。
 
+Workspace 概览以名称、项目/设备、线程/分支分层展示，长字段有完整提示。本地计数标为 local active（仅busy活动），远程计数标为 remote connected；不改既有监测与排序。两者均为零时显示 No terminal activity，不将空闲但仍存活的终端误称为不存在。
+
 ## 1. Goal
 
 构建一个面向本地及远程开发环境的 Workspace Manager。

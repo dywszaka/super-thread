@@ -3700,7 +3700,8 @@ input, textarea, [contenteditable="true"], .selectable {
   font: inherit;
   cursor: pointer;
   -webkit-app-region: no-drag;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 15px;
 }
 
 .workspace-overview-row:hover {
@@ -3713,23 +3714,51 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .workspace-overview-meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted-foreground);
   font-size: var(--text-xs);
 }
 
-.workspace-running-count {
-  flex: none;
+.workspace-overview-context {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-1) var(--space-4);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.workspace-overview-context > span {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 4px 8px;
-  border-radius: 10px;
-  background: var(--muted);
+  min-width: 0;
+  max-width: 65%;
+}
+
+.workspace-overview-context svg {
+  flex: none;
+}
+
+.workspace-overview-context > span > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-running-count {
+  flex: none;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
   color: var(--muted-foreground);
   font-size: var(--text-xs);
+}
+
+.workspace-running-count > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
 }
 
 .workspace-running-count.has-running {
@@ -3748,15 +3777,6 @@ input, textarea, [contenteditable="true"], .selectable {
   }
   .device-page-header .device-header-actions {
     flex: 0 1 auto;
-  }
-  .workspace-overview-row {
-    flex-wrap: wrap;
-  }
-  .workspace-overview-row .project-card-content {
-    flex-basis: 200px;
-  }
-  .workspace-overview-row .workspace-running-count {
-    margin-left: 48px;
   }
 }
 
