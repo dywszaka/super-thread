@@ -2927,18 +2927,19 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-document-header {
-  min-height: 76px;
+  height: var(--workspace-header-height);
+  min-height: var(--workspace-header-height);
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 28px;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
-.sidebar-is-collapsed .thread-document-header {
+.sidebar-is-collapsed .thread-document-header.drag {
   padding-left: 112px;
 }
 
@@ -2947,7 +2948,7 @@ input, textarea, [contenteditable="true"], .selectable {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 1 1 160px;
+  flex: 1;
 }
 
 .thread-document-title > svg {
@@ -2961,26 +2962,29 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .thread-document-title h1 {
   margin: 0;
-  font-size: var(--text-title);
+  font-size: var(--text-subtitle);
   letter-spacing: -.2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.thread-document-title p {
-  margin: 4px 0 0;
-  font-size: var(--text-xs);
-  color: var(--muted-foreground);
-}
-
 .thread-document-actions {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
   margin-left: auto;
+}
+
+.thread-document-header .button, .thread-document-header .icon-button, .thread-document-header .sidebar-reopen {
+  height: var(--chrome-control-height);
+  min-height: var(--chrome-control-height);
+}
+
+.thread-document-header .icon-button, .thread-document-header .sidebar-reopen {
+  width: var(--chrome-control-height);
 }
 
 .document-save-status {
@@ -2997,27 +3001,27 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .thread-document-toolbar {
   flex: none;
-  min-height: 56px;
+  min-height: var(--workspace-tab-height);
+  height: var(--workspace-tab-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 28px;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
   color: var(--muted-foreground);
   font-size: var(--text-xs);
-  flex-wrap: wrap;
-}
-
-.thread-document-toolbar > button {
-  flex: none;
+  flex-wrap: nowrap;
 }
 
 .thread-document-toolbar .segmented {
   flex: none;
+  height: var(--chrome-control-height);
+  padding: 0;
 }
 
 .thread-document-toolbar .segmented button {
-  padding: 0 10px;
+  min-height: var(--chrome-control-height);
+  padding: 0 var(--space-2);
 }
 
 .thread-document-editor[hidden] {
@@ -3337,12 +3341,6 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 @media (max-width: 1000px) {
-  .thread-document-toolbar > span {
-    display: none;
-  }
-  .thread-document-toolbar {
-    justify-content: flex-end;
-  }
   .document-save-status {
     max-width: 110px;
   }
@@ -3449,30 +3447,7 @@ input, textarea, [contenteditable="true"], .selectable {
   box-shadow: none;
 }
 
-.work-thread-document-drawer .thread-document-header {
-  min-height: 76px;
-  padding: 12px 16px;
-  gap: 10px;
-}
-
-.work-thread-document-drawer .thread-document-title h1 {
-  font-size: var(--text-subtitle);
-}
-
 .work-thread-document-drawer .thread-document-title > svg {
-  display: none;
-}
-
-.work-thread-document-drawer .thread-document-actions {
-  gap: 8px;
-}
-
-.work-thread-document-drawer .thread-document-toolbar {
-  padding: 12px 16px;
-  justify-content: flex-end;
-}
-
-.work-thread-document-drawer .thread-document-toolbar > span {
   display: none;
 }
 

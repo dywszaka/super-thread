@@ -22,7 +22,7 @@ export function WorkThreadDocument({ thread, onClose, backToList = false }: { th
     <section className="thread-document-page">
       <header className={`thread-document-header ${onClose ? "no-drag" : "drag"}`}>
         {!onClose && <SidebarReopenButton />}
-        <div className="thread-document-title no-drag"><FileText size={17} /><div><h1>{thread.name}</h1><p>{tab === "document" ? "Document · Markdown" : "Daily todos"}</p></div></div>
+        <div className="thread-document-title no-drag"><FileText size={17} /><div><h1 title={thread.name}>{thread.name}</h1></div></div>
         <div className="thread-document-actions no-drag">
           <span className={`document-save-status ${state.status}`} role="status" aria-live="polite">
             {state.status === "saved" ? <><Check size={13} /> Saved</> : state.status === "error" ? "Save failed" : <><Loader2 className="spinning" size={13} /> {state.status === "saving" ? "Saving…" : "Unsaved changes"}</>}
@@ -30,7 +30,7 @@ export function WorkThreadDocument({ thread, onClose, backToList = false }: { th
           {onClose ? backToList ? <button className="button" onClick={onClose}><ArrowLeft size={14} /> Back to list</button> : <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openWorkspaceDialog(thread.id)}><Plus size={14} /> New Workspace</button>}
         </div>
       </header>
-      <div className="thread-document-age no-drag"><WorkThreadAge thread={thread} details /></div>
+      <div className="thread-document-age no-drag"><WorkThreadAge thread={thread} details visibility="reminders" /></div>
       <div className="thread-document-toolbar no-drag">
         <div className="segmented" role="tablist" aria-label="Work thread content" onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -40,10 +40,10 @@ export function WorkThreadDocument({ thread, onClose, backToList = false }: { th
           setTab(next);
           event.currentTarget.querySelector<HTMLButtonElement>(`[id="${next}-tab-${thread.id}"]`)?.focus();
         }}>
-          <button role="tab" tabIndex={tab === "document" ? 0 : -1} id={`document-tab-${thread.id}`} aria-controls={`document-panel-${thread.id}`} aria-selected={tab === "document"} className={tab === "document" ? "active" : ""} onClick={() => setTab("document")}>Document</button>
+          <button role="tab" title="Markdown document" tabIndex={tab === "document" ? 0 : -1} id={`document-tab-${thread.id}`} aria-controls={`document-panel-${thread.id}`} aria-selected={tab === "document"} className={tab === "document" ? "active" : ""} onClick={() => setTab("document")}>Document</button>
           <button role="tab" tabIndex={tab === "todos" ? 0 : -1} id={`todos-tab-${thread.id}`} aria-controls={`todos-panel-${thread.id}`} aria-selected={tab === "todos"} className={tab === "todos" ? "active" : ""} onClick={() => { void document.flush(); setTab("todos"); }}>Todos ({(thread.todos ?? []).filter((todo) => !todo.completedAt).length})</button>
         </div>
-        <span>{tab === "document" ? "Use Markdown to write notes, plans, and documentation." : "Daily TODOs for this work thread."}</span>
+        <div className="thread-document-age-inline"><WorkThreadAge thread={thread} visibility="normal" /></div>
       </div>
       {state.status === "error" && <div className="document-save-error no-drag" role="alert"><span>{state.error}. Your draft is kept on this device.</span><button className="button" onClick={() => void document.flush()}>Retry save</button></div>}
       <section hidden={tab !== "document"} role="tabpanel" id={`document-panel-${thread.id}`} aria-labelledby={`document-tab-${thread.id}`} className="thread-document-editor no-drag" aria-label="Work thread document" onBlur={() => void document.flush()} onClick={(event) => {

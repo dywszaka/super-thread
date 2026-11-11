@@ -6,6 +6,8 @@
 
 All work threads 中点击条目或 Doc 打开文档；仅有现存终端时显示 Terminal 入口。Archive / Delete 位于 More 菜单，Archived 列表保留 Restore。文档打开时，内容区至少 960px 才采用并排列表，列表宽为 `clamp(360px, 38%, 420px)`；更窄时文档占满内容区，可用 Back to list 或 Escape 返回并恢复筛选、滚动与焦点。跨断点 resize 不重建编辑器。关闭立即移除详情并通过既有自动保存刷新草稿，不依赖宽度过渡事件。
 
+Doc 使用40px单行标题栏与32px Document/Todos 切换栏，保存反馈与关闭/返回始终可见。普通年龄并入切换栏；提醒及强提醒仍在标题下显示完整文字和语义色。格式通过 Document 的提示说明，正文仍为16px且保持原自动保存与错误重试行为。
+
 ## 1. Goal
 
 构建一个面向本地及远程开发环境的 Workspace Manager。

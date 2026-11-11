@@ -820,6 +820,8 @@ Features
 
 Work Threads 内容区宽度以 ResizeObserver 测量；文档打开且宽度达到 960px 时并排显示，列表占 `clamp(360px, 38%, 420px)`，不足时仅显示详情及 Back to list。列表仍挂载以保留搜索/筛选，隐藏时 display:none、inert 且 aria-hidden；返回后恢复滚动与打开条目的焦点。窗口跨断点时复用同一个编辑器。列表卡片采用72px最小高度及稳定的名称/动作两列，More 菜单通过 portal 渲染并复用 `.work-thread-context-menu`，支持键盘导航、关闭与焦点恢复。终端入口显示 Terminal 文本，归档/删除置于菜单，已有约束及确认保留。
 
+Doc 标题栏是普通页面76px头部规则的明确例外：使用40px高度、16px标题与28px控件；内容切换栏为32px，普通年龄内联，提醒区域按文字自然增高。独立 Doc 的 drag 标题栏在侧栏收起时保留112px交通灯安全区；列表内 no-drag 详情不重复增加该安全区。无提醒和保存错误时，编辑器可视区域自 Doc 顶部72px开始。
+
 侧栏使用固定标题栏、固定 All xxx 导航、可滚动的 Work Threads / Workspaces 与固定 Settings 四段 flex 布局。只有中间列表区域滚动，拖动排序的边缘自动滚动也限定在该区域。侧栏名称为 13px / 1.35 行高，辅助上下文为 12px / 1.25 行高；All xxx 行高 30px、线程行高 32px、双行 Workspace 最小高 42px，图标与名称间距 6px。保持 184px 最小宽度时的名称省略、时长与置顶标记可见。
 
 - `src/renderer/src/styles/globals.css` 是字体、颜色、间距、尺寸和终端配色 token 的统一入口。业务组件消费语义变量；修改既有规则，避免在文件末尾叠加重复覆盖。系统 UI 字体使用 antialiased 平滑，不设置页面缩放来补偿字号。
