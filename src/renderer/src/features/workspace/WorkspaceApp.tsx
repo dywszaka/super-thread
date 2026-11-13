@@ -1,3 +1,4 @@
+import { useWorkThreadCreationLifecycle } from "./use-work-thread-creation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Box, Focus, FolderGit2, Plus, Server } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -20,6 +21,7 @@ import { visibleWorkspaces } from "./selection";
 export function WorkspaceApp(): React.ReactNode {
   const { data: snapshot, error, isLoading } = useQuery({ queryKey: ["snapshot"], queryFn: () => window.desktop.snapshot() });
   const store = useWorkbenchStore();
+  useWorkThreadCreationLifecycle();
   const client = useQueryClient();
   const scope = store.scope;
   useDocumentAutosaveLifecycle(snapshot?.workThreads);

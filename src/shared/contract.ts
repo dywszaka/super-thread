@@ -1,3 +1,4 @@
+import type { WorkThreadCreation, WorkThreadCreationInput } from "./work-thread-creation";
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
 import { z } from "zod";
 import { projectCodeSchema } from "./project-code";
@@ -81,6 +82,10 @@ export const channels = {
   deleteProject: "project:delete",
   setupProject: "project:setup",
   createWorkThread: "work-thread:create",
+  submitWorkThreadCreation: "work-thread:creation-submit",
+  workThreadCreation: "work-thread:creation-state",
+  discardWorkThreadCreation: "work-thread:creation-discard",
+  workThreadCreationChanged: "work-thread:creation-changed",
   renameWorkThread: "work-thread:rename",
   setWorkThreadPinned: "work-thread:set-pinned",
   reorderWorkThreads: "work-thread:reorder",
@@ -259,6 +264,19 @@ export const createWorkspaceSchema = z.discriminatedUnion("kind", [
   }).strict()
 ]);
 
+export const workThreadCreationSchema = createWorkThreadSchema.extend({
+  operationId: z.string().min(1).max(100),
+  workspaces: z.array(z.object({
+    entryId: z.string().min(1).max(100),
+    configuration: z.discriminatedUnion("kind", [
+      createWorkspaceSchema.options[0].omit({ workThreadId: true }),
+      createWorkspaceSchema.options[1].omit({ workThreadId: true })
+    ])
+  }).strict()).min(1).max(100)
+}).strict().refine((input) => new Set(input.workspaces.map((item) => item.entryId)).size === input.workspaces.length, {
+  message: "Workspace entry IDs must be unique"
+});
+
 export const workspaceLinkInputSchema = z.object({
   projectId: z.string().min(1),
   deviceId: z.string().min(1)
@@ -361,7 +379,11 @@ export interface DesktopBridge {
   updateProject(input: UpdateProjectInput): Promise<void>;
   deleteProject(id: string): Promise<void>;
   setupProject(input: SetupProjectInput): Promise<void>;
-  createWorkThread(input: CreateWorkThreadInput): Promise<void>;
+  createWorkThread(input: CreateWorkThreadInput): Promise<string>;
+  submitWorkThreadCreation(input: WorkThreadCreationInput): Promise<WorkThreadCreation>;
+  workThreadCreation(): Promise<WorkThreadCreation | null>;
+  discardWorkThreadCreation(operationId: string): Promise<void>;
+  onWorkThreadCreationChanged(listener: (state: WorkThreadCreation | null) => void): () => void;
   renameWorkThread(input: RenameWorkThreadInput): Promise<void>;
   saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
   setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void>;

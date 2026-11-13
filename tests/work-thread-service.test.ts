@@ -92,6 +92,75 @@ function fakeTerminals(created: Session[] = [], failIds = new Set<string>()): Te
   return terminals;
 }
 
+test("work thread creation protects its thread while running and resumes after a real workspace failure", async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let fail = true;
+  const runtime: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "/repo", name: "Demo", defaultBranch: "main" }),
+    clone: async () => ({ root: "/repo", name: "Demo" }),
+    createWorktree: async (_checkout, _code, name) => { await held; if (fail) throw new Error("missing branch"); return { path: `/work/${name}`, branch: `work/${name}` }; },
+    linkWorktreePaths: async () => {}, listWorkspaceLinkCandidates: async () => [],
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }),
+    deleteWorktree: async () => {}
+  };
+  const { service, store } = await setup(runtime, fakeTerminals());
+  await store.update((draft) => {
+    draft.projects.push({ id: "project", name: "Demo", code: "demo", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: "/repo", isGit: true, defaultBranch: "main", createdAt: "now" });
+  });
+  const input = { operationId: "integration", name: "Integrated", content: "Doc", workspaces: [{ entryId: "one", configuration: { projectId: "project", deviceId: "dev_local", name: "one", kind: "worktree" as const, baseBranch: "main" } }] };
+  service.workThreadCreation.submit(input);
+  const threadId = service.workThreadCreation.current()!.threadId!;
+  await assert.rejects(() => service.archiveWorkThread(threadId), /Wait for workspace creation/);
+  await assert.rejects(() => service.deleteWorkThread(threadId), /Wait for workspace creation/);
+  release();
+  const settled = async () => { for (let count = 0; count < 100 && service.workThreadCreation.current()?.status === "running"; count += 1) await new Promise((resolve) => setTimeout(resolve, 5)); };
+  await settled();
+  assert.equal(service.workThreadCreation.current()?.status, "paused");
+  assert.equal(service.snapshot().workspaces.length, 0);
+  fail = false;
+  service.workThreadCreation.submit(input); await settled();
+  assert.equal(service.workThreadCreation.current()?.status, "completed");
+  assert.equal(service.snapshot().workThreads.length, 1);
+  assert.equal(service.snapshot().workspaces[0]?.workThreadId, threadId);
+  assert.equal(service.snapshot().sessions.length, 1);
+});
+
+test("a default terminal exiting during initialization rolls back its workspace", async () => {
+  const terminals = fakeTerminals();
+  Object.assign(terminals, { create: (session: Session) => {
+    terminals.emit("exit", { sessionId: session.id, exitCode: 255 });
+    return 123;
+  } });
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.projects.push({ id: "project", name: "Folder", code: "folder", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: "/folder", isGit: false, createdAt: "now" });
+  });
+  await assert.rejects(() => service.createWorkspace({ projectId: "project", deviceId: "dev_local", name: "main", kind: "main" }), /terminal exited/);
+  assert.equal(service.snapshot().workspaces.length, 0);
+  assert.equal(service.snapshot().sessions.length, 0);
+});
+
+test("a failed default-session save kills its PTY and rolls back the workspace", async () => {
+  const terminals = fakeTerminals();
+  const killed: string[] = [];
+  Object.assign(terminals, { kill: (sessionId: string) => killed.push(sessionId) });
+  const { service, store } = await setup(undefined, terminals);
+  await store.update((draft) => {
+    draft.projects.push({ id: "project", name: "Folder", code: "folder", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: "/folder", isGit: false, createdAt: "now" });
+  });
+  const update = store.update.bind(store);
+  let writes = 0;
+  store.update = (mutator) => ++writes === 2 ? Promise.reject(new Error("disk full")) : update(mutator);
+  await assert.rejects(() => service.createWorkspace({ projectId: "project", deviceId: "dev_local", name: "main", kind: "main" }), /disk full/);
+  assert.equal(killed.length, 1);
+  assert.equal(service.snapshot().workspaces.length, 0);
+  assert.equal(service.snapshot().sessions.length, 0);
+});
+
 function workspaceFixture(deviceId = "dev_local"): { threadId: string; projectId: string; checkoutId: string; workspaceId: string } {
   return { threadId: "thread-1", projectId: "project-1", checkoutId: "checkout-1", workspaceId: `workspace-${deviceId}` };
 }

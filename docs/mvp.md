@@ -478,13 +478,17 @@ WorkThread 是组织 Workspace 的顶级对象，不是 Task、Workflow 或执�
 
 ### 定义模板与时长提醒
 
-- New work thread 同时填写名称和 Markdown 内容；内容预填可编辑模板，默认包含「目标、范围、完成标准」及引导文字。允许修改或清空，内容不是必填项。提交时名称与正文一次持久化为 WorkThread 和其 `document`，非空正文的 `documentUpdatedAt` 初始为创建时间；失败保留表单，成功打开 Doc，取消丢弃本次输入。
+- New work thread 使用三步向导：填写名称与 Markdown → 配置至少一个 Workspace（可多个）→ 确认并创建。内容预填可编辑模板，默认包含「目标、范围、完成标准」及引导文字，允许修改或清空。模板仅初始化新草稿，不覆盖已有草稿。
+- 向导仅选择已存在 checkout 的 Project × Device；缺少时提示先到项目管理准备。每项复用独立 Workspace 的类型、名称、基础分支、可选链接表单。提交前检查线程重名、已有及批内 Workspace 名称冲突、checkout 可用性和 main 占用。
+- 主进程按稳定操作 ID 与配置项 ID 管理单个运行时创建流程：先原子保存名称与正文并返回真实 thread ID，再依次创建 Workspace。所有 Workspace 及默认 Terminal 初始化成功才提示整体完成；弹窗可见时打开 Doc 并展开线程，弹窗已关闭时仅通知，不切换页面。
+- 某项失败暂停后续创建，保留成功项，允许修改失败及未执行项再继续；成功项锁定，重试不重复创建线程、Workspace 或终端，也不覆盖已保存的 Doc。单项失败沿用 Workspace 回滚；若回滚残留记录，显示记录与错误，删除残留前禁止重试。
+- 关闭、Escape 或点击遮罩保留草稿和进度；创建中关闭弹窗不取消主进程操作，再次点击 New Work Thread 恢复。运行时只保留一个未结束向导，运行中禁止放弃及删除/归档对应线程，相关 Workspace 也不能删除。未提交可 Discard draft；暂停时可 Discard remaining，保留已创建实体。完全退出应用后仅保留已创建实体，不持久化向导配置或自动继续。
 - Settings 可从侧栏底部、应用菜单及 `Cmd+,` 打开，编辑模板与两个提醒阈值，提供保存、取消、恢复默认。恢复默认仅修改设置草稿，保存后生效；空模板有效。模板更新仅影响之后打开的创建弹窗，不覆盖已有 Doc 或正在填写的创建内容。
 - 应用设置保存在 `AppSnapshot.settings`：`workThreadTemplate`、`workThreadReminderDays`、`workThreadStrongReminderDays`，模板上限与 Doc 同为 2,000,000 字符且不裁剪空白；两个阈值须为正安全整数，且加强阈值大于首次阈值。默认 3 天／7 天。快照 schema 15 为旧快照补充默认设置，不修改既有 WorkThread、文档、TODO 或运行数据。
 - 时长从最初 `createdAt` 起按连续 24 小时累计，不因编辑、重命名、置顶、归档或恢复而重置。仅 active 条目展示时长与提醒；恢复后包括归档期间的时间。未来创建时间按零计算，无效时间不显示提醒。每分钟及窗口重新聚焦时刷新，修改阈值立即更新展示。
 - 侧栏显示 `<1d`、`3d` 等紧凑时长，列表显示完整时长，悬停可查看创建时间与建议；Doc 页面和列表 Doc 抽屉同时显示时长与达到阈值后的非阻断建议：检查完成标准，及时 review、合并及收尾，或拆分剩余工作。使用语义色与文字／图标共同区分中性、首次提醒和加强提醒。排序仍遵循原有规则。
 - 不增加通知弹窗、自动归档、自动拆分、review 状态或自动 Git 操作。描述直接使用已有文档的搜索能力，不另设独立描述字段。
-- Typed bridge 增加 `saveSettings(AppSettings): Promise<void>` 与 `settings` 菜单动作；`createWorkThread` 输入增加可选 `content`，省略时保持空文档兼容行为。IPC 输入在主进程校验，设置及创建使用现有串行原子保存机制。
+- Typed bridge 增加 `saveSettings(AppSettings): Promise<void>` 与 `settings` 菜单动作；`createWorkThread` 输入支持可选 `content`，省略时保持空文档兼容行为，返回真实 thread ID。新增 `submitWorkThreadCreation`、`workThreadCreation`、`discardWorkThreadCreation` 与进度订阅；配置项禁止传入归属线程 ID。IPC 输入在主进程校验，设置及创建使用现有串行原子保存机制。
 
 ```ts
 interface WorkThread {
@@ -507,7 +511,7 @@ interface WorkThread {
 - 名称在 active 与 archived 范围内忽略大小写唯一。
 - 侧栏右键 WorkThread 可重命名；名称去除首尾空格后须为 1–80 个字符，且不得与 active 或 archived 的其他 WorkThread 重名。重命名只更新名称和 `updatedAt`，保留文档、Workspace 和 Session。
 - 一个 Workspace 可以独立存在，也可以在创建时归属于一个活跃 WorkThread。旧快照保留原有关联。
-- WorkThread 可以暂时为空，也可以包含多个 Workspace。
+- 历史或创建中/失败后保留的 WorkThread 可以暂时为空，也可以包含多个 Workspace；新建向导要求至少配置一个 Workspace。
 - 点击 WorkThread 默认打开 Document 页；即使还没有 Workspace，也可以独立写文档。Document 不在侧栏单独显示，点击 WorkThread 名称即可进入；其下只显示 Workspace 入口，继续打开终端。
 - 每个 WorkThread 拥有一份 Markdown 文档，使用飞书式单栏所见即所得编辑器，输入 Markdown 标记时原地转换成标题、列表、引用、加粗等格式，无需切换编辑和预览；支持选中文字后的格式工具栏、斜杠块菜单、表格和撤销/重做。底层仍以 Markdown 自动保存。文档不属于任何 Project 或 Device 的仓库文件。
 - 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。

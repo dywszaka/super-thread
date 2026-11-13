@@ -19,6 +19,7 @@ import {
   saveTerminalPresetSchema,
   deleteTerminalPresetSchema,
   createWorkThreadSchema,
+  workThreadCreationSchema,
   renameWorkThreadSchema,
   createWorkspaceSchema,
   workspaceLinkInputSchema,
@@ -118,6 +119,9 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.updateProject, (_event, input) => service.updateProject(updateProjectSchema.parse(input)));
   handle(channels.deleteProject, (_event, id) => service.deleteProject(sessionIdSchema.parse(id)));
   handle(channels.setupProject, (_event, input) => service.setupProject(setupProjectSchema.parse(input)));
+  handle(channels.submitWorkThreadCreation, (_event, input) => service.workThreadCreation.submit(workThreadCreationSchema.parse(input)));
+  handle(channels.workThreadCreation, () => service.workThreadCreation.current());
+  handle(channels.discardWorkThreadCreation, (_event, operationId) => service.workThreadCreation.discard(sessionIdSchema.parse(operationId)));
   handle(channels.createWorkThread, (_event, input) => service.createWorkThread(createWorkThreadSchema.parse(input)));
   handle(channels.saveSettings, (_event, input) => service.saveSettings(appSettingsSchema.parse(input)));
   handle(channels.renameWorkThread, (_event, input) => service.renameWorkThread(renameWorkThreadSchema.parse(input)));

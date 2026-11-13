@@ -1,17 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, MessagesSquare, Network, Plus, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, Network, Plus, RefreshCw } from "lucide-react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, DirectoryListing, Project, SshTunnelConfig } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
-import { resolveSelectionId, sortedWorkThreads } from "../selection";
+import { sortedWorkThreads } from "../selection";
 import { Field, Modal } from "./Modal";
 import { tunnelConflicts } from "@/shared/ssh-tunnels";
 import { SshTunnelFields } from "./SshTunnelFields";
-import { WorkspaceLinks } from "./WorkspaceLinks";
-import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/app-settings";
-import { workspaceNameSchema } from "@/shared/contract";
 import { projectCodeError } from "@/shared/project-code";
+import { NewWorkThreadDialog } from "./NewWorkThreadDialog";
+import { configurationError, initialWorkspaceConfiguration, WorkspaceConfigurationForm } from "./WorkspaceConfigurationForm";
 import { SettingsDialog } from "./SettingsDialog";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
@@ -197,138 +196,40 @@ export function SetupProjectDialog({ snapshot }: { snapshot: AppSnapshot }): Rea
   );
 }
 
-export function NewWorkThreadDialog({ template }: { template: string }): ReactNode {
-  const { dialog, closeDialog, setWorkThreadFilter } = useWorkbenchStore();
-  const client = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [name, setName] = useState("");
-  const [content, setContent] = useState(template);
-  const [touched, setTouched] = useState(false);
-  const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault(); if (busy) return; setBusy(true);
-    try {
-      await window.desktop.createWorkThread({ name, content });
-      await client.invalidateQueries({ queryKey: ["snapshot"] });
-      const fresh = await window.desktop.snapshot();
-      const created = fresh.workThreads.find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
-      if (created) setWorkThreadFilter(created.id);
-      toast.success(`${name.trim()} created`); closeDialog(); setName("");
-    } catch (error) { toast.error(message(error)); }
-    finally { setBusy(false); }
-  };
-  return (
-    <Modal open={dialog === "workThread"} title="New work thread" description="Group one or more related workspaces." busy={busy} submitDisabled={!name.trim()} submitLabel="Create Work Thread" onClose={closeDialog} onSubmit={submit}>
-      <Field label="Name" error={touched && !name.trim() ? "Enter a work thread name." : undefined}><input value={name} disabled={busy} onChange={(event) => setName(event.target.value)} onBlur={() => setTouched(true)} placeholder="Improve terminal workflow" maxLength={80} autoFocus /></Field>
-      <Field label="Content" hint="Describe the goal, scope, and completion criteria in Markdown. This becomes the work thread’s Doc."><textarea className="markdown-input" value={content} disabled={busy} onChange={(event) => setContent(event.target.value)} maxLength={MAX_WORK_THREAD_DOCUMENT_LENGTH} rows={10} /></Field>
-      <div className="callout"><MessagesSquare size={16} /><span>You can create the first workspace after the work thread is created.</span></div>
-    </Modal>
-  );
-}
-
 function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
-  const { closeDialog, projectFilter, workspaceDialogThreadId, activeWorkspaceId, openWorkspace, openSetupProject, openDialog } = useWorkbenchStore();
+  const { closeDialog, projectFilter, workspaceDialogThreadId, activeWorkspaceId, openWorkspace, openDialog, openSetupProject } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const activeWorkspace = snapshot.workspaces.find((item) => item.id === activeWorkspaceId);
-  const activeWorkThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
+  const activeWorkThreads = sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active"));
   const [workThreadId, setWorkThreadId] = useState(workspaceDialogThreadId ?? "");
-  const [projectId, setProjectId] = useState(projectFilter || activeWorkspace?.projectId || snapshot.projects[0]?.id || "");
-  const [deviceId, setDeviceId] = useState(activeWorkspace?.deviceId || snapshot.devices[0]?.id || "");
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<"main" | "worktree">("worktree");
+  const [configuration, setConfiguration] = useState(() => initialWorkspaceConfiguration(snapshot, projectFilter ?? activeWorkspace?.projectId ?? snapshot.projects[0]?.id, activeWorkspace?.deviceId));
   const workThread = activeWorkThreads.find((item) => item.id === workThreadId);
-  const resolvedProjectId = resolveSelectionId(projectId, projectFilter, snapshot.projects);
-  const resolvedDeviceId = resolveSelectionId(deviceId, null, snapshot.devices);
-  const project = snapshot.projects.find((item) => item.id === resolvedProjectId);
-  const device = snapshot.devices.find((item) => item.id === resolvedDeviceId);
-  const [baseBranch, setBaseBranch] = useState(project?.defaultBranch || "main");
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const checkout = snapshot.checkouts.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId);
-  const workspaceKind = checkout?.isGit === false ? "main" : kind;
-  const mainWorkspace = snapshot.workspaces.find((item) => item.projectId === resolvedProjectId && item.deviceId === resolvedDeviceId && item.kind === "main");
-  const mainWorkspaceThread = snapshot.workThreads.find((item) => item.id === mainWorkspace?.workThreadId);
-  const [linkSelection, setLinkSelection] = useState<{ checkoutId: string; paths: string[] }>({ checkoutId: "", paths: [] });
-  const linkPaths = linkSelection.checkoutId === checkout?.id ? linkSelection.paths : [];
-  const parsedName = workspaceNameSchema.safeParse(name);
-  const valid = Boolean(checkout && (!workspaceDialogThreadId || workThread) &&
-    parsedName.success && (workspaceKind === "main" ? !mainWorkspace : baseBranch.trim()));
-
-  useEffect(() => {
-    setLinkSelection({ checkoutId: checkout?.id || "", paths: [] });
-    setBaseBranch(checkout?.defaultBranch ?? project?.defaultBranch ?? "main");
-  }, [checkout?.id, checkout?.defaultBranch, project?.defaultBranch]);
-
-  const updateProject = (value: string): void => {
-    setProjectId(value);
-    setBaseBranch(snapshot.projects.find((item) => item.id === value)?.defaultBranch || "main");
-  };
+  const valid = !configurationError(snapshot, configuration) && (!workspaceDialogThreadId || Boolean(workThread));
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!valid || !parsedName.success || busy) return;
+    if (!valid || busy) return;
     setBusy(true);
     try {
-      const common = {
-        ...(workThread ? { workThreadId: workThread.id } : {}),
-        projectId: resolvedProjectId, deviceId: resolvedDeviceId, name: parsedName.data
-      };
-      const id = await window.desktop.createWorkspace(workspaceKind === "main" ? { ...common, kind: workspaceKind } : { ...common, kind: workspaceKind, baseBranch, linkPaths });
+      const id = await window.desktop.createWorkspace({ ...configuration, ...(workThread ? { workThreadId: workThread.id } : {}) });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       openWorkspace({ id, workThreadId: workThread?.id });
-      toast.success(`Workspace ${parsedName.data} created`);
+      toast.success(`Workspace ${configuration.name.trim()} created`);
       closeDialog();
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
-
-  return (
-    <Modal open title="New workspace" description="Use the project directory directly or create an isolated worktree for a Git project." busy={busy} submitDisabled={!valid} submitLabel="Create Workspace" onClose={closeDialog} onSubmit={submit}>
-      {snapshot.projects.length === 0 ? (
-        <div className="empty-dialog">
-          <GitBranch size={24} /><h3>Add a project first</h3><p>Add a project directory before creating a workspace.</p>
-          <button type="button" className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button>
-        </div>
-      ) : <>
-        {workspaceDialogThreadId && <Field label="Work Thread">
-          <select value={workThread?.id ?? ""} onChange={(event) => setWorkThreadId(event.target.value)} required>
-            {!workThread && <option value="" disabled>Select an active work thread</option>}
-            {activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-        </Field>}
-        <div className="form-grid two">
-          <Field label="Project"><select value={resolvedProjectId} onChange={(event) => updateProject(event.target.value)}>{snapshot.projects.map((item) => <option key={item.id} value={item.id}>{projectLabel(snapshot, item)}</option>)}</select></Field>
-          <Field label="Device"><select value={resolvedDeviceId} onChange={(event) => setDeviceId(event.target.value)}>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-        </div>
-        {!checkout ? (
-          <div className="setup-panel">
-            <div className="setup-title"><Network size={17} /><div><strong>{project?.name} isn’t available on {device?.name}</strong><span>Set up this project separately before creating a workspace.</span></div></div>
-            <button type="button" className="button primary" onClick={() => openSetupProject(resolvedProjectId, resolvedDeviceId)}>Set Up Project</button>
-          </div>
-        ) : <>
-          <Field label="Workspace type">
-            <div className="segmented">
-              <button type="button" disabled={checkout.isGit === false} className={workspaceKind === "worktree" ? "active" : ""} onClick={() => setKind("worktree")}><GitBranch size={15} /> Isolated worktree</button>
-              <button type="button" className={workspaceKind === "main" ? "active" : ""} onClick={() => setKind("main")}><HardDrive size={15} /> Project directory</button>
-            </div>
-          </Field>
-          {checkout.isGit === false && <div className="callout"><Folder size={16} /><span>This folder is not a Git repository root. Workspaces use its directory directly.</span></div>}
-          <Field label="Name" hint={workspaceKind === "worktree" ? `Creates branch work/${name || "workspace-name"}` : `Uses ${checkout.path} directly`} error={touched.name && !parsedName.success ? "Use letters, numbers, dots, dashes, or underscores." : undefined}>
-            <input value={name} onChange={(event) => setName(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} maxLength={80} placeholder={workspaceKind === "main" ? project?.name : "nvfp4-kernel"} />
-          </Field>
-          {workspaceKind === "main" && mainWorkspace && (
-            <div className="callout"><HardDrive size={16} /><span>The project directory is already used by <strong>{mainWorkspace.name}</strong>{mainWorkspaceThread && <> in <strong>{mainWorkspaceThread.name}</strong></>}.</span></div>
-          )}
-          {workspaceKind === "worktree" && <>
-            <Field label="Base branch" error={touched.baseBranch && !baseBranch.trim() ? "Enter a base branch." : undefined}>
-              <input value={baseBranch} onChange={(event) => setBaseBranch(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, baseBranch: true }))} placeholder="main" />
-            </Field>
-            <WorkspaceLinks key={checkout.id} projectId={resolvedProjectId} deviceId={resolvedDeviceId} checkoutPath={checkout.path} selectedPaths={linkPaths} onChange={(paths) => setLinkSelection({ checkoutId: checkout.id, paths })} busy={busy} />
-          </>}
-        </>}
-      </>}
-    </Modal>
-  );
+  return <Modal open title="New workspace" description="Use a prepared project directory directly or create an isolated Git worktree." busy={busy} submitDisabled={!valid} submitLabel="Create Workspace" onClose={closeDialog} onSubmit={submit}>
+    {snapshot.projects.length === 0 ? <div className="empty-dialog"><GitBranch size={24} /><h3>Set up a project first</h3><p>Add or set up a project directory before creating a workspace.</p><button type="button" className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button></div> : <>
+      {workspaceDialogThreadId && <Field label="Work Thread"><select disabled={busy} value={workThread?.id ?? ""} onChange={(event) => setWorkThreadId(event.target.value)} required>
+        {!workThread && <option value="" disabled>Select an active work thread</option>}
+        {activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select></Field>}
+      <WorkspaceConfigurationForm snapshot={snapshot} value={configuration} onChange={setConfiguration} disabled={busy} preparedOnly={false} onSetup={() => openSetupProject(configuration.projectId, configuration.deviceId)} />
+    </>}
+  </Modal>;
 }
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
   const dialog = useWorkbenchStore((state) => state.dialog);
-  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog template={snapshot.settings.workThreadTemplate} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
+  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
 }

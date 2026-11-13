@@ -69,6 +69,14 @@ const bridge: DesktopBridge = {
   updateProject: (input) => ipcRenderer.invoke(channels.updateProject, input),
   deleteProject: (id) => ipcRenderer.invoke(channels.deleteProject, id),
   setupProject: (input) => ipcRenderer.invoke(channels.setupProject, input),
+  submitWorkThreadCreation: (input) => ipcRenderer.invoke(channels.submitWorkThreadCreation, input),
+  workThreadCreation: () => ipcRenderer.invoke(channels.workThreadCreation),
+  discardWorkThreadCreation: (operationId) => ipcRenderer.invoke(channels.discardWorkThreadCreation, operationId),
+  onWorkThreadCreationChanged: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]): void => listener(state);
+    ipcRenderer.on(channels.workThreadCreationChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.workThreadCreationChanged, wrapped);
+  },
   createWorkThread: (input) => ipcRenderer.invoke(channels.createWorkThread, input),
   saveSettings: (input) => ipcRenderer.invoke(channels.saveSettings, input),
   renameWorkThread: (input) => ipcRenderer.invoke(channels.renameWorkThread, input),

@@ -2,6 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { useWorkbenchStore } from "../src/renderer/src/state/workbench-store";
 
+test("creation draft survives closing, navigation and reopening without entering persisted preferences", () => {
+  const store = useWorkbenchStore.getState();
+  const draft = { operationId: "draft", name: "Feature", content: "Edited template", workspaces: [{ entryId: "one", configuration: { projectId: "project", deviceId: "device", name: "one", kind: "main" as const } }], step: 1 as const };
+  store.beginWorkThreadDraft(draft);
+  store.openDialog("workThread");
+  store.closeDialog();
+  store.showAllProjects();
+  store.beginWorkThreadDraft({ ...draft, operationId: "another", content: "Changed settings template" });
+  store.openDialog("workThread");
+  assert.deepEqual(useWorkbenchStore.getState().workThreadDraft, draft);
+  store.setWorkThreadDraft({ ...draft, step: 2 });
+  store.setWorkThreadDraft({ ...useWorkbenchStore.getState().workThreadDraft!, step: 0 });
+  assert.equal(useWorkbenchStore.getState().workThreadDraft?.content, "Edited template");
+  const persisted = useWorkbenchStore.persist.getOptions().partialize!(useWorkbenchStore.getState()) as Record<string, unknown>;
+  assert.equal("workThreadDraft" in persisted, false);
+  assert.equal("workThreadCreation" in persisted, false);
+  store.setWorkThreadDraft(null);
+  assert.equal(useWorkbenchStore.getState().workThreadDraft, null);
+  store.closeDialog();
+});
+
 test("each workspace remembers its last active terminal session", () => {
   useWorkbenchStore.setState({ activeWorkspaceId: null, activeSessionIds: {}, focusMode: false });
 

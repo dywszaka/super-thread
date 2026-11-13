@@ -1,3 +1,4 @@
+import { WorkThreadCreationCoordinator } from "./work-thread-creation";
 import { normalizeBrowserUrl } from "../../shared/browser-url";
 import { WorkspaceFileRuntime } from "../runtime/workspace-file-runtime";
 import type { FilePreviewTab, WorkspaceFileInput, WorkspaceFileLocation, NavigateFilePreviewInput } from "../../shared/domain";
@@ -114,6 +115,7 @@ type DirectoryRuntimeFactory = (device: Device, connection: DeviceConnection) =>
 type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
+  readonly workThreadCreation = new WorkThreadCreationCoordinator(this, (state) => this.emit("work-thread-creation-changed", state));
   private readonly pendingFileNavigations = new Map<string, symbol>();
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
   private readonly pendingTmuxOpens = new Map<string, Promise<void>>();
@@ -361,7 +363,7 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  async createWorkThread(input: CreateWorkThreadInput): Promise<void> {
+  async createWorkThread(input: CreateWorkThreadInput, threadId = id("thread")): Promise<string> {
     input = createWorkThreadSchema.parse(input);
     const name = input.name.trim();
     const timestamp = now();
@@ -370,7 +372,7 @@ export class WorkspaceService extends EventEmitter {
         throw new Error(`A work thread named ${name} already exists`);
       }
       draft.workThreads.push({
-        id: id("thread"),
+        id: threadId,
         name,
         status: "active",
         pinned: false,
@@ -385,6 +387,7 @@ export class WorkspaceService extends EventEmitter {
       });
     });
     this.changed();
+    return threadId;
   }
 
   async renameWorkThread(input: RenameWorkThreadInput): Promise<void> {
@@ -485,10 +488,12 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async archiveWorkThread(workThreadId: string): Promise<void> {
+    this.assertThreadNotCreating(workThreadId);
     const workThread = this.workThread(this.snapshot(), workThreadId);
     if (workThread.status === "archived") return;
     const timestamp = now();
     await this.store.update((draft) => {
+      this.assertThreadNotCreating(workThreadId);
       const item = draft.workThreads.find((candidate) => candidate.id === workThreadId);
       if (item) Object.assign(item, { status: "archived", archivedAt: timestamp, updatedAt: timestamp });
     });
@@ -511,6 +516,7 @@ export class WorkspaceService extends EventEmitter {
 
   async deleteWorkThread(workThreadId: string): Promise<void> {
     await this.store.update((draft) => {
+      this.assertThreadNotCreating(workThreadId);
       this.workThread(draft, workThreadId);
       if (draft.workspaces.some((workspace) => workspace.workThreadId === workThreadId)) {
         throw new Error("Remove every workspace from this work thread before deleting it");
@@ -530,8 +536,7 @@ export class WorkspaceService extends EventEmitter {
     return this.git(snapshot, device).listWorkspaceLinkCandidates(checkout.path);
   }
 
-  async createWorkspace(input: CreateWorkspaceInput): Promise<string> {
-    const workspaceId = id("ws");
+  async createWorkspace(input: CreateWorkspaceInput, workspaceId = id("ws")): Promise<string> {
     const timestamp = now();
     const snapshot = await this.store.update((draft) => {
       const thread = input.workThreadId === undefined ? undefined : this.workThread(draft, input.workThreadId);
@@ -566,7 +571,7 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
     if (input.kind === "main") {
       try {
-        await this.createSession({ workspaceId, name: "Terminal 1" });
+        await this.createInitialWorkspaceSession(workspaceId);
       } catch (error) {
         await this.removeWorkspaceMetadata(workspaceId);
         throw error;
@@ -590,7 +595,7 @@ export class WorkspaceService extends EventEmitter {
         const workspace = draft.workspaces.find((item) => item.id === workspaceId);
         if (workspace) Object.assign(workspace, created, { status: "ready", updatedAt: now(), error: undefined });
       });
-      await this.createSession({ workspaceId, name: "Terminal 1" });
+      await this.createInitialWorkspaceSession(workspaceId);
     } catch (error) {
       try {
         await runtime.deleteWorktree(checkout.path, created.path, created.branch, true);
@@ -609,6 +614,12 @@ export class WorkspaceService extends EventEmitter {
       throw error;
     }
     return workspaceId;
+  }
+
+  private async createInitialWorkspaceSession(workspaceId: string): Promise<void> {
+    const { session } = await this.createSession({ workspaceId, name: "Terminal 1" });
+    const initialized = this.snapshot().sessions.find((item) => item.id === session.id);
+    if (initialized?.status !== "running") throw new Error(initialized?.restoreError ?? "The default terminal exited during workspace initialization.");
   }
 
   /**
@@ -630,6 +641,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async deleteWorkspace(workspaceId: string, force = false): Promise<void> {
+    if (this.workThreadCreation.isCreatingWorkspace(workspaceId)) throw new Error("Wait for work thread creation to finish before deleting this workspace.");
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, workspaceId);
     if (workspace.status === "error" && !workspace.path) {
@@ -845,11 +857,18 @@ export class WorkspaceService extends EventEmitter {
       throw error;
     }
     let created: Session | undefined;
-    await this.store.update((draft) => {
-      created = { ...session, pid };
-      created.order = this.nextSessionOrder(draft, workspace.id);
-      draft.sessions.push(created);
-    });
+    try {
+      await this.store.update((draft) => {
+        created = { ...session, pid };
+        created.order = this.nextSessionOrder(draft, workspace.id);
+        draft.sessions.push(created);
+      });
+    } catch (error) {
+      this.startingSessionIds.delete(session.id);
+      this.exitsDuringSessionStart.delete(session.id);
+      this.terminals.kill(session.id);
+      throw error;
+    }
     await this.finishSessionStart(session.id);
     this.changed();
     return { session: created ?? { ...session, pid } };
@@ -1237,6 +1256,10 @@ export class WorkspaceService extends EventEmitter {
     if (!value) throw new Error("Workspace not found");
     return value;
   }
+  private assertThreadNotCreating(threadId: string): void {
+    if (this.workThreadCreation.isCreatingThread(threadId)) throw new Error("Wait for workspace creation to finish before archiving or deleting this work thread.");
+  }
+
   private changed(): void { this.emit("changed"); }
   private message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 }

@@ -1,3 +1,4 @@
+import type { WorkThreadCreation, WorkThreadCreationInput } from "@/shared/work-thread-creation";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { WorkspaceScope } from "../features/workspace/selection";
@@ -13,7 +14,14 @@ const memoryStorage: StateStorage = {
   removeItem: () => {}
 };
 
+export interface WorkThreadCreationDraft extends WorkThreadCreationInput { step: 0 | 1 | 2; }
+
 interface WorkbenchState {
+  workThreadDraft: WorkThreadCreationDraft | null;
+  workThreadCreation: WorkThreadCreation | null;
+  beginWorkThreadDraft(draft: WorkThreadCreationDraft): void;
+  setWorkThreadDraft(draft: WorkThreadCreationDraft | null): void;
+  setWorkThreadCreation(creation: WorkThreadCreation | null): void;
   scope: WorkspaceScope;
   projectFilter: string | null;
   workThreadFilter: string | null;
@@ -54,6 +62,11 @@ interface WorkbenchState {
 
 export const useWorkbenchStore = create<WorkbenchState>()(
   persist((set, get) => ({
+    workThreadDraft: null,
+    workThreadCreation: null,
+    beginWorkThreadDraft: (workThreadDraft) => set((state) => ({ workThreadDraft: state.workThreadDraft ?? workThreadDraft })),
+    setWorkThreadDraft: (workThreadDraft) => set({ workThreadDraft }),
+    setWorkThreadCreation: (workThreadCreation) => set({ workThreadCreation }),
     scope: { type: "all-workspaces" },
     projectFilter: null,
     workThreadFilter: null,
