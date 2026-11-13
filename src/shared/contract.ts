@@ -1,3 +1,4 @@
+import type { FinishWorkThreadInput, WorkThreadFinishInspection } from "./work-thread-finish";
 import type { WorkThreadCreation, WorkThreadCreationInput } from "./work-thread-creation";
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
 import { z } from "zod";
@@ -91,6 +92,8 @@ export const channels = {
   reorderWorkThreads: "work-thread:reorder",
   saveWorkThreadDocument: "work-thread:save-document",
   archiveWorkThread: "work-thread:archive",
+  inspectWorkThreadFinish: "work-thread:finish-inspect",
+  finishWorkThread: "work-thread:finish",
   restoreWorkThread: "work-thread:restore",
   deleteWorkThread: "work-thread:delete",
   createWorkspace: "workspace:create",
@@ -197,6 +200,16 @@ export const createWorkThreadSchema = z.object({
   name: z.string().trim().min(1).max(80),
   content: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH).optional()
 }).strict();
+
+export const finishWorkThreadSchema = z.object({
+  id: z.string().min(1),
+  workspaceIds: z.array(z.string().min(1)),
+  forceWorkspaceIds: z.array(z.string().min(1))
+}).strict().refine((input) => new Set(input.workspaceIds).size === input.workspaceIds.length &&
+  new Set(input.forceWorkspaceIds).size === input.forceWorkspaceIds.length &&
+  input.forceWorkspaceIds.every((id) => input.workspaceIds.includes(id)), {
+  message: "Workspace IDs must be unique and force approvals must belong to the confirmed workspaces"
+});
 
 export const appSettingsSchema = z.object({
   workThreadTemplate: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH),
@@ -388,6 +401,8 @@ export interface DesktopBridge {
   saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
   setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void>;
   reorderWorkThreads(input: ReorderWorkThreadsInput): Promise<void>;
+  inspectWorkThreadFinish(id: string): Promise<WorkThreadFinishInspection>;
+  finishWorkThread(input: FinishWorkThreadInput): Promise<void>;
   archiveWorkThread(id: string): Promise<void>;
   restoreWorkThread(id: string): Promise<void>;
   deleteWorkThread(id: string): Promise<void>;

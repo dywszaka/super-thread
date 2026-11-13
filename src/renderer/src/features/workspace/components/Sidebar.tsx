@@ -1,4 +1,4 @@
-import { ListTodo, Archive, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
+import { ListTodo, Archive, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, ReorderWorkThreadsInput, WorkThread, Workspace } from "@/shared/domain";
@@ -100,7 +100,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   const openThreadMenu = (event: React.MouseEvent, thread: WorkThread): void => {
     event.preventDefault();
     const width = 220;
-    const height = 148;
+    const height = 184;
     setWorkspaceMenu(null);
     setThreadMenu({
       thread,
@@ -314,6 +314,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
           <span>{threadMenu.thread.pinned ? "Unpin work thread" : "Pin work thread"}</span>
         </button>
         <div className="context-menu-separator" />
+        <button type="button" disabled={threadMenuBusy} onClick={() => { const id = threadMenu.thread.id; setThreadMenu(null); useWorkbenchStore.getState().openFinishWorkThread(id); }}><CircleCheck size={13} /><span>Finish work thread…</span></button>
         <button type="button" disabled={threadMenuBusy} onClick={() => void archiveThread()}><Archive size={13} /><span>Archive work thread</span></button>
       </div>}
       {workspaceMenu && <div

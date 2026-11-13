@@ -1,3 +1,4 @@
+import { FinishWorkThreadDialog } from "./FinishWorkThreadDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, Network, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -231,5 +232,5 @@ function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode 
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
   const dialog = useWorkbenchStore((state) => state.dialog);
-  return <><AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
+  return <>{dialog === "finishThread" && <FinishWorkThreadDialog snapshot={snapshot} />}<AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
 }

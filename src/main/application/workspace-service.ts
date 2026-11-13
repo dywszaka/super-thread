@@ -1,3 +1,5 @@
+import type { FinishWorkThreadInput, WorkThreadFinishInspection, WorkspaceDeleteInspection } from "../../shared/work-thread-finish";
+import { finishWorkThreadSchema } from "../../shared/contract";
 import { WorkThreadCreationCoordinator } from "./work-thread-creation";
 import { normalizeBrowserUrl } from "../../shared/browser-url";
 import { WorkspaceFileRuntime } from "../runtime/workspace-file-runtime";
@@ -116,6 +118,8 @@ type CommandRunnerFactory = (connection: DeviceConnection) => CommandRunner;
 
 export class WorkspaceService extends EventEmitter {
   readonly workThreadCreation = new WorkThreadCreationCoordinator(this, (state) => this.emit("work-thread-creation-changed", state));
+  private readonly finishingThreadIds = new Set<string>();
+  private readonly deletingWorkspaceIds = new Set<string>();
   private readonly pendingFileNavigations = new Map<string, symbol>();
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
   private readonly pendingTmuxOpens = new Map<string, Promise<void>>();
@@ -487,12 +491,88 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
+  async inspectWorkThreadFinish(workThreadId: string): Promise<WorkThreadFinishInspection> {
+    this.assertThreadNotFinishing(workThreadId);
+    this.assertThreadNotCreating(workThreadId);
+    const snapshot = this.snapshot();
+    if (this.workThread(snapshot, workThreadId).status !== "active") throw new Error("Restore the work thread before finishing it.");
+    const workspaces: WorkspaceDeleteInspection[] = [];
+    for (const workspace of snapshot.workspaces.filter((item) => item.workThreadId === workThreadId)) {
+      workspaces.push(await this.inspectWorkspaceDelete(snapshot, workspace));
+    }
+    return { threadId: workThreadId, workspaces };
+  }
+
+  async finishWorkThread(raw: FinishWorkThreadInput): Promise<void> {
+    const input = finishWorkThreadSchema.parse(raw);
+    this.assertThreadNotFinishing(input.id);
+    this.assertThreadNotCreating(input.id);
+    this.finishingThreadIds.add(input.id);
+    let deleted = 0;
+    let deletingName: string | undefined;
+    try {
+      const snapshot = this.snapshot();
+      if (this.workThread(snapshot, input.id).status !== "active") throw new Error("Restore the work thread before finishing it.");
+      const workspaces = snapshot.workspaces.filter((item) => item.workThreadId === input.id);
+      const confirmedIds = new Set(input.workspaceIds);
+      if (workspaces.length !== confirmedIds.size || workspaces.some((item) => !confirmedIds.has(item.id))) throw new Error("Workspaces changed. Refresh the checks and confirm the current list before finishing.");
+      // Check the entire group before deleting anything, then recheck each workspace at deletion.
+      for (const workspace of workspaces) {
+        if (this.deletingWorkspaceIds.has(workspace.id)) throw new Error(`Deletion of ${workspace.name} is already in progress.`);
+        const inspection = await this.inspectWorkspaceDelete(snapshot, workspace);
+        if (inspection.error) throw new Error(`${workspace.name}: ${inspection.error}`);
+        if (inspection.risks.length && !input.forceWorkspaceIds.includes(workspace.id)) throw new Error(`Workspace delete blocked: ${workspace.name}: ${inspection.risks.join("; ")}. Refresh the checks and explicitly approve force deletion.`);
+      }
+      for (const workspace of workspaces) {
+        deletingName = workspace.name;
+        await this.deleteWorkspaceOnce(workspace.id, input.forceWorkspaceIds.includes(workspace.id));
+        deleted += 1;
+      }
+      deletingName = undefined;
+      await this.store.update((draft) => {
+        if (draft.workspaces.some((item) => item.workThreadId === input.id)) throw new Error("Workspaces remain. Finish again after reviewing the current list.");
+        const thread = this.workThread(draft, input.id);
+        const timestamp = now();
+        Object.assign(thread, { status: "archived", archivedAt: timestamp, updatedAt: timestamp });
+      });
+      this.changed();
+    } catch (error) {
+      throw new Error(`${deletingName ? `${deletingName}: ` : ""}${this.message(error)}\n${deleted} workspace(s) deleted. The work thread was not archived; review the remaining workspaces and retry.`);
+    } finally {
+      this.finishingThreadIds.delete(input.id);
+    }
+  }
+
+  private async inspectWorkspaceDelete(snapshot: AppSnapshot, workspace: Workspace): Promise<WorkspaceDeleteInspection> {
+    const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
+    const keepsDirectory = (workspace.status === "error" && !workspace.path) || workspace.kind === "main" || Boolean(checkout && posix.resolve(workspace.path) === posix.resolve(checkout.path));
+    const inspection: WorkspaceDeleteInspection = {
+      workspaceId: workspace.id, name: workspace.name,
+      projectName: snapshot.projects.find((item) => item.id === workspace.projectId)?.name ?? "Unknown project",
+      deviceName: snapshot.devices.find((item) => item.id === workspace.deviceId)?.name ?? "Unknown device",
+      path: workspace.path, branch: workspace.branch, keepsDirectory,
+      runningSessionCount: snapshot.sessions.filter((item) => item.workspaceId === workspace.id && item.status === "running").length,
+      risks: []
+    };
+    try {
+      if (workspace.status === "creating" || this.workThreadCreation.isCreatingWorkspace(workspace.id)) throw new Error("Wait for workspace creation to finish.");
+      if (!keepsDirectory) {
+        if (!checkout) throw new Error("Base checkout no longer exists");
+        const runtime = this.git(snapshot, this.device(snapshot, workspace.deviceId));
+        inspection.risks = this.workspaceDeleteRisks(await runtime.inspectWorkspaceDeleteRisk(checkout.path, workspace.path, workspace.branch, workspace.baseBranch));
+      }
+    } catch (error) { inspection.error = this.message(error); }
+    return inspection;
+  }
+
   async archiveWorkThread(workThreadId: string): Promise<void> {
+    this.assertThreadNotFinishing(workThreadId);
     this.assertThreadNotCreating(workThreadId);
     const workThread = this.workThread(this.snapshot(), workThreadId);
     if (workThread.status === "archived") return;
     const timestamp = now();
     await this.store.update((draft) => {
+      this.assertThreadNotFinishing(workThreadId);
       this.assertThreadNotCreating(workThreadId);
       const item = draft.workThreads.find((candidate) => candidate.id === workThreadId);
       if (item) Object.assign(item, { status: "archived", archivedAt: timestamp, updatedAt: timestamp });
@@ -501,6 +581,7 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async restoreWorkThread(workThreadId: string): Promise<void> {
+    this.assertThreadNotFinishing(workThreadId);
     const workThread = this.workThread(this.snapshot(), workThreadId);
     if (workThread.status === "active") return;
     await this.store.update((draft) => {
@@ -516,6 +597,7 @@ export class WorkspaceService extends EventEmitter {
 
   async deleteWorkThread(workThreadId: string): Promise<void> {
     await this.store.update((draft) => {
+      this.assertThreadNotFinishing(workThreadId);
       this.assertThreadNotCreating(workThreadId);
       this.workThread(draft, workThreadId);
       if (draft.workspaces.some((workspace) => workspace.workThreadId === workThreadId)) {
@@ -539,6 +621,7 @@ export class WorkspaceService extends EventEmitter {
   async createWorkspace(input: CreateWorkspaceInput, workspaceId = id("ws")): Promise<string> {
     const timestamp = now();
     const snapshot = await this.store.update((draft) => {
+      if (input.workThreadId) this.assertThreadNotFinishing(input.workThreadId);
       const thread = input.workThreadId === undefined ? undefined : this.workThread(draft, input.workThreadId);
       if (thread && thread.status !== "active") throw new Error("Work thread is archived. Restore it before adding a workspace.");
       const device = this.device(draft, input.deviceId);
@@ -641,39 +724,28 @@ export class WorkspaceService extends EventEmitter {
   }
 
   async deleteWorkspace(workspaceId: string, force = false): Promise<void> {
+    const workspace = this.workspace(this.snapshot(), workspaceId);
+    if (workspace.workThreadId) this.assertThreadNotFinishing(workspace.workThreadId);
+    if (this.deletingWorkspaceIds.has(workspaceId)) throw new Error("Workspace deletion is already in progress.");
+    this.deletingWorkspaceIds.add(workspaceId);
+    try { await this.deleteWorkspaceOnce(workspaceId, force); }
+    finally { this.deletingWorkspaceIds.delete(workspaceId); }
+  }
+
+  private async deleteWorkspaceOnce(workspaceId: string, force: boolean): Promise<void> {
     if (this.workThreadCreation.isCreatingWorkspace(workspaceId)) throw new Error("Wait for work thread creation to finish before deleting this workspace.");
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, workspaceId);
-    if (workspace.status === "error" && !workspace.path) {
-      for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
-        this.terminals.kill(session.id);
-      }
-      await this.removeWorkspaceMetadata(workspaceId);
-      return;
-    }
-    const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
-    // Older or inconsistent records must never send the base checkout through worktree deletion.
-    if (workspace.kind === "main" || (checkout && posix.resolve(workspace.path) === posix.resolve(checkout.path))) {
-      for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
-        this.terminals.kill(session.id);
-      }
-      await this.removeWorkspaceMetadata(workspaceId);
-      return;
-    }
-    if (!checkout) throw new Error("Base checkout no longer exists");
-    const device = this.device(snapshot, workspace.deviceId);
-    const runtime = this.git(snapshot, device);
-    const risk = await runtime.inspectWorkspaceDeleteRisk(checkout.path, workspace.path, workspace.branch, workspace.baseBranch);
-    if (!force) {
-      const messages = this.workspaceDeleteRisks(risk);
-      if (messages.length) {
-        throw new Error(`Workspace delete blocked: ${messages.join("; ")}. Confirm force delete to remove the worktree and branch.`);
-      }
-    }
-    for (const session of snapshot.sessions.filter((item) => item.workspaceId === workspaceId && item.status === "running")) {
+    const inspection = await this.inspectWorkspaceDelete(snapshot, workspace);
+    if (inspection.error) throw new Error(inspection.error);
+    if (!force && inspection.risks.length) throw new Error(`Workspace delete blocked: ${inspection.risks.join("; ")}. Confirm force delete to remove the worktree and branch.`);
+    for (const session of this.snapshot().sessions.filter((item) => item.workspaceId === workspaceId && (item.status === "running" || this.terminals.has(item.id)))) {
       this.terminals.kill(session.id);
     }
-    await runtime.deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
+    if (!inspection.keepsDirectory) {
+      const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId)!;
+      await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
+    }
     await this.removeWorkspaceMetadata(workspaceId);
   }
 
@@ -825,6 +897,7 @@ export class WorkspaceService extends EventEmitter {
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, input.workspaceId);
     if (workspace.status !== "ready") throw new Error("Workspace is not ready");
+    if (workspace.workThreadId) this.assertThreadNotFinishing(workspace.workThreadId);
     const device = this.device(snapshot, workspace.deviceId);
     const connection = this.connection(snapshot, device.id);
     const count = snapshot.sessions.filter((item) => item.workspaceId === workspace.id).length;
@@ -859,6 +932,8 @@ export class WorkspaceService extends EventEmitter {
     let created: Session | undefined;
     try {
       await this.store.update((draft) => {
+        if (workspace.workThreadId) this.assertThreadNotFinishing(workspace.workThreadId);
+        this.workspace(draft, workspace.id);
         created = { ...session, pid };
         created.order = this.nextSessionOrder(draft, workspace.id);
         draft.sessions.push(created);
@@ -928,6 +1003,7 @@ export class WorkspaceService extends EventEmitter {
     if (session.status !== "exited" && session.status !== "restore-failed") throw new Error("Only an exited or failed terminal session can be resumed");
     if (this.terminals.has(session.id)) throw new Error("Terminal session is already running");
     const workspace = this.workspace(snapshot, session.workspaceId);
+    if (workspace.workThreadId) this.assertThreadNotFinishing(workspace.workThreadId);
     if (workspace.status !== "ready") throw new Error("Workspace is not ready");
     const device = this.device(snapshot, workspace.deviceId);
     const connection = this.connection(snapshot, device.id);
@@ -1256,6 +1332,10 @@ export class WorkspaceService extends EventEmitter {
     if (!value) throw new Error("Workspace not found");
     return value;
   }
+  private assertThreadNotFinishing(threadId: string): void {
+    if (this.finishingThreadIds.has(threadId)) throw new Error("Work thread finish is in progress. Wait for it to complete.");
+  }
+
   private assertThreadNotCreating(threadId: string): void {
     if (this.workThreadCreation.isCreatingThread(threadId)) throw new Error("Wait for workspace creation to finish before archiving or deleting this work thread.");
   }

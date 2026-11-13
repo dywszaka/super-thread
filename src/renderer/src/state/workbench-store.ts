@@ -6,7 +6,7 @@ import type { ManagedSessionKind, Workspace } from "@/shared/domain";
 
 type SidebarSection = "workThreads" | "workspaces";
 
-type DialogName = "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
+type DialogName = "finishThread" | "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
 const memoryStorage: StateStorage = {
   getItem: () => null,
@@ -34,6 +34,8 @@ interface WorkbenchState {
   collapsedSidebarSections: Record<SidebarSection, boolean>;
   sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: ManagedSessionKind }>;
   dialog: DialogName;
+  finishThreadId: string | null;
+  openFinishWorkThread(id: string): void;
   workspaceDialogThreadId: string | null;
   setupProjectTarget: { projectId: string; deviceId: string } | null;
   showAllWorkspaces(): void;
@@ -80,6 +82,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     sessionCreateRequests: [],
     setupProjectTarget: null,
     dialog: null,
+    finishThreadId: null,
+    openFinishWorkThread: (finishThreadId) => set({ dialog: "finishThread", finishThreadId }),
     workspaceDialogThreadId: null,
     showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),
     showAllProjects: () => set({ scope: { type: "all-projects" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),

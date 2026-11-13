@@ -4,7 +4,7 @@
 
 首次读取应用快照失败且重试耗尽时，启动动画退出，显示可复制的错误说明与 Reload 操作；恢复后重新加载可进入正常工作台。错误页面仍保留窗口拖动区与 no-drag 控件。
 
-All work threads 中点击条目或 Doc 打开文档；仅有现存终端时显示 Terminal 入口。Archive / Delete 位于 More 菜单，Archived 列表保留 Restore。文档打开时，内容区至少 960px 才采用并排列表，列表宽为 `clamp(360px, 38%, 420px)`；更窄时文档占满内容区，可用 Back to list 或 Escape 返回并恢复筛选、滚动与焦点。跨断点 resize 不重建编辑器。关闭立即移除详情并通过既有自动保存刷新草稿，不依赖宽度过渡事件。
+All work threads 中点击条目或 Doc 打开文档；仅有现存终端时显示 Terminal 入口。Finish / Archive / Delete 位于 More 菜单，Archived 列表保留 Restore。文档打开时，内容区至少 960px 才采用并排列表，列表宽为 `clamp(360px, 38%, 420px)`；更窄时文档占满内容区，可用 Back to list 或 Escape 返回并恢复筛选、滚动与焦点。跨断点 resize 不重建编辑器。关闭立即移除详情并通过既有自动保存刷新草稿，不依赖宽度过渡事件。
 
 Doc 使用40px单行标题栏与32px Document/Todos 切换栏，保存反馈与关闭/返回始终可见。普通年龄并入切换栏；提醒及强提醒仍在标题下显示完整文字和语义色。格式通过 Document 的提示说明，正文仍为16px且保持原自动保存与错误重试行为。
 
@@ -529,6 +529,10 @@ interface WorkThread {
 - 搜索结果高亮名称命中，文档命中时展示首个命中附近至多约 180 字符的纯文本片段并高亮，覆盖 Markdown 标题、列表、表格、代码与链接文字；不执行文档 HTML。无匹配结果时显示独立空态及清空操作。点击继续打开现有 Doc 抽屉，不在编辑器内定位或高亮；改变搜索不关闭已打开的文档，关闭抽屉时若原触发结果已被过滤则将焦点返回搜索框。自动保存成功后搜索结果随快照更新，文档提取结果按内容缓存。
 - 列表显示 Last update，使用用户本地时间、24 小时制及 `MMDD HH:mm` 格式（如 `1008 09:05`）。
 - Archive/Restore 按钮旁提供 Doc 按钮，左侧列表平滑收窄的同时，右侧展开非模态 Markdown 编辑抽屉，关闭时反向收回；系统开启减少动态效果时直接切换。列表始终保留可见、可滚动并可切换其他文档。抽屉复用自动保存，关闭或切换文档时保存草稿，支持关闭按钮和 Escape；Archived 文档也可编辑。
+- Finish 是独立的收尾操作，可从侧栏 WorkThread 菜单、All work threads 的 More 和 active Doc 标题栏进入。先展示全部 Workspace 的项目/设备、路径、目录保留或 worktree/branch 删除后果、运行终端数量及与单独删除相同的 Git 风险检查；风险项逐个勾选确认强制删除，检查失败不能强制绕过。取消不删除任何数据。
+- 主进程接收 `finishWorkThread({ id, workspaceIds, forceWorkspaceIds })`，校验确认列表与当前归属完全一致、force ID 不越界；先复查整组，删除时逐项再次检查。未提交改动、未跟踪文件、未合并提交均沿用 `deleteWorkspace` 的检查；main/普通目录及历史 base alias 仅删除 metadata 与终端/浏览器/预览记录，保留项目目录。`inspectWorkThreadFinish(id)` 返回确认所需的逐项检查结果，不改变数据。
+- Finish 仅适用于 active 线程，创建中不能执行；执行期间禁止同线程重复 Finish、Archive、Delete，以及创建/单独删除其 Workspace 或新建终端。全部 Workspace 删除后才归档；文档、TODO 与项目/checkouts 保留，不增加 finished 状态。空线程可以直接 Finish。
+- 删除中途失败立即停止，显示已删除数量和失败原因，线程不归档；已删除 Workspace 不回滚，重新检查后仅处理剩余项。确认后新增/减少 Workspace 必须刷新重审；新出现的 Git 风险仍会阻止未经 force 确认的删除。Restore 仅恢复线程，不能恢复已删除的 worktree。
 - 归档只隐藏整组内容，不停止 Session 或删除 Git Worktree。
 - 只有没有 Workspace 的 WorkThread 可以永久删除；删除确认必须说明其文档和全部 TODO 也将永久删除。
 

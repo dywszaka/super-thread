@@ -177,7 +177,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                       {terminalTarget && status === "active" && <button className="button thread-terminal-action" disabled={busy} title="Open first terminal" aria-label={`Open first terminal for ${thread.name}`} onClick={() => openWorkThread(thread)}><TerminalSquare size={14} /> Terminal</button>}
                       {status === "archived" && <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
                       <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => openDocument(event.currentTarget, thread)}><FileText size={14} /> Doc</button>
-                      <WorkThreadActions name={thread.name} archived={status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
+                      <WorkThreadActions name={thread.name} archived={status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onFinish={() => useWorkbenchStore.getState().openFinishWorkThread(thread.id)} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
                     </div>
                   </article>
                 );

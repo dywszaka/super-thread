@@ -2285,6 +2285,9 @@ input, textarea, [contenteditable="true"], .selectable {
 .creation-definition pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.5; }
 .creation-error { color: var(--danger); font-size: var(--text-control); overflow-wrap: anywhere; line-height: 1.5; }
 .creation-error p { margin: 8px 0 0; }
+.finish-workspace-risks { color: var(--danger); padding-left: 20px; font-size: var(--text-control); }
+.finish-force-confirmation { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-control); line-height: 1.5; }
+.finish-force-confirmation input { flex-shrink: 0; margin-top: 4px; }
 
 .field {
   display: grid;

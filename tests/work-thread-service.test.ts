@@ -113,6 +113,8 @@ test("work thread creation protects its thread while running and resumes after a
   service.workThreadCreation.submit(input);
   const threadId = service.workThreadCreation.current()!.threadId!;
   await assert.rejects(() => service.archiveWorkThread(threadId), /Wait for workspace creation/);
+  await assert.rejects(() => service.inspectWorkThreadFinish(threadId), /Wait for workspace creation/);
+  await assert.rejects(() => service.finishWorkThread({ id: threadId, workspaceIds: [], forceWorkspaceIds: [] }), /Wait for workspace creation/);
   await assert.rejects(() => service.deleteWorkThread(threadId), /Wait for workspace creation/);
   release();
   const settled = async () => { for (let count = 0; count < 100 && service.workThreadCreation.current()?.status === "running"; count += 1) await new Promise((resolve) => setTimeout(resolve, 5)); };
