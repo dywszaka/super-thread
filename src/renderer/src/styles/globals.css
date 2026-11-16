@@ -1674,6 +1674,7 @@ input, textarea, [contenteditable="true"], .selectable {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-raised);
+  cursor: pointer;
 }
 
 .work-thread-card:hover {
@@ -1685,6 +1686,7 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: 1;
   display: flex;
   align-items: center;
+  align-self: stretch;
   gap: var(--space-3);
   padding: 0;
   border: 0;
@@ -3577,10 +3579,6 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .work-thread-document-slot.is-open {
   display: flex;
-}
-
-.work-thread-document-slot.is-open .work-thread-document-drawer {
-  animation: fade-in .12s ease-out;
 }
 
 .work-thread-document-drawer {
