@@ -140,9 +140,11 @@ test("a default terminal exiting during initialization rolls back its workspace"
     draft.projects.push({ id: "project", name: "Folder", code: "folder", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: "/folder", isGit: false, createdAt: "now" });
   });
-  await assert.rejects(() => service.createWorkspace({ projectId: "project", deviceId: "dev_local", name: "main", kind: "main" }), /terminal exited/);
+  const threadId = await service.createWorkThread({ name: "Failed creation" });
+  await assert.rejects(() => service.createWorkspace({ workThreadId: threadId, projectId: "project", deviceId: "dev_local", name: "main", kind: "main" }), /terminal exited/);
   assert.equal(service.snapshot().workspaces.length, 0);
   assert.equal(service.snapshot().sessions.length, 0);
+  assert.equal(service.snapshot().workThreads[0]!.projectIds, undefined);
 });
 
 test("a failed default-session save kills its PTY and rolls back the workspace", async () => {
@@ -294,6 +296,7 @@ test("deleting the final workspace leaves its WorkThread intact", async () => {
   assert.equal(deleted, true);
   assert.equal(service.snapshot().workspaces.length, 0);
   assert.equal(service.snapshot().workThreads[0]?.id, threadId);
+  assert.deepEqual(service.snapshot().workThreads[0]?.projectIds, ["project-1"]);
 });
 
 test("renaming a workspace changes only its display name", async () => {

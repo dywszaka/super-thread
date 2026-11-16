@@ -32,6 +32,7 @@ export interface WorkThreadSearchResult {
 
 export interface WorkThreadSearchResults {
   query: string;
+  all: WorkThreadSearchResult[];
   active: WorkThreadSearchResult[];
   archived: WorkThreadSearchResult[];
 }
@@ -70,7 +71,7 @@ export class WorkThreadSearch {
 
   search(threads: readonly WorkThread[], input: string): WorkThreadSearchResults {
     const query = normalizeSearchText(input);
-    const results: WorkThreadSearchResults = { query, active: [], archived: [] };
+    const results: WorkThreadSearchResults = { query, all: [], active: [], archived: [] };
     const ids = new Set(threads.map((thread) => thread.id));
     for (const id of this.documents.keys()) if (!ids.has(id)) this.documents.delete(id);
     // Escape user input so punctuation is literal, with Unicode-aware case matching.
@@ -78,7 +79,9 @@ export class WorkThreadSearch {
     for (const thread of workThreadsByDocumentUpdate(threads)) {
       const name = normalizeSearchText(thread.name);
       if (!matcher) {
-        results[thread.status].push({ thread, name: [{ text: name, highlight: false }], excerpt: null });
+        const result = { thread, name: [{ text: name, highlight: false }], excerpt: null };
+        results.all.push(result);
+        results[thread.status].push(result);
         continue;
       }
       const content = thread.document ?? "";
@@ -90,11 +93,13 @@ export class WorkThreadSearch {
       const nameIndex = name.search(matcher);
       const documentIndex = document.text.search(matcher);
       if (nameIndex < 0 && documentIndex < 0) continue;
-      results[thread.status].push({
+      const result = {
         thread,
         name: segments(name, matcher),
         excerpt: documentIndex < 0 ? null : excerpt(document.text, matcher, documentIndex)
-      });
+      };
+      results.all.push(result);
+      results[thread.status].push(result);
     }
     return results;
   }

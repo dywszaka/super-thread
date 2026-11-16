@@ -333,6 +333,9 @@ export class WorkspaceService extends EventEmitter {
       }
       draft.checkouts = draft.checkouts.filter((checkout) => checkout.projectId !== projectId);
       draft.projects = draft.projects.filter((project) => project.id !== projectId);
+      for (const thread of draft.workThreads) {
+        if (thread.projectIds) thread.projectIds = thread.projectIds.filter((id) => id !== projectId);
+      }
     });
     this.changed();
   }
@@ -746,18 +749,21 @@ export class WorkspaceService extends EventEmitter {
       const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId)!;
       await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
     }
-    await this.removeWorkspaceMetadata(workspaceId);
+    await this.removeWorkspaceMetadata(workspaceId, true);
   }
 
-  private async removeWorkspaceMetadata(workspaceId: string): Promise<void> {
+  private async removeWorkspaceMetadata(workspaceId: string, retainProject = false): Promise<void> {
     await this.store.update((draft) => {
-      const workThreadId = draft.workspaces.find((item) => item.id === workspaceId)?.workThreadId;
+      const workspace = draft.workspaces.find((item) => item.id === workspaceId);
       draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.filePreviewTabs = draft.filePreviewTabs.filter((item) => item.workspaceId !== workspaceId);
       draft.sessions = draft.sessions.filter((item) => item.workspaceId !== workspaceId);
       draft.workspaces = draft.workspaces.filter((item) => item.id !== workspaceId);
-      const thread = draft.workThreads.find((item) => item.id === workThreadId);
-      if (thread) thread.updatedAt = now();
+      const thread = draft.workThreads.find((item) => item.id === workspace?.workThreadId);
+      if (thread) {
+        if (retainProject && workspace) thread.projectIds = [...new Set([...(thread.projectIds ?? []), workspace.projectId])];
+        thread.updatedAt = now();
+      }
     });
     this.changed();
   }

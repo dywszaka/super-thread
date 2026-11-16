@@ -5,6 +5,7 @@ import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain"
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { formatDocumentUpdate, workThreadDocumentUpdate } from "../selection";
 import { WorkThreadSearch, type SearchSegment } from "../work-thread-search";
+import { filterWorkThreads, workThreadTimeCutoff, type WorkThreadTimeUnit } from "../work-thread-filters";
 import { SidebarReopenButton } from "./Sidebar";
 import { WorkThreadAge } from "./WorkThreadAge";
 import { WorkThreadDocument } from "./WorkThreadDocument";
@@ -30,20 +31,39 @@ const firstTerminalTarget = (snapshot: AppSnapshot, threadId: string): { workspa
 };
 
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
-  const [status, setStatus] = useState<WorkThreadStatus>("active");
+  const [status, setStatus] = useState<WorkThreadStatus | "all">("active");
+  const [projectId, setProjectId] = useState("");
+  const [timeUnit, setTimeUnit] = useState<WorkThreadTimeUnit>("all");
+  const [timeCount, setTimeCount] = useState(1);
+  const [clock, setClock] = useState(Date.now());
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isComposing, setIsComposing] = useState(false);
   const [search] = useState(() => new WorkThreadSearch());
   const searchField = useRef<HTMLInputElement | null>(null);
-  const results = useMemo(() => search.search(snapshot.workThreads, searchQuery), [search, snapshot.workThreads, searchQuery]);
+  const selectedProjectId = snapshot.projects.some((project) => project.id === projectId) ? projectId : "";
+  const projects = useMemo(() => [...snapshot.projects].sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code)), [snapshot.projects]);
+  const results = useMemo(() => search.search(filterWorkThreads(snapshot.workThreads, snapshot.workspaces, selectedProjectId, workThreadTimeCutoff(timeUnit, timeCount, clock)), searchQuery), [search, snapshot.workThreads, snapshot.workspaces, selectedProjectId, timeUnit, timeCount, clock, searchQuery]);
   const threads = results[status];
+  const hasFilters = Boolean(selectedProjectId) || timeUnit !== "all";
   const clearSearch = (): void => {
     setSearchInput("");
     setSearchQuery("");
     setIsComposing(false);
     searchField.current?.focus();
   };
+  const clearFilters = (): void => {
+    setProjectId("");
+    setTimeUnit("all");
+    setTimeCount(1);
+    clearSearch();
+  };
+  useEffect(() => {
+    const refresh = (): void => setClock(Date.now());
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, []);
   useEffect(() => {
     if (isComposing) return;
     const timer = window.setTimeout(() => setSearchQuery(searchInput), 150);
@@ -155,14 +175,31 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                 {searchInput && <button className="icon-button" type="button" aria-label="Clear search" onClick={clearSearch}><X size={14} /></button>}
               </div>
               <div className="segmented thread-status-filter" role="group" aria-label="Work thread status">
+                <button aria-pressed={status === "all"} className={status === "all" ? "active" : ""} onClick={() => setStatus("all")}>All ({results.all.length})</button>
                 <button aria-pressed={status === "active"} className={status === "active" ? "active" : ""} onClick={() => setStatus("active")}>Active ({results.active.length})</button>
                 <button aria-pressed={status === "archived"} className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({results.archived.length})</button>
               </div>
+              <div className="work-thread-filters">
+                <label className="work-thread-project-filter">Project
+                  <select aria-label="Filter by project" value={selectedProjectId} onChange={(event) => setProjectId(event.target.value)}>
+                    <option value="">All projects</option>
+                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name} · {project.code}</option>)}
+                  </select>
+                </label>
+                <div className="work-thread-time-filter" role="group" aria-label="Filter by document update time">
+                  <span>Last update</span>
+                  {timeUnit !== "all" && <label className="work-thread-time-count">Last <input type="number" aria-label="Number of weeks or months" min={1} max={1200} step={1} value={timeCount} onChange={(event) => setTimeCount(Math.max(1, Math.min(1200, Math.trunc(Number(event.target.value) || 1))))} /></label>}
+                  <select aria-label="Time range" value={timeUnit} onChange={(event) => { setTimeUnit(event.target.value as WorkThreadTimeUnit); setClock(Date.now()); }}>
+                    <option value="all">All time</option><option value="weeks">Weeks</option><option value="months">Months</option>
+                  </select>
+                </div>
+                {hasFilters && <button className="button" onClick={clearFilters}>Clear filters</button>}
+              </div>
             </div>
             <div className="work-thread-cards">
-              {threads.length === 0 && (results.query
-                ? <div className="work-thread-list-empty" role="status"><Search size={28} /><h2>No matching work threads</h2><p>No {status} names or documents match your search.</p><button className="button" onClick={clearSearch}>Clear search</button></div>
-                : <div className="work-thread-list-empty"><MessagesSquare size={28} /><h2>No {status} work threads</h2><p>{status === "active" ? "Create a work thread to group one or more workspaces." : "Archived work threads will appear here."}</p></div>)}
+              {threads.length === 0 && (results.query || hasFilters
+                ? <div className="work-thread-list-empty" role="status"><Search size={28} /><h2>No matching work threads</h2><p>No {status === "all" ? "" : `${status} `}work threads match your {hasFilters ? "filters" : "search"}.</p><button className="button" onClick={hasFilters ? clearFilters : clearSearch}>{hasFilters ? "Clear filters" : "Clear search"}</button></div>
+                : <div className="work-thread-list-empty"><MessagesSquare size={28} /><h2>No {status === "all" ? "" : `${status} `}work threads</h2><p>{status === "archived" ? "Archived work threads will appear here." : "Create a work thread to group one or more workspaces."}</p></div>)}
               {threads.map(({ thread, name, excerpt }) => {
                 const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
                 const busy = busyId === thread.id;
@@ -171,13 +208,13 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                   <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id}>
                     <button type="button" className="work-thread-card-main" aria-label={`Open document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" title="Open document" onClick={(event) => openDocument(event.currentTarget, thread)}>
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
-                      <span><strong title={thread.name}><HighlightedText segments={name} /></strong><small className="work-thread-card-meta"><span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><WorkThreadAge thread={thread} /><span className="thread-last-update">Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small>{excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}</span>
+                      <span><strong title={thread.name}><HighlightedText segments={name} /></strong><small className="work-thread-card-meta">{status === "all" && <span className="work-thread-status-badge">{thread.status === "active" ? "Active" : "Archived"}</span>}<span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><WorkThreadAge thread={thread} /><span className="thread-last-update">Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small>{excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}</span>
                     </button>
                     <div className="work-thread-card-actions">
-                      {terminalTarget && status === "active" && <button className="button thread-terminal-action" disabled={busy} title="Open first terminal" aria-label={`Open first terminal for ${thread.name}`} onClick={() => openWorkThread(thread)}><TerminalSquare size={14} /> Terminal</button>}
-                      {status === "archived" && <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
+                      {terminalTarget && thread.status === "active" && <button className="button thread-terminal-action" disabled={busy} title="Open first terminal" aria-label={`Open first terminal for ${thread.name}`} onClick={() => openWorkThread(thread)}><TerminalSquare size={14} /> Terminal</button>}
+                      {thread.status === "archived" && <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
                       <button className="button" disabled={busy} aria-label={`Edit document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" onClick={(event) => openDocument(event.currentTarget, thread)}><FileText size={14} /> Doc</button>
-                      <WorkThreadActions name={thread.name} archived={status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onFinish={() => useWorkbenchStore.getState().openFinishWorkThread(thread.id)} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
+                      <WorkThreadActions name={thread.name} archived={thread.status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onFinish={() => useWorkbenchStore.getState().openFinishWorkThread(thread.id)} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
                     </div>
                   </article>
                 );

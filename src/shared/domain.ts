@@ -40,6 +40,8 @@ export interface WorkThread {
   document?: string;
   documentUpdatedAt?: string;
   todos?: Todo[];
+  /** Projects retained after successful workspace deletion, including Finish. */
+  projectIds?: string[];
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;

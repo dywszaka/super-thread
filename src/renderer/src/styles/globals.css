@@ -1594,8 +1594,68 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-status-filter {
-  width: 280px;
+  width: 360px;
   max-width: 100%;
+}
+
+.work-thread-filters {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-control);
+  color: var(--muted-foreground);
+}
+
+.work-thread-project-filter, .work-thread-time-filter, .work-thread-time-count {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.work-thread-project-filter {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.work-thread-time-filter {
+  flex-wrap: wrap;
+}
+
+.work-thread-filters select, .work-thread-filters input {
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-control);
+  background: var(--control-background);
+  color: var(--foreground);
+  font-size: var(--text-control);
+}
+
+.work-thread-filters select:hover, .work-thread-filters input:hover {
+  border-color: var(--input-border-hover);
+}
+
+.work-thread-project-filter select {
+  flex: 1;
+  width: 0;
+  text-overflow: ellipsis;
+}
+
+.work-thread-time-count input {
+  width: 68px;
+}
+
+.work-thread-status-badge {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  color: var(--foreground);
 }
 
 .work-thread-cards {

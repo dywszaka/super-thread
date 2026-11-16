@@ -10,7 +10,8 @@ import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { finishWorkThreadSchema } from "../src/shared/contract";
 
 async function fixture() {
-  const store = new JsonStore(join(await mkdtemp(join(tmpdir(), "superthread-finish-")), "state.json"));
+  const statePath = join(await mkdtemp(join(tmpdir(), "superthread-finish-")), "state.json");
+  const store = new JsonStore(statePath);
   const killed: string[] = [];
   const terminals = Object.assign(new EventEmitter(), { has: () => false, kill: (id: string) => killed.push(id) }) as unknown as TerminalRuntime;
   const risks = new Map<string, WorkspaceDeleteRisk>();
@@ -54,7 +55,7 @@ async function fixture() {
     }
   });
   const input = () => ({ id: threadId, workspaceIds: service.snapshot().workspaces.filter((item) => item.workThreadId === threadId).map((item) => item.id), forceWorkspaceIds: [] as string[] });
-  return { service, store, terminals, threadId, risks, failedChecks, failedDeletes, killed, calls, input,
+  return { service, store, statePath, terminals, threadId, risks, failedChecks, failedDeletes, killed, calls, input,
     hold: (gate: Promise<void>) => { inspectionGate = gate; },
     inspected: () => inspected,
     afterInspection: (callback: () => void) => { afterInspection = callback; }
@@ -80,6 +81,7 @@ test("finish previews checks without mutation, deletes all owned workspaces and 
   const after = f.service.snapshot();
   assert.equal(after.workThreads[0]!.status, "archived");
   assert.equal(after.workThreads[0]!.document, "Keep my Doc");
+  assert.deepEqual(after.workThreads[0]!.projectIds, ["project"]);
   assert.deepEqual(after.workThreads[0]!.todos, before.workThreads[0]!.todos);
   assert.ok(after.workThreads[0]!.archivedAt);
   assert.equal(after.workspaces.length + after.sessions.length + after.browserTabs.length + after.filePreviewTabs.length, 0);
@@ -88,6 +90,9 @@ test("finish previews checks without mutation, deletes all owned workspaces and 
   await f.service.restoreWorkThread(f.threadId);
   assert.equal(f.service.snapshot().workspaces.length, 0);
   assert.equal(f.service.snapshot().workThreads[0]!.status, "active");
+  assert.deepEqual((await new JsonStore(f.statePath).load()).workThreads[0]!.projectIds, ["project"]);
+  await f.service.deleteProject("project");
+  assert.deepEqual(f.service.snapshot().workThreads[0]!.projectIds, []);
 });
 
 test("dirty, untracked and unmerged changes block the entire group until that workspace is explicitly approved", async () => {

@@ -22,6 +22,7 @@ test("search matches names or saved documents across active and archived threads
   assert.equal(result.query, "api");
   assert.deepEqual(result.active.map((item) => item.thread.id), ["document", "name", "both"]);
   assert.deepEqual(result.archived.map((item) => item.thread.id), ["archived"]);
+  assert.deepEqual(result.all.map((item) => item.thread.id), ["document", "name", "archived", "both"]);
   assert.deepEqual(highlighted(result.active[1]!.name), ["API"]);
   assert.equal(result.active[1]!.excerpt, null);
   assert.deepEqual(highlighted(result.active[2]!.excerpt!), ["API", "API"]);
@@ -36,6 +37,7 @@ test("empty and whitespace queries restore all results without parsing documents
     assert.equal(result.query, "");
     assert.equal(result.active.length, 1);
     assert.equal(result.archived.length, 1);
+    assert.equal(result.all.length, 2);
     assert.deepEqual(result.active[0]!.name, [{ text: "active", highlight: false }]);
     assert.equal(result.active[0]!.excerpt, null);
   }

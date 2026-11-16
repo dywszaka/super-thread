@@ -500,6 +500,7 @@ interface WorkThread {
   document?: string
   documentUpdatedAt?: Date
   todos?: Todo[]
+  projectIds?: string[] // successfully deleted Workspaces' projects, retained for filtering
   createdAt: Date
   updatedAt: Date
   archivedAt?: Date
@@ -524,8 +525,10 @@ interface WorkThread {
 - 关闭窗口前等待未完成的文档保存；保存失败时保留窗口和草稿。
 - WorkThread 置顶由用户手动设置，默认为非置顶；侧栏中置顶的排在前面；置顶与非置顶条目分别支持拖动调整组内顺序，拖动时显示插入位置，顺序本地持久化并在应用重启后恢复。尚未手动排序时保持创建顺序，新建条目追加到非置顶组末尾。聚焦条目后也可用 Option+↑/↓ 调整组内顺序。排序不改变置顶状态、文档更新时间或 All work threads 页的排序。在侧栏右键 WorkThread 可选择置顶或取消置顶。
 - 侧栏缩到最小宽度时，菜单、WorkThread、Workspace 与 Project 名称在右侧 padding 内显示省略号，不能撑宽列表或贴到分隔边线；悬停名称可查看完整文字。
-- All work threads 页不显示置顶状态；Active 和 Archived 列表均按文档更新时间从新到旧排序，未编辑过的文档使用 WorkThread 创建时间。归档、恢复或置顶变更不改变文档排序时间。
-- All work threads 页提供名称与已保存 Document 可见文字的本地搜索，Active / Archived 共用关键词并分别显示匹配数量，切换标签保留关键词；任一字段命中即展示，保留原文档更新时间排序。搜索不区分大小写，首尾空白去除、连续空白归一化，按连续文本匹配，标点按字面处理；不包含 TODO、Workspace 文件、终端和未保存草稿。输入防抖 150ms，中文组合输入完成后再搜索，空关键词恢复全部列表，搜索词仅在当前页面保留。
+- All work threads 页不显示置顶状态；提供 All / Active / Archived，默认 Active，均按文档更新时间从新到旧排序，未编辑过的文档使用 WorkThread 创建时间。All 将两种状态合并排序，且仅在 All 的每行显示 Active / Archived 标识。Terminal、Restore 及 More 中的操作根据每个线程的真实状态提供。归档、恢复或置顶变更不改变文档排序时间。
+- All work threads 页提供 Project 与 Last update 筛选，默认为 All projects / All time。Project 按线程任一 Workspace 的 projectId 匹配，包含归档线程及跨项目/设备的 Workspace，同一线程只出现一次；项目选项显示名称与 code，名称相同时可区分。成功删除 Workspace（包括 Finish）在同一持久化事务中将其项目 ID 去重保留到 WorkThread 的可选 projectIds；创建失败的回滚不新增历史关联。删除 Project 时清理对应历史 ID。原快照无需迁移，保留的可选字段可直接读写；旧版本已删除 Workspace 且没有关联记录的线程无法反推项目。
+- Last update 支持最近 1–1200 周或月，按文档更新时间（未编辑时为创建时间）筛选，不使用归档、重命名、TODO 或运行状态的时间。周为连续 7 × 24 小时，月按本地日历回退并将月底夹到目标月最后一天，边界包含。每分钟及窗口重新聚焦时刷新。项目、时间与关键词按交集组合，三个状态的数量均反映当前组合；切换状态及打开/关闭文档保留全部筛选，筛选变化不关闭文档，无结果时提供清空筛选，页面离开后不持久化这些筛选。
+- All work threads 页提供名称与已保存 Document 可见文字的本地搜索，All / Active / Archived 共用关键词并分别显示匹配数量，切换标签保留关键词；任一字段命中即展示，保留原文档更新时间排序。搜索不区分大小写，首尾空白去除、连续空白归一化，按连续文本匹配，标点按字面处理；不包含 TODO、Workspace 文件、终端和未保存草稿。输入防抖 150ms，中文组合输入完成后再搜索，空关键词恢复当前项目/时间范围内的列表，搜索词仅在当前页面保留。
 - 搜索结果高亮名称命中，文档命中时展示首个命中附近至多约 180 字符的纯文本片段并高亮，覆盖 Markdown 标题、列表、表格、代码与链接文字；不执行文档 HTML。无匹配结果时显示独立空态及清空操作。点击继续打开现有 Doc 抽屉，不在编辑器内定位或高亮；改变搜索不关闭已打开的文档，关闭抽屉时若原触发结果已被过滤则将焦点返回搜索框。自动保存成功后搜索结果随快照更新，文档提取结果按内容缓存。
 - 列表显示 Last update，使用用户本地时间、24 小时制及 `MMDD HH:mm` 格式（如 `1008 09:05`）。
 - Archive/Restore 按钮旁提供 Doc 按钮，左侧列表平滑收窄的同时，右侧展开非模态 Markdown 编辑抽屉，关闭时反向收回；系统开启减少动态效果时直接切换。列表始终保留可见、可滚动并可切换其他文档。抽屉复用自动保存，关闭或切换文档时保存草稿，支持关闭按钮和 Escape；Archived 文档也可编辑。
@@ -1046,7 +1049,7 @@ Work Threads 与 Workspaces 是两个独立可折叠的分组，默认展开，�
 
 侧栏的 Workspace 统一使用两行布局：第一行显示 Workspace 名称，第二行显示「Device 名称 · Project 名称」，同项目在不同设备上的 Workspace 可直接通过设备名称区分。保留本机／远程图标，设备名称始终显示，不依赖颜色或悬停辨认。窄侧栏中设备名称最多占上下文行的 65%，项目名使用剩余空间，两者独立省略；悬停整行及无障碍名称提供完整 Workspace、Device 和 Project 信息。线程内与独立 Workspace 使用相同规则，保留现有分组、排序和点击／右键行为。
 
-Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档；展开后的 Workspace 提供右键菜单，用于编辑 Workspace 信息，其中只有名称可以修改。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 active/archived 管理页面；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
+Project 和单个 WorkThread 都是 Workspace filter。侧栏中的 WorkThread 提供右键菜单，用于调整优先级或归档；展开后的 Workspace 提供右键菜单，用于编辑 Workspace 信息，其中只有名称可以修改。All projects 打开 Project 管理页面，可新增、重命名和删除未被 Workspace 使用的 Project。All work threads 打开 All / Active / Archived 管理页面，支持项目和文档更新时间筛选；All devices 打开 Device 管理页面，可查看连接状态和资源占用、添加或编辑 Remote Device、检测连接，并删除未被 checkout 使用的 Remote Device。Local Device 由应用管理，不能编辑或删除。归档 WorkThread 及其 Workspace 不出现在其他 active scope。
 
 例如点击：
 
