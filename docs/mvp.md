@@ -741,7 +741,7 @@ Done
 
 删除 `worktree` Workspace：
 
-1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）
+1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）。提交历史不包含原分支时，补充检查合并结果；若无冲突且合并后的 tree 与 base branch 相同，视为内容已合入，兼容 squash merge 及其后 base branch 的更新。检查不修改 checkout/worktree 的文件或 index；仍有内容差异、合并冲突或 Git 不支持该检查时，保留未合并警告。单独删除与 Work Thread Finish 使用相同规则。
 2. 停止所有 Session
 3. 删除 Git Worktree
 4. 删除对应 Branch

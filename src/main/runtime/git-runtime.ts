@@ -101,11 +101,29 @@ ln -s "$source_path" "$target_path"
       this.git(checkoutPath, ["rev-list", "--count", `${baseBranch}..${branch}`])
     ]);
     const lines = status.split("\n").filter(Boolean);
+    let unmergedCommitCount = Number.parseInt(count, 10) || 0;
+    if (unmergedCommitCount > 0 && await this.isMergeAlreadyIncluded(checkoutPath, branch, baseBranch)) unmergedCommitCount = 0;
     return {
       hasUncommittedChanges: lines.some((line) => !line.startsWith("??")),
       hasUntrackedFiles: lines.some((line) => line.startsWith("??")),
-      unmergedCommitCount: Number.parseInt(count, 10) || 0
+      unmergedCommitCount
     };
+  }
+
+  private async isMergeAlreadyIncluded(checkoutPath: string, branch: string, baseBranch: string): Promise<boolean> {
+    try {
+      // Squash merges lose ancestry. A clean merge that leaves the base tree unchanged
+      // proves the workspace adds no content, even if the base has since advanced.
+      // merge-tree writes only Git objects, leaving both worktrees and indexes untouched.
+      const [mergedTree, baseTree] = await Promise.all([
+        this.git(checkoutPath, ["merge-tree", "--write-tree", baseBranch, branch]),
+        this.git(checkoutPath, ["rev-parse", `${baseBranch}^{tree}`])
+      ]);
+      return Boolean(baseTree) && mergedTree === baseTree;
+    } catch {
+      // Conflicts, older Git versions and command failures must retain the warning.
+      return false;
+    }
   }
 
   async deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void> {
