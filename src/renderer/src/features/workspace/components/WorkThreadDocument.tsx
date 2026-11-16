@@ -2,18 +2,53 @@ import { WorkThreadAge } from "./WorkThreadAge";
 import { TodoList } from "./TodoList";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { ArrowLeft, Check, CircleCheck, FileText, Loader2, Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { WorkThread } from "@/shared/domain";
+import type { AppSnapshot, WorkThread } from "@/shared/domain";
+import { normalizeBrowserUrl } from "@/shared/browser-url";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { threadDocumentAutosave } from "../document-autosave";
+import { documentBrowserWorkspaces } from "../document-browser";
 import { SidebarReopenButton } from "./Sidebar";
+import { Field, Modal } from "./Modal";
 
-export function WorkThreadDocument({ thread, onClose, backToList = false }: { thread: WorkThread; onClose?: () => void; backToList?: boolean }): React.ReactNode {
+export function WorkThreadDocument({ thread, snapshot, onClose, backToList = false }: { thread: WorkThread; snapshot: AppSnapshot; onClose?: () => void; backToList?: boolean }): React.ReactNode {
   const [tab, setTab] = useState<"document" | "todos">("document");
+  const [linkRequest, setLinkRequest] = useState<{ url: string; workspaceId: string } | null>(null);
+  const [openingBrowser, setOpeningBrowser] = useState(false);
+  const [linkError, setLinkError] = useState("");
+  const opening = useRef(false);
+  const client = useQueryClient();
+  const browserWorkspaces = documentBrowserWorkspaces(snapshot, thread.id);
   const openWorkspaceDialog = useWorkbenchStore((state) => state.openWorkspaceDialog);
   const document = useMemo(() => threadDocumentAutosave(thread.id, thread.document ?? ""), [thread.id]);
   const state = useSyncExternalStore(document.subscribe, document.getSnapshot);
+  const openBrowser = async (url: string, workspaceId: string, fromDialog = false): Promise<void> => {
+    if (opening.current) return;
+    opening.current = true;
+    setOpeningBrowser(true);
+    setLinkError("");
+    try {
+      const latest = await window.desktop.snapshot();
+      const workspace = documentBrowserWorkspaces(latest, thread.id).find((item) => item.id === workspaceId);
+      if (!workspace) throw new Error("This workspace is no longer available. Choose a ready workspace in an active work thread.");
+      const browser = await window.desktop.createBrowser({ workspaceId, url });
+      await document.flush();
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      setLinkRequest(null);
+      const store = useWorkbenchStore.getState();
+      store.setActiveSession(workspaceId, browser.id);
+      store.openWorkspace(workspace);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : String(cause);
+      if (fromDialog) setLinkError(message);
+      else toast.error(message);
+    } finally {
+      opening.current = false;
+      setOpeningBrowser(false);
+    }
+  };
   useEffect(() => {
     void document.flush();
     return () => { void document.flush(); };
@@ -47,19 +82,43 @@ export function WorkThreadDocument({ thread, onClose, backToList = false }: { th
         <div className="thread-document-age-inline"><WorkThreadAge thread={thread} visibility="normal" /></div>
       </div>
       {state.status === "error" && <div className="document-save-error no-drag" role="alert"><span>{state.error}. Your draft is kept on this device.</span><button className="button" onClick={() => void document.flush()}>Retry save</button></div>}
-      <section hidden={tab !== "document"} role="tabpanel" id={`document-panel-${thread.id}`} aria-labelledby={`document-tab-${thread.id}`} className="thread-document-editor no-drag" aria-label="Work thread document" onBlur={() => void document.flush()} onClick={(event) => {
+      <section hidden={tab !== "document"} role="tabpanel" id={`document-panel-${thread.id}`} aria-labelledby={`document-tab-${thread.id}`} className="thread-document-editor no-drag" aria-label="Work thread document" onBlur={() => void document.flush()} onClickCapture={(event) => {
         const link = event.target instanceof Element ? event.target.closest("a") : null;
         const href = link?.getAttribute("href");
         if (!href || href.startsWith("#")) return;
-        if (link?.closest('[contenteditable="true"]') && !event.metaKey && !event.ctrlKey) return;
         event.preventDefault();
-        if (/^(https?:|mailto:)/i.test(href)) {
+        event.stopPropagation();
+        if (opening.current || linkRequest) return;
+        if (/^mailto:/i.test(href)) {
           void window.desktop.openDocumentLink(href).catch(() => toast.error("Could not open this link."));
-        } else toast.error("Use an http, https, or email link.");
+          return;
+        }
+        if (!/^https?:/i.test(href)) { toast.error("Use an http, https, or email link."); return; }
+        let url: string;
+        try { url = normalizeBrowserUrl(href); }
+        catch { toast.error("Enter an HTTP or HTTPS address without credentials."); return; }
+        if (thread.status !== "active") { toast.error("Restore this work thread before opening links in Browser."); return; }
+        if (!browserWorkspaces.length) { toast.error("Create or repair a workspace in this work thread before opening links in Browser."); return; }
+        if (browserWorkspaces.length === 1) { void openBrowser(url, browserWorkspaces[0]!.id); return; }
+        setLinkError("");
+        setLinkRequest({ url, workspaceId: browserWorkspaces[0]!.id });
       }}>
         <MarkdownEditor document={document} autoFocus={Boolean(onClose)} />
       </section>
       {tab === "todos" && <div className="thread-todos-panel" role="tabpanel" id={`todos-panel-${thread.id}`} aria-labelledby={`todos-tab-${thread.id}`}><TodoList threads={[thread]} recentOnly /></div>}
+      {linkRequest && <div onKeyDown={(event) => event.stopPropagation()}>
+        <Modal open title="Open link in Browser" description="Choose a workspace for this link." busy={openingBrowser}
+          submitLabel="Open" submitDisabled={!browserWorkspaces.some((workspace) => workspace.id === linkRequest.workspaceId)}
+          onClose={() => { if (!opening.current) setLinkRequest(null); }}
+          onSubmit={(event) => { event.preventDefault(); void openBrowser(linkRequest.url, linkRequest.workspaceId, true); }}>
+          <Field label="Link"><input value={linkRequest.url} readOnly title={linkRequest.url} /></Field>
+          <Field label="Workspace"><select value={linkRequest.workspaceId} disabled={openingBrowser} onChange={(event) => { setLinkRequest({ ...linkRequest, workspaceId: event.target.value }); setLinkError(""); }}>
+            {!browserWorkspaces.some((workspace) => workspace.id === linkRequest.workspaceId) && <option value={linkRequest.workspaceId} disabled>Workspace unavailable</option>}
+            {browserWorkspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name} · {snapshot.projects.find((project) => project.id === workspace.projectId)?.name ?? "Unknown project"} · {snapshot.devices.find((device) => device.id === workspace.deviceId)?.name ?? "Unknown device"}</option>)}
+          </select></Field>
+          {linkError && <div className="field"><small className="field-error selectable" role="alert">{linkError}</small></div>}
+        </Modal>
+      </div>}
     </section>
   );
 }

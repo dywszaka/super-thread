@@ -238,7 +238,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
           {documentThread && <aside id="work-thread-document-drawer" className="work-thread-document-drawer no-drag" role="dialog" aria-modal="false" aria-label={`Document for ${documentThread.name}`} onKeyDown={(event) => {
             if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeDocument(); }
           }}>
-            <WorkThreadDocument key={documentThread.id} thread={documentThread} onClose={closeDocument} backToList={compact} />
+            <WorkThreadDocument key={documentThread.id} thread={documentThread} snapshot={snapshot} onClose={closeDocument} backToList={compact} />
           </aside>}
         </div>
       </div>

@@ -515,6 +515,7 @@ interface WorkThread {
 - 历史或创建中/失败后保留的 WorkThread 可以暂时为空，也可以包含多个 Workspace；新建向导要求至少配置一个 Workspace。
 - 点击 WorkThread 默认打开 Document 页；即使还没有 Workspace，也可以独立写文档。Document 不在侧栏单独显示，点击 WorkThread 名称即可进入；其下只显示 Workspace 入口，继续打开终端。
 - 每个 WorkThread 拥有一份 Markdown 文档，使用飞书式单栏所见即所得编辑器，输入 Markdown 标记时原地转换成标题、列表、引用、加粗等格式，无需切换编辑和预览；支持选中文字后的格式工具栏、斜杠块菜单、表格和撤销/重做。底层仍以 Markdown 自动保存。文档不属于任何 Project 或 Device 的仓库文件。
+- Doc 正文及链接预览浮层中的 HTTP(S) 链接单击后在应用内新建 Browser 标签，无需 Cmd/Ctrl。仅选择当前活跃 WorkThread 下 ready 的 Workspace：一个时直接打开并切换，多个时弹窗选择 Workspace（显示项目和设备），取消不创建标签；没有可用 Workspace 时提示先创建或修复，归档线程提示先恢复。打开失败保留文档和选择并显示错误，离开文档沿用自动保存。邮件链接仍调用系统邮件应用，页内锚点保持原行为，其他协议继续阻止；链接浮层的编辑、复制和删除操作保留。不自动识别裸文本网址，不复用已有同地址标签。
 - 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。
 - 文档随 WorkThread 本地持久化，归档、恢复和应用重启不清除文档；永久删除 WorkThread 同时删除文档。文档上限为 2,000,000 个字符，IPC 不裁剪 Markdown 空白。
 - 每个 WorkThread 可管理每日 TODO，Document 与 Todos 在同一页面通过标签切换；All work threads 的文档抽屉也复用该界面。TODO 是本地清单，不包含执行、Agent 或 Workflow 状态。
