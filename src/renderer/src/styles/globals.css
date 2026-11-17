@@ -1596,16 +1596,29 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: none;
 }
 
-.thread-status-filter {
+.thread-status-filter.segmented {
   flex: none;
-  width: auto;
+  display: grid;
+  grid-template-columns: 76px 94px 108px;
+  width: 288px;
   max-width: 100%;
 }
 
 .thread-status-filter.segmented button {
   padding: 0 var(--space-2);
+  gap: var(--space-1);
+  min-width: 0;
   white-space: nowrap;
   font-size: var(--text-xs);
+}
+
+.thread-status-count {
+  flex: none;
+  width: calc(4ch + 10px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .work-thread-filters {
@@ -1653,7 +1666,7 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .work-thread-time-units.segmented {
   height: var(--control-height);
-  width: 80px;
+  width: 104px;
   align-items: center;
 }
 
@@ -1661,6 +1674,23 @@ input, textarea, [contenteditable="true"], .selectable {
   height: 100%;
   padding: 0;
   color: inherit;
+  gap: 2px;
+}
+
+.work-thread-time-units.segmented button.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: var(--weight-semibold);
+  box-shadow: none;
+}
+
+.time-unit-check {
+  flex: none;
+  visibility: hidden;
+}
+
+.active > .time-unit-check {
+  visibility: visible;
 }
 
 .work-thread-time-units > span {
@@ -1668,13 +1698,13 @@ input, textarea, [contenteditable="true"], .selectable {
   font-size: var(--text-xs);
 }
 
-.work-thread-time-filter.is-inactive,
-.work-thread-time-filter.is-inactive .segmented button.active {
+.work-thread-time-filter.is-inactive {
   color: var(--muted-foreground);
 }
 
 .work-thread-time-filter.is-inactive .segmented button.active {
-  background: var(--control-background);
+  background: var(--control-disabled-foreground);
+  color: var(--control-disabled-background);
   box-shadow: none;
 }
 

@@ -1,4 +1,4 @@
-import { ArchiveRestore, FolderGit2, MessagesSquare, Plus, Search, X } from "lucide-react";
+import { ArchiveRestore, Check, FolderGit2, MessagesSquare, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain";
@@ -13,6 +13,7 @@ import { WorkThreadDocument } from "./WorkThreadDocument";
 import { WorkThreadActions } from "./WorkThreadActions";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
+const statusOptions = [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "archived", label: "Archived" }] as const;
 
 function HighlightedText({ segments }: { segments: readonly SearchSegment[] }): React.ReactNode {
   return segments.map((segment, index) => segment.highlight ? <mark key={index}>{segment.text}</mark> : segment.text);
@@ -177,9 +178,9 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                 {searchInput && <button className="icon-button" type="button" aria-label="Clear search" onClick={clearSearch}><X size={14} /></button>}
               </div>
               <div className="segmented thread-status-filter" role="group" aria-label="Work thread status">
-                <button aria-pressed={status === "all"} className={status === "all" ? "active" : ""} onClick={() => setStatus("all")}>All ({results.all.length})</button>
-                <button aria-pressed={status === "active"} className={status === "active" ? "active" : ""} onClick={() => setStatus("active")}>Active ({results.active.length})</button>
-                <button aria-pressed={status === "archived"} className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({results.archived.length})</button>
+                {statusOptions.map(({ value, label }) => <button key={value} aria-label={`${label} (${results[value].length})`} title={`${label} (${results[value].length})`} aria-pressed={status === value} className={status === value ? "active" : ""} onClick={() => setStatus(value)}>
+                  <span>{label}</span>{" "}<span className="thread-status-count">({results[value].length})</span>
+                </button>)}
               </div>
               <div className="work-thread-filters">
                 <select className="work-thread-project-filter" aria-label="Filter by project" title={selectedProject ? `${selectedProject.name} · ${selectedProject.code}` : "All projects"} value={selectedProjectId} onChange={(event) => setProjectId(event.target.value)}>
@@ -191,9 +192,9 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                     {Array.from({ length: 13 }, (_, count) => <option key={count} value={count}>{count}</option>)}
                   </select>
                   <div className="segmented work-thread-time-units" role="group" aria-label="Time unit">
-                    <button aria-label="Weeks" aria-pressed={timeUnit === "weeks"} className={timeUnit === "weeks" ? "active" : ""} onClick={() => { setTimeUnit("weeks"); setClock(Date.now()); }}>周</button>
+                    <button aria-label="Weeks" aria-pressed={timeUnit === "weeks"} className={timeUnit === "weeks" ? "active" : ""} onClick={() => { setTimeUnit("weeks"); setClock(Date.now()); }}><Check size={10} className="time-unit-check" aria-hidden="true" />周</button>
                     <span aria-hidden="true">｜</span>
-                    <button aria-label="Months" aria-pressed={timeUnit === "months"} className={timeUnit === "months" ? "active" : ""} onClick={() => { setTimeUnit("months"); setClock(Date.now()); }}>月</button>
+                    <button aria-label="Months" aria-pressed={timeUnit === "months"} className={timeUnit === "months" ? "active" : ""} onClick={() => { setTimeUnit("months"); setClock(Date.now()); }}><Check size={10} className="time-unit-check" aria-hidden="true" />月</button>
                   </div>
                 </div>
                 {hasFilters && <button className="icon-button" aria-label="Clear filters" title="Clear filters" onClick={clearFilters}><X size={14} /></button>}
