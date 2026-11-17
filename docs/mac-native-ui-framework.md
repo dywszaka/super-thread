@@ -818,7 +818,7 @@ Features
 
 本节描述 SuperThread 的实际实现；前文 Superset 示例仅作为架构研究资料。
 
-Work Threads 文档抽屉采用内容区内的绝对定位覆盖层：右侧对齐，宽度为内容区减 40px，高度填满标题栏以下的内容区；所有窗口宽度均不改变底层列表的宽度、位置或排版。页面内遮罩覆盖列表及标题栏，使用 --overlay-background，文档使用 --shadow 表达上层；点击遮罩（含底层标题栏）收起抽屉且不透传动作。底层标题与列表在覆盖期间保持挂载、inert 且 aria-hidden，抽屉通过关闭按钮或 Escape 收起后恢复滚动与打开条目的焦点；窗口 resize 复用同一个编辑器。列表卡片采用72px最小高度及稳定的名称/动作两列，More 菜单通过 portal 渲染并复用 `.work-thread-context-menu`，支持键盘导航、关闭与焦点恢复。点击记录正文或留白打开 Doc，正文保留可聚焦按钮及 Enter / Space 行为；列表不显示 Terminal 或重复的 Doc 按钮。Restore 与 More 独立响应，不打开文档，归档/删除置于菜单，已有约束及确认保留。
+Work Threads 文档抽屉采用内容区内的绝对定位覆盖层：右侧对齐，宽度为 Work Threads 内容区的 2/3，高度填满标题栏以下的内容区；所有窗口宽度均不改变底层列表的宽度、位置或排版。页面内遮罩覆盖列表及标题栏，使用 --overlay-background，文档使用 --shadow 表达上层；点击遮罩（含底层标题栏）收起抽屉且不透传动作；遮罩 cursor 为 default，使用显式 :active 覆盖全局 button:active 的填充，按下期间保持 --overlay-background，避免闪白。底层标题与列表在覆盖期间保持挂载、inert 且 aria-hidden，抽屉通过关闭按钮或 Escape 收起后恢复滚动与打开条目的焦点；窗口 resize 复用同一个编辑器。列表卡片采用72px最小高度及稳定的名称/动作两列，More 菜单通过 portal 渲染并复用 `.work-thread-context-menu`，支持键盘导航、关闭与焦点恢复。点击记录正文或留白打开 Doc，正文保留可聚焦按钮及 Enter / Space 行为；列表不显示 Terminal 或重复的 Doc 按钮。Restore 与 More 独立响应，不打开文档，归档/删除置于菜单，已有约束及确认保留。
 
 Work Threads 筛选工具栏采用紧凑搜索框（最大 280px）、固定 288px 总宽的状态切换（分段为 76/94/108px，计数预留 4 位数字并使用 tabular-nums，更长数量省略但保留完整 tooltip 与可访问名称）、项目下拉与时间组合；足够宽时共用一行。项目和时间不显示前置标签，保留可访问名称和完整项目名称/code 的悬停提示。时间组合为 0–12 下拉及「周｜月」按钮，非零时单位选中态采用 primary 实心背景、primary-foreground 反色文字及勾选图标；0 时整组灰显，选中态使用 control-disabled-foreground 背景和 control-disabled-background 文字并保留勾选，控件仍可交互；非零时按所选单位启用筛选。窄窗口允许搜索/状态换行，项目与时间保持同一行，项目名称省略以避免溢出。清空操作使用有 aria-label 的图标按钮；保持焦点环、34px 控件高度和 no-drag。
 
