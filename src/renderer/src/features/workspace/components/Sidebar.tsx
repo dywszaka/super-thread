@@ -1,4 +1,4 @@
-import { ListTodo, Archive, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
+import { ArrowRightLeft, BriefcaseBusiness, Heart, ListTodo, Archive, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, ReorderWorkThreadsInput, WorkThread, Workspace } from "@/shared/domain";
@@ -8,6 +8,7 @@ import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../s
 import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
 import { WorkThreadAge } from "./WorkThreadAge";
 import { RenameWorkThreadDialog } from "./RenameWorkThreadDialog";
+import { threadsOfType, workThreadType, workThreadTypes } from "@/shared/work-thread-type";
 
 interface WorkThreadMenuState {
   thread: WorkThread;
@@ -28,6 +29,8 @@ const cleanError = (error: unknown): string => error instanceof Error
 export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const {
     scope,
+    workThreadType: selectedType,
+    switchWorkThreadType,
     activeWorkspaceId,
     sidebarCollapsed,
     sidebarWidth,
@@ -59,7 +62,8 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
   const [threadMenuBusy, setThreadMenuBusy] = useState(false);
-  const activeThreads = useMemo(() => sortedWorkThreads(snapshot.workThreads.filter((thread) => thread.status === "active")), [snapshot.workThreads]);
+  const typedThreads = useMemo(() => threadsOfType(snapshot.workThreads, selectedType), [snapshot.workThreads, selectedType]);
+  const activeThreads = useMemo(() => sortedWorkThreads(typedThreads.filter((thread) => thread.status === "active")), [typedThreads]);
   const allActiveWorkspaces = useMemo(() => visibleWorkspaces(snapshot, { type: "all-workspaces" }), [snapshot]);
   const standaloneWorkspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === undefined);
   const editingWorkspace = snapshot.workspaces.find((workspace) => workspace.id === editingWorkspaceId);
@@ -100,7 +104,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   const openThreadMenu = (event: React.MouseEvent, thread: WorkThread): void => {
     event.preventDefault();
     const width = 220;
-    const height = 184;
+    const height = 220;
     setWorkspaceMenu(null);
     setThreadMenu({
       thread,
@@ -221,8 +225,8 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
       <nav className="primary-scopes no-drag" aria-label="All items">
         <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> <em title="All workspaces">All workspaces</em></span><b>{allActiveWorkspaces.length}</b></button>
         <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> <em title="All projects">All projects</em></span><b>{snapshot.projects.length}</b></button>
-        <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> <em title="All work threads">All work threads</em></span><b>{snapshot.workThreads.length}</b></button>
-        <button className={`scope-row all ${scope.type === "all-todos" ? "selected" : ""}`} onClick={showAllTodos}><span><ListTodo size={15} /> <em title="All todos">All todos</em></span><b>{snapshot.workThreads.reduce((count, thread) => count + (thread.todos ?? []).filter((todo) => !todo.completedAt).length, 0)}</b></button>
+        <button className={`scope-row all ${scope.type === "all-work-threads" ? "selected" : ""}`} onClick={showAllWorkThreads}><span><MessagesSquare size={15} /> <em title="All work threads">All work threads</em></span><b>{typedThreads.length}</b></button>
+        <button className={`scope-row all ${scope.type === "all-todos" ? "selected" : ""}`} onClick={showAllTodos}><span><ListTodo size={15} /> <em title="All todos">All todos</em></span><b>{typedThreads.reduce((count, thread) => count + (thread.todos ?? []).filter((todo) => !todo.completedAt).length, 0)}</b></button>
         <button className={`scope-row all ${scope.type === "all-devices" ? "selected" : ""}`} onClick={showAllDevices}><span><MonitorCog size={15} /> <em title="All devices">All devices</em></span><b>{snapshot.devices.length}</b></button>
       </nav>
       <nav className="sidebar-scroll no-drag" aria-label="Work threads and workspaces" onDragOver={(event) => {
@@ -234,8 +238,14 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
       }}>
         <SidebarSectionHeading title="Work Threads" listId="sidebar-work-threads" collapsed={collapsedSidebarSections.workThreads} onToggle={() => toggleSidebarSection("workThreads")} createLabel="New work thread" onCreate={() => openDialog("workThread")} />
+        <div className="thread-type-switch no-drag" role="group" aria-label="Work thread type">
+          {workThreadTypes.map(({ value, label }) => {
+            const Icon = value === "work" ? BriefcaseBusiness : Heart;
+            return <button key={value} type="button" aria-pressed={selectedType === value} title={`Show ${label} threads`} onClick={() => { clearDrag(); setThreadMenu(null); setWorkspaceMenu(null); switchWorkThreadType(value); }}><Icon size={13} aria-hidden="true" />{label}</button>;
+          })}
+        </div>
         <div id="sidebar-work-threads" className="scope-list thread-list" hidden={collapsedSidebarSections.workThreads}>
-          {activeThreads.length === 0 && <p className="sidebar-empty">No active work threads</p>}
+          {activeThreads.length === 0 && <p className="sidebar-empty">No active {selectedType === "work" ? "Work" : "Life"} threads</p>}
           {activeThreads.map((thread) => {
             const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
             const isExpanded = expandedThreadIds.includes(thread.id);
@@ -308,6 +318,12 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
         style={{ left: threadMenu.x, top: threadMenu.y }}
       >
         <button type="button" disabled={threadMenuBusy} onClick={renameThread}><Pencil size={13} /><span>Rename work thread…</span></button>
+        <button type="button" disabled={threadMenuBusy} onClick={() => {
+          const thread = threadMenu.thread;
+          setThreadMenu(null);
+          setThreadMenuBusy(true);
+          void window.desktop.setWorkThreadType({ id: thread.id, type: workThreadType(thread) === "work" ? "life" : "work" }).catch((error) => toast.error(cleanError(error))).finally(() => setThreadMenuBusy(false));
+        }}><ArrowRightLeft size={13} /><span>Move to {workThreadType(threadMenu.thread) === "work" ? "Life" : "Work"}</span></button>
         <div className="context-menu-separator" />
         <button type="button" disabled={threadMenuBusy} onClick={() => void setPinned(!threadMenu.thread.pinned)}>
           <Pin size={13} />

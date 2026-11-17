@@ -5,11 +5,14 @@ import { toast } from "sonner";
 import type { AppSnapshot, Todo, WorkThread } from "@/shared/domain";
 import { localTodoDate, todoEntries } from "@/shared/todos";
 import { SidebarReopenButton } from "./Sidebar";
+import { threadsOfType } from "@/shared/work-thread-type";
+import { useWorkbenchStore } from "../../../state/workbench-store";
 
 export function AllTodos({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
+  const selectedType = useWorkbenchStore((state) => state.workThreadType);
   return <main className="work-thread-page">
-    <header className="work-thread-page-header drag"><SidebarReopenButton /><div><h1>All todos</h1><p>Every TODO, including archived work threads and completed history.</p></div></header>
-    <TodoList threads={snapshot.workThreads} />
+    <header className="work-thread-page-header drag"><SidebarReopenButton /><div><h1>All todos · {selectedType === "work" ? "Work" : "Life"}</h1><p>Every TODO, including archived work threads and completed history.</p></div></header>
+    <TodoList key={selectedType} threads={threadsOfType(snapshot.workThreads, selectedType)} />
   </main>;
 }
 

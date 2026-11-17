@@ -2,7 +2,7 @@ import type { WorkThreadCreation, WorkThreadCreationInput } from "@/shared/work-
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { WorkspaceScope } from "../features/workspace/selection";
-import type { ManagedSessionKind, Workspace } from "@/shared/domain";
+import type { ManagedSessionKind, Workspace, WorkThreadType } from "@/shared/domain";
 
 type SidebarSection = "workThreads" | "workspaces";
 
@@ -17,6 +17,9 @@ const memoryStorage: StateStorage = {
 export interface WorkThreadCreationDraft extends WorkThreadCreationInput { step: 0 | 1 | 2; }
 
 interface WorkbenchState {
+  workThreadType: WorkThreadType;
+  switchWorkThreadType(type: WorkThreadType): void;
+  revealWorkThreadType(type: WorkThreadType): void;
   workThreadDraft: WorkThreadCreationDraft | null;
   workThreadCreation: WorkThreadCreation | null;
   beginWorkThreadDraft(draft: WorkThreadCreationDraft): void;
@@ -64,6 +67,19 @@ interface WorkbenchState {
 
 export const useWorkbenchStore = create<WorkbenchState>()(
   persist((set, get) => ({
+    workThreadType: "work",
+    switchWorkThreadType: (workThreadType) => {
+      if (get().workThreadType === workThreadType) return;
+      set((state) => ({
+        workThreadType,
+        scope: state.scope.type === "all-todos" ? state.scope : { type: "all-work-threads" },
+        activeWorkspaceId: null,
+        projectFilter: null,
+        workThreadFilter: null,
+        focusMode: false
+      }));
+    },
+    revealWorkThreadType: (workThreadType) => set({ workThreadType }),
     workThreadDraft: null,
     workThreadCreation: null,
     beginWorkThreadDraft: (workThreadDraft) => set((state) => ({ workThreadDraft: state.workThreadDraft ?? workThreadDraft })),
@@ -139,6 +155,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     name: "superthread-workbench",
     storage: createJSONStorage(() => typeof window === "undefined" ? memoryStorage : window.localStorage),
     partialize: (state) => ({
+      workThreadType: state.workThreadType,
       scope: state.scope,
       projectFilter: state.projectFilter,
       workThreadFilter: state.workThreadFilter,

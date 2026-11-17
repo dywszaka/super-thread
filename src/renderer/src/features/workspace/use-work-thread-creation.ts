@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { WorkThreadCreation } from "@/shared/work-thread-creation";
+import { workThreadType } from "@/shared/work-thread-type";
 import { useWorkbenchStore } from "../../state/workbench-store";
 
 export function useWorkThreadCreationLifecycle(): void {
@@ -16,12 +17,13 @@ export function useWorkThreadCreationLifecycle(): void {
       store.setWorkThreadCreation(creation);
       if (!creation) return;
       if (creation.status === "paused" && (store.workThreadCreation?.operationId !== creation.operationId || store.workThreadCreation.status !== "paused")) toast.error(`${creation.name}: ${creation.error ?? "Workspace creation paused"}`);
-      if (!store.workThreadDraft) store.setWorkThreadDraft({ operationId: creation.operationId, name: creation.name, content: creation.content, workspaces: creation.workspaces, step: 2 });
+      if (!store.workThreadDraft) store.setWorkThreadDraft({ operationId: creation.operationId, name: creation.name, type: creation.type, content: creation.content, workspaces: creation.workspaces, step: 2 });
       if (creation.status !== "completed" || notified.has(creation.operationId)) return;
       notified.add(creation.operationId);
       void client.invalidateQueries({ queryKey: ["snapshot"] });
       toast.success(`${creation.name} and all workspaces created`);
       if (store.dialog === "workThread") {
+        store.revealWorkThreadType(workThreadType(creation));
         if (creation.threadId) store.setWorkThreadFilter(creation.threadId);
         store.closeDialog();
       }

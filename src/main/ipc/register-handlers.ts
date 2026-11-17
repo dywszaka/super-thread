@@ -28,6 +28,7 @@ import {
   renameSessionSchema,
   renameWorkspaceSchema,
   setWorkThreadPinnedSchema,
+  setWorkThreadTypeSchema,
   reorderWorkThreadsSchema,
   saveWorkThreadDocumentSchema,
   setupProjectSchema,
@@ -129,6 +130,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.saveWorkThreadDocument, (_event, input) => service.saveWorkThreadDocument(saveWorkThreadDocumentSchema.parse(input)));
   handle(channels.reorderWorkThreads, (_event, input) => service.reorderWorkThreads(reorderWorkThreadsSchema.parse(input)));
   handle(channels.setWorkThreadPinned, (_event, input) => service.setWorkThreadPinned(setWorkThreadPinnedSchema.parse(input)));
+  handle(channels.setWorkThreadType, (_event, input) => service.setWorkThreadType(setWorkThreadTypeSchema.parse(input)));
   handle(channels.inspectWorkThreadFinish, (_event, id) => service.inspectWorkThreadFinish(sessionIdSchema.parse(id)));
   handle(channels.finishWorkThread, (_event, input) => service.finishWorkThread(finishWorkThreadSchema.parse(input)));
   handle(channels.archiveWorkThread, (_event, id) => service.archiveWorkThread(sessionIdSchema.parse(id)));

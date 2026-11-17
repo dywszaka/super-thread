@@ -1,7 +1,8 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot } from "@/shared/domain";
+import type { AppSnapshot, WorkThreadType } from "@/shared/domain";
+import { workThreadType, workThreadTypes } from "@/shared/work-thread-type";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH, workThreadCreationSchema } from "@/shared/contract";
 import { batchWorkspaceError } from "@/shared/work-thread-creation";
 import { useWorkbenchStore, type WorkThreadCreationDraft } from "../../../state/workbench-store";
@@ -21,7 +22,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
-    beginWorkThreadDraft({ operationId: crypto.randomUUID(), name: "", content: snapshot.settings.workThreadTemplate, workspaces: [{ entryId: crypto.randomUUID(), configuration: initialWorkspaceConfiguration(snapshot) }], step: 0 });
+    beginWorkThreadDraft({ operationId: crypto.randomUUID(), name: "", type: useWorkbenchStore.getState().workThreadType, content: snapshot.settings.workThreadTemplate, workspaces: [{ entryId: crypto.randomUUID(), configuration: initialWorkspaceConfiguration(snapshot) }], step: 0 });
   }, []);
   if (!draft) return null;
   const running = creation?.status === "running" || submitting;
@@ -40,7 +41,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
     event.preventDefault();
     if (running) return;
     if (draft.step !== 2) { next(); return; }
-    const parsed = workThreadCreationSchema.safeParse({ operationId: draft.operationId, name: draft.name, content: draft.content, workspaces: draft.workspaces });
+    const parsed = workThreadCreationSchema.safeParse({ operationId: draft.operationId, name: draft.name, type: draft.type, content: draft.content, workspaces: draft.workspaces });
     const issue = nameError ?? workspaceError;
     if (issue || !parsed.success) { setError(issue ?? "Check the workspace configuration before creating."); return; }
     setSubmitting(true); setError("");
@@ -63,6 +64,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
   </>}>
     <ol ref={steps} tabIndex={-1} className="creation-steps" aria-label="Creation steps">{["Work Thread", "Workspaces", "Confirm"].map((label, index) => <li key={label} aria-current={draft.step === index ? "step" : undefined}><span>{index + 1}</span>{label}</li>)}</ol>
     {draft.step === 0 && <>
+      <Field label="Type"><select value={workThreadType(draft)} disabled={running || locked} onChange={(event) => update({ type: event.target.value as WorkThreadType })}>{workThreadTypes.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></Field>
       <Field label="Name" error={error && nameError ? nameError : undefined} hint={locked ? "This work thread has already been saved." : undefined}><input value={draft.name} disabled={running || locked} onChange={(event) => update({ name: event.target.value })} maxLength={80} placeholder="Improve terminal workflow" aria-invalid={Boolean(error && nameError)} autoFocus /></Field>
       <Field label="Content" hint={locked ? "Edit the saved content in the work thread’s Doc." : "Describe the goal, scope, and completion criteria in Markdown."}><textarea className="markdown-input" value={draft.content ?? ""} disabled={running || locked} onChange={(event) => update({ content: event.target.value })} maxLength={MAX_WORK_THREAD_DOCUMENT_LENGTH} rows={10} /></Field>
     </>}
@@ -81,6 +83,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
     </>}
     {draft.step === 2 && <>
       <strong className="creation-thread-name">{draft.name}</strong>
+      <p className="creation-note">Type: {workThreadType(draft) === "work" ? "Work" : "Life"}</p>
       <details className="creation-definition"><summary>Work Thread content</summary><pre>{draft.content || "Empty document"}</pre></details>
       <p className="creation-note">Each workspace includes a default Terminal. All workspaces must finish before this creation is complete.</p>
       <div className="creation-results" aria-live="polite">{draft.workspaces.map((item) => {

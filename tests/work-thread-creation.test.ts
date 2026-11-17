@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { WorkThreadCreationCoordinator } from "../src/main/application/work-thread-creation";
-import { emptySnapshot, type CreateWorkspaceInput } from "../src/shared/domain";
+import { emptySnapshot, type CreateWorkThreadInput, type CreateWorkspaceInput } from "../src/shared/domain";
 import { workThreadCreationSchema } from "../src/shared/contract";
 import type { WorkThreadCreation, WorkThreadCreationInput } from "../src/shared/work-thread-creation";
 
@@ -19,9 +19,9 @@ function fixture() {
   let hold: Promise<void> | undefined;
   const services = {
     snapshot: () => structuredClone(snapshot),
-    createWorkThread: async (value: { name: string; content?: string }, threadId: string) => {
+    createWorkThread: async (value: CreateWorkThreadInput, threadId: string) => {
       if (threadFailure) throw new Error("disk full");
-      snapshot.workThreads.push({ id: threadId, name: value.name, document: value.content, status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
+      snapshot.workThreads.push({ id: threadId, name: value.name, type: value.type, document: value.content, status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
       return threadId;
     },
     createWorkspace: async (value: CreateWorkspaceInput, workspaceId: string) => {
@@ -86,6 +86,7 @@ test("preflight rejects batch names, main ownership and unavailable checkout wit
 
 test("midway failure pauses and retries only corrected or waiting items, preserving saved Doc", async () => {
   const f = fixture();
+  f.input.type = "life";
   f.failures.add("two");
   f.coordinator.submit(f.input);
   const paused = await f.finish();
@@ -93,11 +94,13 @@ test("midway failure pauses and retries only corrected or waiting items, preserv
   assert.deepEqual(paused.entries.map((entry) => entry.status), ["succeeded", "failed", "pending"]);
   f.snapshot.workThreads[0]!.document = "Edited independently";
   f.input.workspaces[1]!.configuration.name = "corrected";
-  f.coordinator.submit({ ...f.input, content: "must not replace Doc" });
+  f.coordinator.submit({ ...f.input, type: "work", content: "must not replace Doc" });
   assert.equal((await f.finish()).status, "completed");
   assert.deepEqual(f.calls, ["one", "two", "corrected", "three"]);
   assert.equal(f.snapshot.workThreads.length, 1);
   assert.equal(f.snapshot.workThreads[0]!.document, "Edited independently");
+  assert.equal(f.snapshot.workThreads[0]!.type, "life");
+  assert.equal(f.coordinator.current()!.type, "life");
 });
 
 test("first-item and thread-save failures can retry without duplicate thread records", async () => {

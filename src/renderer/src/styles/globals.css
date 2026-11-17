@@ -487,6 +487,41 @@ input, textarea, [contenteditable="true"], .selectable {
   gap: 1px;
 }
 
+.thread-type-switch {
+  display: flex;
+  gap: 2px;
+  margin: 2px 6px 8px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--control-background);
+}
+
+.thread-type-switch button {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-control);
+}
+
+.thread-type-switch button:hover {
+  background: var(--accent);
+}
+
+.thread-type-switch button[aria-pressed="true"] {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--border);
+  font-weight: var(--weight-medium);
+}
+
 .thread-tree {
   position: relative;
   min-width: 0;

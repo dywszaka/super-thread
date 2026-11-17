@@ -2,6 +2,7 @@ import { defaultAppSettings } from "./app-settings";
 
 export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
+export type WorkThreadType = "work" | "life";
 export type WorkspaceStatus = "creating" | "ready" | "error";
 export type WorkspaceKind = "main" | "worktree";
 export type SessionStatus = "running" | "exited" | "restore-failed";
@@ -34,6 +35,8 @@ export interface UpdateTodoInput extends TodoTarget { title?: string; date?: str
 export interface WorkThread {
   id: string;
   name: string;
+  /** Missing or empty legacy values are Work; no snapshot backfill is needed. */
+  type?: WorkThreadType | "" | null;
   status: WorkThreadStatus;
   pinned: boolean;
   sidebarOrder?: number;
@@ -252,7 +255,13 @@ export const emptySnapshot = (): AppSnapshot => ({
 
 export interface CreateWorkThreadInput {
   name: string;
+  type?: WorkThreadType;
   content?: string;
+}
+
+export interface SetWorkThreadTypeInput {
+  id: string;
+  type: WorkThreadType;
 }
 
 export interface RenameWorkThreadInput {

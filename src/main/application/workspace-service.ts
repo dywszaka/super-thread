@@ -35,6 +35,7 @@ import type {
   Session,
   SessionActivityStatus,
   SetWorkThreadPinnedInput,
+  SetWorkThreadTypeInput,
   ReorderWorkThreadsInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
@@ -44,7 +45,8 @@ import type {
   WorkThread,
   Workspace
 } from "../../shared/domain";
-import { addProjectSchema, updateProjectSchema, appSettingsSchema, createWorkThreadSchema, createTodoSchema, updateTodoSchema, todoTargetSchema } from "../../shared/contract";
+import { addProjectSchema, updateProjectSchema, appSettingsSchema, createWorkThreadSchema, createTodoSchema, updateTodoSchema, todoTargetSchema, setWorkThreadTypeSchema } from "../../shared/contract";
+import { workThreadType } from "../../shared/work-thread-type";
 import { projectCodeError } from "../../shared/project-code";
 import { sortedWorkThreads } from "../../shared/work-thread-order";
 import { JsonStore } from "../persistence/json-store";
@@ -382,6 +384,7 @@ export class WorkspaceService extends EventEmitter {
         id: threadId,
         name,
         status: "active",
+        ...(input.type ? { type: input.type } : {}),
         pinned: false,
         sidebarOrder: draft.workThreads.some((thread) => thread.sidebarOrder !== undefined)
           ? Math.max(...draft.workThreads.map((thread) => thread.sidebarOrder ?? -1)) + 1
@@ -395,6 +398,19 @@ export class WorkspaceService extends EventEmitter {
     });
     this.changed();
     return threadId;
+  }
+
+  async setWorkThreadType(raw: SetWorkThreadTypeInput): Promise<void> {
+    const input = setWorkThreadTypeSchema.parse(raw);
+    await this.store.update((draft) => {
+      this.assertThreadNotCreating(input.id);
+      this.assertThreadNotFinishing(input.id);
+      const thread = this.workThread(draft, input.id);
+      if (workThreadType(thread) === input.type) return;
+      thread.type = input.type;
+      thread.updatedAt = now();
+    });
+    this.changed();
   }
 
   async renameWorkThread(input: RenameWorkThreadInput): Promise<void> {
@@ -472,6 +488,7 @@ export class WorkspaceService extends EventEmitter {
       const target = this.workThread(draft, input.targetId);
       if (thread.status !== "active" || target.status !== "active") throw new Error("Only active work threads can be reordered");
       if (thread.pinned !== target.pinned) throw new Error("Reorder work threads within the same pinned group");
+      if (workThreadType(thread) !== workThreadType(target)) throw new Error("Reorder work threads within the same type");
       if (thread.id === target.id) return;
       const ordered = sortedWorkThreads(draft.workThreads).filter((item) => item.id !== thread.id);
       const targetIndex = ordered.findIndex((item) => item.id === target.id);

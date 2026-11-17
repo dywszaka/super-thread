@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Box, Focus, FolderGit2, Plus, Server } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type { Workspace } from "@/shared/domain";
+import { workThreadType } from "@/shared/work-thread-type";
 import { useWorkbenchStore } from "../../state/workbench-store";
 import { Sidebar, SidebarReopenButton } from "./components/Sidebar";
 import { TerminalPane } from "./components/TerminalPane";
@@ -24,6 +25,11 @@ export function WorkspaceApp(): React.ReactNode {
   useWorkThreadCreationLifecycle();
   const client = useQueryClient();
   const scope = store.scope;
+  const scopedThread = scope.type === "work-thread" ? snapshot?.workThreads.find((thread) => thread.id === scope.id) : undefined;
+  useEffect(() => {
+    // Opening a workspace from a global view reveals its owning thread's type.
+    if (scopedThread) store.revealWorkThreadType(workThreadType(scopedThread));
+  }, [scopedThread?.id, scopedThread?.type]);
   useDocumentAutosaveLifecycle(snapshot?.workThreads);
   const documentThread = scope.type === "work-thread" && !store.activeWorkspaceId
     ? snapshot?.workThreads.find((thread) => thread.id === scope.id && thread.status === "active")

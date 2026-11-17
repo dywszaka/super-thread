@@ -55,6 +55,7 @@ export class WorkThreadCreationCoordinator {
       ...input,
       // Thread content is captured once; retries never overwrite an independently edited Doc.
       name: previous?.threadId ? previous.name : input.name,
+      type: previous?.threadId ? previous.type : input.type,
       content: previous?.threadId ? previous.content : input.content,
       threadId: previous?.threadId,
       status: "running",
@@ -85,7 +86,7 @@ export class WorkThreadCreationCoordinator {
         const threadId = `thread_${randomUUID().slice(0, 8)}`;
         // Reserve identity before the asynchronous write, so archive/delete cannot race it.
         state.threadId = threadId;
-        try { await this.services.createWorkThread({ name: state.name, content: state.content }, threadId); }
+        try { await this.services.createWorkThread({ name: state.name, type: state.type, content: state.content }, threadId); }
         catch (error) { state.threadId = undefined; throw error; }
       }
       for (const item of state.workspaces) {

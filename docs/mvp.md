@@ -476,6 +476,14 @@ Runtime 首先验证目录存在且可访问，并通过所属 Device 上的 `pw
 
 WorkThread 是组织 Workspace 的顶级对象，不是 Task、Workflow 或执行状态。
 
+### Work / Life 类型
+
+- WorkThread 固定支持 `work` / `life`，UI 显示 Work / Life。可选 `type` 缺失、null 或空字符串时按 Work 读取；不补写旧记录、不提升快照 schema、不执行迁移。新建输入省略类型仍兼容 Work；显式输入仅接受这两个固定值。
+- 侧栏 Work Threads 标题下提供 Work / Life 分段按钮，始终可见且支持键盘焦点、Enter / Space 与选中语义。默认 Work，本机记住上次选择；切换只显示该类型的活跃线程，置顶、拖动与 Option+↑/↓ 均在当前类型内操作。All work threads 与 All todos 的内容及侧栏计数同步按类型筛选；项目、设备、All workspaces 与独立 Workspace 不受此筛选影响。
+- 切换类型进入该类型的 All work threads，关闭线程详情/抽屉并触发现有文档保存；在 All todos 内切换则留在 TODO 汇总。切换不终止 PTY、不清除创建草稿或线程展开状态。列表搜索/项目/时间/状态筛选在切换类型时恢复默认值，避免新类型被旧筛选隐藏。打开全局 workspace 总览中的线程 Workspace 时，侧栏自动显示其所属类型。
+- 新建向导第一步提供 Type，默认取当前侧栏类型；关闭并重开保留草稿的原类型，确认页展示类型。创建开始后锁定类型，失败重试保持已创建线程的类型；完成并打开线程时显示相应类型。
+- 侧栏线程右键菜单和 All work threads 的 More 提供 Move to Life / Work，支持活跃与归档线程。独立 typed bridge `setWorkThreadType({ id, type })` 经主进程校验并串行保存，仅修改类型与 `updatedAt`，保留文档、TODO、置顶、排序、Workspace 和 Session；创建中或 Finish 中禁止修改。当前打开的线程被移动时仍保持打开，侧栏跟随显示新类型；列表中的条目移出当前筛选范围。名称继续跨类型全局唯一。
+
 ### 定义模板与时长提醒
 
 - New work thread 使用三步向导：填写名称与 Markdown → 配置至少一个 Workspace（可多个）→ 确认并创建。内容预填可编辑模板，默认包含「目标、范围、完成标准」及引导文字，允许修改或清空。模板仅初始化新草稿，不覆盖已有草稿。
@@ -494,6 +502,7 @@ WorkThread 是组织 Workspace 的顶级对象，不是 Task、Workflow 或执�
 interface WorkThread {
   id: string
   name: string
+  type?: "work" | "life" | "" | null // missing/empty values read as Work
   status: "active" | "archived"
   pinned: boolean
   sidebarOrder?: number

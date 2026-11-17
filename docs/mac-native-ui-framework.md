@@ -816,6 +816,8 @@ Features
 
 ## 15. SuperThread 当前视觉实现规范
 
+Work Threads 标题下常显 Work / Life 分段切换：28px 按钮、语义背景/边框、工作与生活图标、aria-pressed 选中态及现有 focus-visible 焦点环，显式 no-drag；184px 侧栏宽度下两个名称完整可见。切换同步更新线程树、All work threads / All todos 与计数，空类型给出对应 Work / Life 提示。All 页面标题标明当前类型，侧栏收起后仍能辨认。创建向导 Type 使用原生 select，确认页展示类型；Move to Work / Life 复用侧栏菜单与列表 More 的样式及操作反馈。浅深色、最窄侧栏、键盘与创建草稿恢复需验证。
+
 本节描述 SuperThread 的实际实现；前文 Superset 示例仅作为架构研究资料。
 
 Work Threads 文档抽屉采用内容区内的绝对定位覆盖层：右侧对齐，宽度为 Work Threads 内容区的 2/3，高度填满标题栏以下的内容区；所有窗口宽度均不改变底层列表的宽度、位置或排版。页面内遮罩覆盖列表及标题栏，使用 --overlay-background，文档使用 --shadow 表达上层；点击遮罩（含底层标题栏）收起抽屉且不透传动作；遮罩 cursor 为 default，使用显式 :active 覆盖全局 button:active 的填充，按下期间保持 --overlay-background，避免闪白。底层标题与列表在覆盖期间保持挂载、inert 且 aria-hidden，抽屉通过关闭按钮或 Escape 收起后恢复滚动与打开条目的焦点；窗口 resize 复用同一个编辑器。列表卡片采用72px最小高度及稳定的名称/动作两列，More 菜单通过 portal 渲染并复用 `.work-thread-context-menu`，支持键盘导航、关闭与焦点恢复。点击记录正文或留白打开 Doc，正文保留可聚焦按钮及 Enter / Space 行为；列表不显示 Terminal 或重复的 Doc 按钮。Restore 与 More 独立响应，不打开文档，归档/删除置于菜单，已有约束及确认保留。

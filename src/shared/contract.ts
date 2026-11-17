@@ -31,6 +31,7 @@ import type {
   RenameWorkspaceInput,
   RenameWorkThreadInput,
   SetWorkThreadPinnedInput,
+  SetWorkThreadTypeInput,
   ReorderWorkThreadsInput,
   SaveWorkThreadDocumentInput,
   SetupProjectInput,
@@ -41,6 +42,7 @@ import type {
 } from "./domain";
 
 export const channels = {
+  setWorkThreadType: "work-thread:set-type",
   browseWorkspaceFiles: "workspace:files-browse",
   openFilePreview: "preview:open",
   navigateFilePreview: "preview:navigate",
@@ -198,6 +200,7 @@ export const browseDirectorySchema = z.object({
 
 export const createWorkThreadSchema = z.object({
   name: z.string().trim().min(1).max(80),
+  type: z.enum(["work", "life"]).optional(),
   content: z.string().max(MAX_WORK_THREAD_DOCUMENT_LENGTH).optional()
 }).strict();
 
@@ -254,6 +257,11 @@ export const reorderWorkThreadsSchema = z.object({
 export const setWorkThreadPinnedSchema = z.object({
   id: z.string().min(1),
   pinned: z.boolean()
+}).strict();
+
+export const setWorkThreadTypeSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(["work", "life"])
 }).strict();
 
 /** Workspace names become worktree directory and branch segments, so they stay path-safe. */
@@ -400,6 +408,7 @@ export interface DesktopBridge {
   renameWorkThread(input: RenameWorkThreadInput): Promise<void>;
   saveWorkThreadDocument(input: SaveWorkThreadDocumentInput): Promise<void>;
   setWorkThreadPinned(input: SetWorkThreadPinnedInput): Promise<void>;
+  setWorkThreadType(input: SetWorkThreadTypeInput): Promise<void>;
   reorderWorkThreads(input: ReorderWorkThreadsInput): Promise<void>;
   inspectWorkThreadFinish(id: string): Promise<WorkThreadFinishInspection>;
   finishWorkThread(input: FinishWorkThreadInput): Promise<void>;

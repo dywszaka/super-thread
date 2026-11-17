@@ -1,7 +1,8 @@
 import { ArchiveRestore, FolderGit2, MessagesSquare, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain";
+import type { AppSnapshot, WorkThread, WorkThreadStatus, WorkThreadType } from "@/shared/domain";
+import { threadsOfType, workThreadType } from "@/shared/work-thread-type";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { formatDocumentUpdate, workThreadDocumentUpdate } from "../selection";
 import { WorkThreadSearch, type SearchSegment } from "../work-thread-search";
@@ -20,6 +21,12 @@ function HighlightedText({ segments }: { segments: readonly SearchSegment[] }): 
 }
 
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
+  const selectedType = useWorkbenchStore((state) => state.workThreadType);
+  const typedSnapshot = useMemo(() => ({ ...snapshot, workThreads: threadsOfType(snapshot.workThreads, selectedType) }), [snapshot, selectedType]);
+  return <WorkThreadListContent key={selectedType} snapshot={typedSnapshot} selectedType={selectedType} />;
+}
+
+function WorkThreadListContent({ snapshot, selectedType }: { snapshot: AppSnapshot; selectedType: WorkThreadType }): React.ReactNode {
   const [status, setStatus] = useState<WorkThreadStatus | "all">("active");
   const [projectId, setProjectId] = useState("");
   const [timeUnit, setTimeUnit] = useState<WorkThreadTimeUnit>("weeks");
@@ -152,6 +159,14 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
     finally { setBusyId(null); }
   };
 
+  const move = async (thread: WorkThread): Promise<void> => {
+    setBusyId(thread.id);
+    try {
+      await window.desktop.setWorkThreadType({ id: thread.id, type: workThreadType(thread) === "work" ? "life" : "work" });
+    } catch (error) { toast.error(cleanError(error)); }
+    finally { setBusyId(null); }
+  };
+
   const openDocument = (trigger: HTMLButtonElement | null, thread: WorkThread): void => {
     restoreListFocus.current = false;
     listScroll.current = list.current?.scrollTop ?? 0;
@@ -164,7 +179,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
     <main className="work-thread-page">
       <header className="work-thread-page-header drag" inert={drawerPresent} aria-hidden={drawerPresent}>
         <SidebarReopenButton />
-        <div><h1>Work Threads</h1><p>Organize related workspaces without changing their runtime state.</p></div>
+        <div><h1>Work Threads · {selectedType === "work" ? "Work" : "Life"}</h1><p>Organize related workspaces without changing their runtime state.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("workThread")}><Plus size={14} /> New Work Thread</button>
       </header>
       {drawerPresent && <button type="button" className="work-thread-document-backdrop no-drag" aria-label="Dismiss document drawer" tabIndex={-1} onClick={closeDocument} />}
@@ -218,7 +233,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                     </button>
                     <div className="work-thread-card-actions">
                       {thread.status === "archived" && <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}
-                      <WorkThreadActions name={thread.name} archived={thread.status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onFinish={() => useWorkbenchStore.getState().openFinishWorkThread(thread.id)} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
+                      <WorkThreadActions name={thread.name} moveLabel={`Move to ${selectedType === "work" ? "Life" : "Work"}`} onMove={() => void move(thread)} archived={thread.status === "archived"} busy={busy} hasWorkspaces={workspaces.length > 0} onFinish={() => useWorkbenchStore.getState().openFinishWorkThread(thread.id)} onArchive={() => void archive(thread.id, thread.name)} onDelete={() => void remove(thread.id, thread.name)} />
                     </div>
                   </article>
                 );
