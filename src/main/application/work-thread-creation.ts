@@ -48,7 +48,7 @@ export class WorkThreadCreationCoordinator {
     if (batchError) throw new Error(batchError);
     for (const item of input.workspaces) {
       const entry = previous?.entries.find((entry) => entry.entryId === item.entryId);
-      const error = workspaceConfigurationError(snapshot, item.configuration, entry?.status === "succeeded" ? entry.workspaceId : undefined);
+      const error = workspaceConfigurationError(snapshot, item.configuration, { ignoreWorkspaceId: entry?.status === "succeeded" ? entry.workspaceId : undefined, workThreadId: previous?.threadId ?? null });
       if (error) throw new Error(`${item.configuration.name}: ${error}`);
     }
     this.state = {

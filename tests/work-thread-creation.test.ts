@@ -3,7 +3,7 @@ import test from "node:test";
 import { WorkThreadCreationCoordinator } from "../src/main/application/work-thread-creation";
 import { emptySnapshot, type CreateWorkThreadInput, type CreateWorkspaceInput } from "../src/shared/domain";
 import { workThreadCreationSchema } from "../src/shared/contract";
-import type { WorkThreadCreation, WorkThreadCreationInput } from "../src/shared/work-thread-creation";
+import { projectDirectorySharingWarning, workspaceConfigurationError, type WorkThreadCreation, type WorkThreadCreationInput } from "../src/shared/work-thread-creation";
 
 function fixture() {
   const snapshot = emptySnapshot();
@@ -143,10 +143,62 @@ test("successful entries are immutable, and concurrent operations/discard are re
   assert.equal(f.snapshot.workThreads.length, 1);
 });
 
-test("ordinary folders accept main workspaces and existing main ownership is rejected", async () => {
+test("ordinary folders allow different thread creations to share the main directory", async () => {
   const f = fixture();
   f.snapshot.checkouts[0]!.isGit = false;
   f.input.workspaces = [{ entryId: "main", configuration: { name: "directory", projectId: "project", deviceId: "local", kind: "main" } }];
   f.coordinator.submit(f.input); await f.finish(); f.coordinator.discard(f.input.operationId);
-  assert.throws(() => f.coordinator.submit({ ...f.input, operationId: "next", name: "Another", workspaces: [{ entryId: "another", configuration: { ...f.input.workspaces[0]!.configuration, name: "other" } }] }), /already used/);
+  f.coordinator.submit({ ...f.input, operationId: "next", name: "Another", workspaces: [{ entryId: "another", configuration: { ...f.input.workspaces[0]!.configuration, name: "other" } }] });
+  assert.equal((await f.finish()).status, "completed");
+  assert.equal(f.snapshot.workThreads.length, 2);
+  assert.equal(f.snapshot.workspaces.length, 2);
+  assert.equal(f.snapshot.sessions.length, 2);
+});
+
+
+test("directory sharing warnings include all owners, archived threads and standalone without blocking a new thread", async () => {
+  const f = fixture();
+  const configuration = { kind: "main" as const, name: "new-main", projectId: "project", deviceId: "local" };
+  assert.equal(projectDirectorySharingWarning(f.snapshot, configuration), undefined);
+  f.input.workspaces = [{ entryId: "main", configuration: { ...configuration, name: "first-main" } }];
+  f.coordinator.submit(f.input);
+  const created = await f.finish();
+  const workspace = f.snapshot.workspaces[0]!;
+  f.snapshot.workThreads[0]!.status = "archived";
+  f.snapshot.workspaces.push({ ...workspace, id: "standalone", name: "standalone-main", workThreadId: undefined });
+  const warning = projectDirectorySharingWarning(f.snapshot, configuration)!;
+  assert.match(warning, /first-main.*Work Thread: Feature/);
+  assert.match(warning, /standalone-main.*Standalone/);
+  assert.match(warning, /File changes and Git branch switches affect every workspace/);
+  assert.equal(workspaceConfigurationError(f.snapshot, configuration, { workThreadId: null }), undefined);
+  assert.equal(workspaceConfigurationError(f.snapshot, configuration, { workThreadId: "another" }), undefined);
+  assert.match(workspaceConfigurationError(f.snapshot, configuration, { workThreadId: created.threadId })!, /already used/);
+  assert.match(workspaceConfigurationError(f.snapshot, configuration)!, /already used/);
+  assert.equal(workspaceConfigurationError(f.snapshot, f.input.workspaces[0]!.configuration, { workThreadId: created.threadId, ignoreWorkspaceId: workspace.id }), undefined);
+  assert.equal(projectDirectorySharingWarning(f.snapshot, { ...configuration, deviceId: "remote" }), undefined);
+  assert.equal(projectDirectorySharingWarning(f.snapshot, { ...configuration, projectId: "other" }), undefined);
+  assert.equal(projectDirectorySharingWarning(f.snapshot, f.input.workspaces[0]!.configuration, workspace.id)!.includes("first-main"), false);
+  assert.equal(projectDirectorySharingWarning(f.snapshot, { ...configuration, kind: "worktree", baseBranch: "main" }), undefined);
+});
+
+test("sharing directory permissions never relax device-wide workspace names", async () => {
+  const f = fixture();
+  f.input.workspaces = [{ entryId: "main", configuration: { kind: "main", name: "same-name", projectId: "project", deviceId: "local" } }];
+  f.coordinator.submit(f.input); await f.finish(); f.coordinator.discard(f.input.operationId);
+  assert.throws(() => f.coordinator.submit({ ...f.input, operationId: "next", name: "Another" }), /already exists/);
+});
+
+
+test("retry preserves a successful shared main workspace and creates only the failed item", async () => {
+  const f = fixture();
+  f.input.workspaces[0]!.configuration = { name: "one", kind: "main", projectId: "project", deviceId: "local" };
+  f.failures.add("two"); f.coordinator.submit(f.input);
+  const paused = await f.finish();
+  assert.equal(paused.status, "paused");
+  const firstId = paused.entries[0]!.workspaceId;
+  f.snapshot.workspaces.push({ ...f.snapshot.workspaces[0]!, id: "other-main", name: "other-main", workThreadId: "other-thread" });
+  f.failures.clear(); f.coordinator.submit(f.input);
+  assert.equal((await f.finish()).status, "completed");
+  assert.equal(f.coordinator.current()!.entries[0]!.workspaceId, firstId);
+  assert.deepEqual(f.calls, ["one", "two", "two", "three"]);
 });

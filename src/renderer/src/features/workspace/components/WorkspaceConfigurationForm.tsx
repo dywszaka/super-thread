@@ -1,8 +1,8 @@
-import { Folder, GitBranch, HardDrive } from "lucide-react";
+import { Folder, GitBranch, HardDrive, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import type { AppSnapshot } from "@/shared/domain";
 import { createWorkspaceSchema } from "@/shared/contract";
-import { workspaceConfigurationError, type WorkspaceConfiguration } from "@/shared/work-thread-creation";
+import { projectDirectorySharingWarning, workspaceConfigurationError, type WorkspaceConfiguration } from "@/shared/work-thread-creation";
 import { Field } from "./Modal";
 import { WorkspaceLinks } from "./WorkspaceLinks";
 
@@ -14,14 +14,19 @@ export function initialWorkspaceConfiguration(snapshot: AppSnapshot, projectId?:
   return checkout?.isGit === false ? { ...common, kind: "main" } : { ...common, kind: "worktree", baseBranch: checkout?.defaultBranch ?? project?.defaultBranch ?? "main" };
 }
 
-export function configurationError(snapshot: AppSnapshot, configuration: WorkspaceConfiguration): string | undefined {
+export function configurationError(snapshot: AppSnapshot, configuration: WorkspaceConfiguration, workThreadId?: string | null): string | undefined {
   const parsed = createWorkspaceSchema.safeParse(configuration);
   if (!parsed.success) return "Enter a valid name (letters, numbers, dots, dashes, underscores) and base branch.";
-  return workspaceConfigurationError(snapshot, parsed.data);
+  return workspaceConfigurationError(snapshot, parsed.data, { workThreadId });
 }
 
-export function WorkspaceConfigurationForm({ snapshot, value, onChange, disabled = false, preparedOnly = true, onSetup }: {
-  snapshot: AppSnapshot; value: WorkspaceConfiguration; onChange(value: WorkspaceConfiguration): void; disabled?: boolean; preparedOnly?: boolean; onSetup?(): void;
+export function WorkspaceSharingNotice({ snapshot, value, workspaceId }: { snapshot: AppSnapshot; value: WorkspaceConfiguration; workspaceId?: string }): ReactNode {
+  const warning = projectDirectorySharingWarning(snapshot, value, workspaceId);
+  return warning ? <div className="callout" role="status"><TriangleAlert size={16} /><span>{warning}</span></div> : null;
+}
+
+export function WorkspaceConfigurationForm({ snapshot, value, onChange, workThreadId, disabled = false, preparedOnly = true, onSetup }: {
+  snapshot: AppSnapshot; value: WorkspaceConfiguration; onChange(value: WorkspaceConfiguration): void; workThreadId?: string | null; disabled?: boolean; preparedOnly?: boolean; onSetup?(): void;
 }): ReactNode {
   const checkout = snapshot.checkouts.find((item) => item.projectId === value.projectId && item.deviceId === value.deviceId);
   const project = snapshot.projects.find((item) => item.id === value.projectId);
@@ -36,7 +41,7 @@ export function WorkspaceConfigurationForm({ snapshot, value, onChange, disabled
     const common = { projectId: value.projectId, deviceId: value.deviceId, name: value.name };
     onChange(kind === "main" ? { ...common, kind } : { ...common, kind, baseBranch: checkout?.defaultBranch ?? project?.defaultBranch ?? "main", linkPaths: [] });
   };
-  const error = value.name && !disabled ? configurationError(snapshot, value) : undefined;
+  const error = value.name && !disabled ? configurationError(snapshot, value, workThreadId) : undefined;
   return <fieldset className="workspace-configuration" disabled={disabled}>
     <div className="form-grid two">
       <Field label="Project"><select value={value.projectId} onChange={(event) => changeCheckout(event.target.value)}>
@@ -54,6 +59,7 @@ export function WorkspaceConfigurationForm({ snapshot, value, onChange, disabled
         <button type="button" disabled={disabled} aria-pressed={value.kind === "main"} className={value.kind === "main" ? "active" : ""} onClick={() => changeKind("main")}><HardDrive size={15} /> Project directory</button>
       </div></div>
       {checkout.isGit === false && <div className="callout"><Folder size={16} /><span>This folder uses its project directory directly.</span></div>}
+      <WorkspaceSharingNotice snapshot={snapshot} value={value} />
       <Field label="Workspace name" hint={value.kind === "main" ? `Uses ${checkout.path} directly` : `Creates branch work/${value.name || "workspace-name"}`} error={error}>
         <input value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} maxLength={80} placeholder="workspace-name" aria-invalid={Boolean(error)} />
       </Field>

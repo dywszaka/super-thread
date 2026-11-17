@@ -359,7 +359,7 @@ test("failed standalone workspace creation removes the pending workspace record"
   assert.deepEqual(service.snapshot().sessions, []);
 });
 
-test("a Project x Device can have one main-checkout workspace", async () => {
+test("different threads share a main checkout with independent sessions and cleanup", async () => {
   let worktreeCalled = false;
   let deleteCalled = false;
   const created: Session[] = [];
@@ -389,13 +389,20 @@ test("a Project x Device can have one main-checkout workspace", async () => {
   assert.equal(created[0]?.cwd, "/tmp/demo");
 
   await assert.rejects(
-    () => service.createWorkspace({ workThreadId: other!.id, projectId: "project-1", deviceId: "dev_local", name: "duplicate", kind: "main" }),
+    () => service.createWorkspace({ workThreadId: owner!.id, projectId: "project-1", deviceId: "dev_local", name: "duplicate", kind: "main" }),
     /already used by.*Main owner/
   );
 
-  await service.deleteWorkspace(workspace!.id);
+  const sharedId = await service.createWorkspace({ workThreadId: other!.id, projectId: "project-1", deviceId: "dev_local", name: "shared-main", kind: "main" });
+  assert.equal(service.snapshot().workspaces[1]!.path, workspace!.path);
+  const sharedSession = service.snapshot().sessions.find((item) => item.workspaceId === sharedId)!;
+  assert.ok(sharedSession);
+  assert.notEqual(sharedSession.id, service.snapshot().sessions.find((item) => item.workspaceId === workspace!.id)!.id);
+  await service.finishWorkThread({ id: owner!.id, workspaceIds: [workspace!.id], forceWorkspaceIds: [] });
   assert.equal(deleteCalled, false);
-  assert.deepEqual(service.snapshot().workspaces, []);
+  assert.deepEqual(service.snapshot().workspaces.map((item) => item.id), [sharedId]);
+  assert.deepEqual(service.snapshot().sessions.map((item) => item.id), [sharedSession.id]);
+  assert.equal(service.snapshot().workThreads.find((item) => item.id === owner!.id)!.status, "archived");
   assert.equal(service.snapshot().checkouts[0]?.path, "/tmp/demo");
 });
 
@@ -416,13 +423,18 @@ test("standalone and thread creation share atomic workspace uniqueness rules", a
     service.createWorkspace({ ...main, name: "duplicate-main", workThreadId: thread.id })
   ]);
   assert.equal(standalone.status, "fulfilled");
-  assert.equal(linked.status, "rejected");
-  assert.match(String(linked.reason), /already used by “standalone”$/);
+  assert.equal(linked.status, "fulfilled");
+  const duplicateResults = await Promise.allSettled([
+    service.createWorkspace({ ...main, name: "another-standalone" }),
+    service.createWorkspace({ ...main, name: "another-linked", workThreadId: thread.id })
+  ]);
+  assert.ok(duplicateResults.every((result) => result.status === "rejected" && /already used/.test(String(result.reason))));
   await assert.rejects(
     () => service.createWorkspace({ ...main, kind: "worktree", baseBranch: "main", workThreadId: thread.id }),
     /A workspace named standalone already exists/
   );
 
+  if (linked.status === "fulfilled") await service.deleteWorkspace(linked.value);
   await service.deleteWorkThread(thread.id);
   const workspace = service.snapshot().workspaces[0]!;
   assert.equal(workspace.id, standalone.value);

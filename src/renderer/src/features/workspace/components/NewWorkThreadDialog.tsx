@@ -7,7 +7,7 @@ import { MAX_WORK_THREAD_DOCUMENT_LENGTH, workThreadCreationSchema } from "@/sha
 import { batchWorkspaceError } from "@/shared/work-thread-creation";
 import { useWorkbenchStore, type WorkThreadCreationDraft } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
-import { configurationError, initialWorkspaceConfiguration, WorkspaceConfigurationForm } from "./WorkspaceConfigurationForm";
+import { configurationError, initialWorkspaceConfiguration, WorkspaceConfigurationForm, WorkspaceSharingNotice } from "./WorkspaceConfigurationForm";
 
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -31,7 +31,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
   const entryState = (entryId: string) => creation?.entries.find((item) => item.entryId === entryId);
   const leftover = creation?.entries.find((item) => item.status === "failed" && snapshot.workspaces.some((workspace) => workspace.id === item.workspaceId));
   const nameError = !draft.name.trim() ? "Enter a work thread name." : !locked && snapshot.workThreads.some((item) => item.name.toLowerCase() === draft.name.trim().toLowerCase()) ? "A work thread with this name already exists." : undefined;
-  const workspaceError = draft.workspaces.length === 0 ? "Add at least one workspace." : draft.workspaces.map((item) => entryState(item.entryId)?.status === "succeeded" ? undefined : configurationError(snapshot, item.configuration)).find(Boolean) ?? batchWorkspaceError(draft);
+  const workspaceError = draft.workspaces.length === 0 ? "Add at least one workspace." : draft.workspaces.map((item) => entryState(item.entryId)?.status === "succeeded" ? undefined : configurationError(snapshot, item.configuration, creation?.threadId ?? null)).find(Boolean) ?? batchWorkspaceError(draft);
   const next = (): void => {
     const issue = draft.step === 0 ? nameError : workspaceError;
     if (issue) { setError(issue); return; }
@@ -76,7 +76,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
         const residual = item.entryId === leftover?.entryId;
         return <section className="creation-workspace" key={item.entryId} aria-label={`Workspace ${index + 1}`}>
           <div className="creation-workspace-heading"><strong>Workspace {index + 1}{succeeded ? " · Created" : ""}</strong><button type="button" className="icon-button" aria-label={`Remove workspace ${index + 1}`} disabled={running || succeeded || residual} onClick={() => update({ workspaces: draft.workspaces.filter((entry) => entry.entryId !== item.entryId) })}><Trash2 size={15} /></button></div>
-          <WorkspaceConfigurationForm snapshot={snapshot} value={item.configuration} disabled={running || succeeded || residual} onChange={(configuration) => update({ workspaces: draft.workspaces.map((entry) => entry.entryId === item.entryId ? { ...entry, configuration } : entry) })} />
+          <WorkspaceConfigurationForm workThreadId={creation?.threadId ?? null} snapshot={snapshot} value={item.configuration} disabled={running || succeeded || residual} onChange={(configuration) => update({ workspaces: draft.workspaces.map((entry) => entry.entryId === item.entryId ? { ...entry, configuration } : entry) })} />
         </section>;
       })}
       <button type="button" className="button" disabled={running || draft.workspaces.length >= 100 || snapshot.checkouts.length === 0} onClick={() => update({ workspaces: [...draft.workspaces, { entryId: crypto.randomUUID(), configuration: initialWorkspaceConfiguration(snapshot) }] })}><Plus size={14} /> Add Workspace</button>
@@ -96,6 +96,7 @@ export function NewWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }): Re
           <p>{project?.name} · {device?.name}</p>
           <p>{configuration.kind === "main" ? "Project directory" : `Isolated worktree · ${configuration.baseBranch} → work/${configuration.name}`}</p>
           {configuration.kind === "worktree" && configuration.linkPaths?.length ? <p>Linked files/folders: {configuration.linkPaths.join(", ")}</p> : null}
+          <WorkspaceSharingNotice snapshot={snapshot} value={configuration} workspaceId={status?.workspaceId} />
           {status?.error && <p className="field-error">{status.error}</p>}
         </section>;
       })}</div>

@@ -487,7 +487,7 @@ WorkThread 是组织 Workspace 的顶级对象，不是 Task、Workflow 或执�
 ### 定义模板与时长提醒
 
 - New work thread 使用三步向导：填写名称与 Markdown → 配置至少一个 Workspace（可多个）→ 确认并创建。内容预填可编辑模板，默认包含「目标、范围、完成标准」及引导文字，允许修改或清空。模板仅初始化新草稿，不覆盖已有草稿。
-- 向导仅选择已存在 checkout 的 Project × Device；缺少时提示先到项目管理准备。每项复用独立 Workspace 的类型、名称、基础分支、可选链接表单。提交前检查线程重名、已有及批内 Workspace 名称冲突、checkout 可用性和 main 占用。
+- 向导仅选择已存在 checkout 的 Project × Device；缺少时提示先到项目管理准备。每项复用独立 Workspace 的类型、名称、基础分支、可选链接表单。提交前检查线程重名、已有及批内 Workspace 名称冲突、checkout 可用性和同线程内的 main 重复；跨线程共用主目录时在配置及确认页显示非阻断提醒。
 - 主进程按稳定操作 ID 与配置项 ID 管理单个运行时创建流程：先原子保存名称与正文并返回真实 thread ID，再依次创建 Workspace。所有 Workspace 及默认 Terminal 初始化成功才提示整体完成；弹窗可见时打开 Doc 并展开线程，弹窗已关闭时仅通知，不切换页面。
 - 某项失败暂停后续创建，保留成功项，允许修改失败及未执行项再继续；成功项锁定，重试不重复创建线程、Workspace 或终端，也不覆盖已保存的 Doc。单项失败沿用 Workspace 回滚；若回滚残留记录，显示记录与错误，删除残留前禁止重试。
 - 关闭、Escape 或点击遮罩保留草稿和进度；创建中关闭弹窗不取消主进程操作，再次点击 New Work Thread 恢复。运行时只保留一个未结束向导，运行中禁止放弃及删除/归档对应线程，相关 Workspace 也不能删除。未提交可 Discard draft；暂停时可 Discard remaining，保留已创建实体。完全退出应用后仅保留已创建实体，不持久化向导配置或自动继续。
@@ -624,7 +624,7 @@ interface Workspace {
 Workspace 有两种创建模式：
 
 - 普通文件夹自动选择 `main`，禁用 worktree、base branch 和 Link files and folders；主进程同样拒绝普通目录的 worktree 与链接请求。终端、浏览器与文件预览继续可用，branch/baseBranch 为空，界面不展示空的 Git 分支项。
-- `main`：直接使用所选 `Project × Device` 的 base checkout，不创建 worktree 或分支。每个 `Project × Device` 最多只能有一个 main Workspace；跨入口共用此限制。已占用时提示现有 Workspace 的名称，有归属时同时显示所属 WorkThread。
+- `main`：直接使用所选 `Project × Device` 的 base checkout，不创建 worktree 或分支。不同 WorkThread 可以共用同一主目录，独立 Workspace 也可与线程共用；每个 WorkThread 内及独立 Workspace 分组内，同一 `Project × Device` 最多保留一个 main Workspace，主进程以串行事务校验。Workspace 名称仍在同一设备内唯一。配置表单及向导确认页列出共用目录的 Workspace 名称和所属 WorkThread（包括归档线程）或 Standalone，并非阻断地提醒文件改动、Git 分支切换会相互影响，建议需要隔离时使用 worktree。各 Workspace 保持独立记录及终端；删除或 Finish 只清理自己的记录及会话，保留主目录与其他共用者。
 - `worktree`：从 base checkout 的本地 ref 创建隔离的 Git worktree 和 `work/{workspace-name}` 分支。
 
 用户：

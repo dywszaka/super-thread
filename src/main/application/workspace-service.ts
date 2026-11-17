@@ -650,7 +650,7 @@ export class WorkspaceService extends EventEmitter {
       if (!checkout) throw new Error("Project is not set up on the selected device");
       if (input.kind === "worktree" && checkout.isGit === false) throw new Error("Isolated worktrees require a Git repository. Use the project directory directly.");
       if (input.kind === "main") {
-        const existing = draft.workspaces.find((item) => item.projectId === project.id && item.deviceId === device.id && item.kind === "main");
+        const existing = draft.workspaces.find((item) => item.projectId === project.id && item.deviceId === device.id && item.kind === "main" && item.workThreadId === input.workThreadId);
         if (existing) {
           const owner = draft.workThreads.find((item) => item.id === existing.workThreadId);
           const context = owner ? ` in “${owner.name}”` : "";

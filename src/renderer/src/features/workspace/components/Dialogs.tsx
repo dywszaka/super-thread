@@ -206,7 +206,7 @@ function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode 
   const [workThreadId, setWorkThreadId] = useState(workspaceDialogThreadId ?? "");
   const [configuration, setConfiguration] = useState(() => initialWorkspaceConfiguration(snapshot, projectFilter ?? activeWorkspace?.projectId ?? snapshot.projects[0]?.id, activeWorkspace?.deviceId));
   const workThread = activeWorkThreads.find((item) => item.id === workThreadId);
-  const valid = !configurationError(snapshot, configuration) && (!workspaceDialogThreadId || Boolean(workThread));
+  const valid = !configurationError(snapshot, configuration, workThread?.id) && (!workspaceDialogThreadId || Boolean(workThread));
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!valid || busy) return;
@@ -225,7 +225,7 @@ function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode 
         {!workThread && <option value="" disabled>Select an active work thread</option>}
         {activeWorkThreads.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select></Field>}
-      <WorkspaceConfigurationForm snapshot={snapshot} value={configuration} onChange={setConfiguration} disabled={busy} preparedOnly={false} onSetup={() => openSetupProject(configuration.projectId, configuration.deviceId)} />
+      <WorkspaceConfigurationForm workThreadId={workThread?.id} snapshot={snapshot} value={configuration} onChange={setConfiguration} disabled={busy} preparedOnly={false} onSetup={() => openSetupProject(configuration.projectId, configuration.deviceId)} />
     </>}
   </Modal>;
 }
