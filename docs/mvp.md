@@ -759,6 +759,8 @@ Done
 删除 `worktree` Workspace：
 
 1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）。提交历史不包含原分支时，补充检查合并结果；若无冲突且合并后的 tree 与 base branch 相同，视为内容已合入，兼容 squash merge 及其后 base branch 的更新。检查不修改 checkout/worktree 的文件或 index；仍有内容差异、合并冲突或 Git 不支持该检查时，保留未合并警告。单独删除与 Work Thread Finish 使用相同规则。
+   - 递归检查已初始化的 submodule，按路径提示未提交修改、未跟踪文件和当前 HEAD 中尚未合入 base branch 所记录 submodule 版本的提交；嵌套 submodule 沿 base 中记录的 gitlink 逐级比较，不以 Workspace 中已暂存或已提交的新 gitlink 作为基准。不 fetch；忽略 submodule 的用户配置不能隐藏这些风险。无法验证 submodule 状态、base 缺少对应 gitlink 或本地缺少比较所需对象时，提示检查不完整及潜在代码丢失风险，仍允许用户确认后删除。
+   - 已初始化的 submodule 即使干净，也提示其目录将被删除并请求 force 确认，以满足 Git 的删除要求。上述 submodule 风险属于可确认警告，不构成永久禁止；用户取消时不停止终端、不删除目录或记录，明确确认后使用 `git worktree remove --force`，单独删除与 Finish 共用该流程。未初始化的 submodule 不额外要求 force。
 2. 停止所有 Session
 3. 删除 Git Worktree
 4. 删除对应 Branch

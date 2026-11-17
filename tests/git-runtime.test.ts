@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, realpath, symlink, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, symlink, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import type { CommandResult, Device, DeviceConnection } from "../src/shared/domain";
 import { GitRuntime } from "../src/main/runtime/git-runtime";
 import { ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
@@ -76,6 +76,114 @@ for (const [device, deviceConnection] of [[local, connection], [remote, remoteCo
     assert.deepEqual(runner.calls, []);
   });
 }
+
+async function submoduleFixture(t: TestContext, nested = false) {
+  const temporary = await mkdtemp(join(tmpdir(), "superthread-submodule-delete-"));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const root = await realpath(temporary);
+  const processRunner = new ProcessCommandRunner();
+  const runner: CommandRunner = { run: (program, args, options) => processRunner.run(program, program === "git"
+    ? ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=always", ...args] : args, options) };
+  const git = (cwd: string, ...args: string[]) => runner.run("git", ["-C", cwd, ...args]).then((result) => result.stdout);
+  const init = async (name: string) => {
+    const path = join(root, name);
+    await mkdir(path);
+    await git(path, "init", "-b", "main");
+    await writeFile(join(path, "file.txt"), "initial\n");
+    await git(path, "add", ".");
+    await git(path, "commit", "-m", "Initial");
+    return path;
+  };
+  const child = await init("child");
+  if (nested) {
+    const leaf = await init("leaf");
+    await git(child, "submodule", "add", leaf, "inner module");
+    await git(child, "commit", "-am", "Add nested submodule");
+  }
+  const repo = await init("repo");
+  const submoduleName = "deps/child ' 模块";
+  await git(repo, "submodule", "add", child, submoduleName);
+  await git(repo, "commit", "-am", "Add submodule");
+  const work = join(root, "workspace");
+  await git(repo, "worktree", "add", "-b", "work/test", work, "main");
+  return { repo, work, submoduleName, git, runner, runtime: new GitRuntime(local, connection, runner) };
+}
+
+test("clean initialized submodules require confirmation and can be force deleted", async (t) => {
+  const f = await submoduleFixture(t);
+  assert.equal((await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main")).submodules, undefined);
+  await f.git(f.work, "submodule", "update", "--init");
+  assert.equal(await f.git(f.work, "status", "--porcelain"), "");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main");
+  assert.deepEqual(risk.submodules, [{ path: f.submoduleName, hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }]);
+  await assert.rejects(() => f.runtime.deleteWorktree(f.repo, f.work, "work/test", false), /containing submodules/);
+  await f.runtime.deleteWorktree(f.repo, f.work, "work/test", true);
+  await assert.rejects(() => access(f.work));
+  await access(join(f.repo, "file.txt"));
+  await assert.rejects(() => f.git(f.repo, "rev-parse", "--verify", "refs/heads/work/test"));
+});
+
+test("recursive submodule checks find dirty files and commits even with ignored or committed gitlinks", async (t) => {
+  const f = await submoduleFixture(t, true);
+  await f.git(f.work, "submodule", "update", "--init", "--recursive");
+  const child = join(f.work, f.submoduleName);
+  const leaf = join(child, "inner module");
+  await writeFile(join(leaf, "file.txt"), "unmerged nested code\n");
+  await f.git(leaf, "commit", "-am", "Nested work");
+  await f.git(child, "commit", "-am", "Record nested work");
+  await f.git(f.work, "commit", "-am", "Record child work");
+  await writeFile(join(child, "file.txt"), "uncommitted code\n");
+  await writeFile(join(leaf, "scratch.txt"), "untracked code\n");
+  await f.git(f.work, "config", "diff.ignoreSubmodules", "all");
+  await f.git(child, "config", "status.showUntrackedFiles", "no");
+  await f.git(leaf, "config", "status.showUntrackedFiles", "no");
+  assert.equal(await f.git(f.work, "status", "--porcelain"), "");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main");
+  assert.equal(risk.submodules?.length, 2);
+  assert.equal(risk.submodules[0]!.path, f.submoduleName);
+  assert.equal(risk.submodules[0]!.hasUncommittedChanges, true);
+  assert.equal(risk.submodules[0]!.unmergedCommitCount, 1);
+  assert.deepEqual(risk.submodules[1], { path: `${f.submoduleName}/inner module`, hasUncommittedChanges: false, hasUntrackedFiles: true, unmergedCommitCount: 1 });
+  await f.runtime.deleteWorktree(f.repo, f.work, "work/test", true);
+  await assert.rejects(() => access(f.work));
+});
+
+test("missing submodule base objects produce a confirmable warning instead of failing inspection", async (t) => {
+  const f = await submoduleFixture(t);
+  await f.git(f.work, "submodule", "update", "--init");
+  await f.git(f.repo, "update-index", "--cacheinfo", `160000,${"1".repeat(40)},${f.submoduleName}`);
+  await f.git(f.repo, "commit", "-m", "Unavailable submodule version");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main");
+  assert.match(risk.submodules?.[0]?.warning ?? "", /could not verify commits/);
+  await f.runtime.deleteWorktree(f.repo, f.work, "work/test", true);
+});
+
+test("failed submodule status checks warn without preventing confirmed deletion", async (t) => {
+  const f = await submoduleFixture(t);
+  await f.git(f.work, "submodule", "update", "--init");
+  const submodulePath = join(f.work, f.submoduleName);
+  const runner: CommandRunner = { run: (program, args, options) => {
+    if (args[1] === submodulePath && args.includes("status")) throw new Error("Submodule status unavailable");
+    return f.runner.run(program, args, options);
+  } };
+  const runtime = new GitRuntime(local, connection, runner);
+  const risk = await runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main");
+  assert.match(risk.submodules?.[0]?.warning ?? "", /could not verify uncommitted changes or untracked files/);
+  await runtime.deleteWorktree(f.repo, f.work, "work/test", true);
+});
+
+test("failed submodule discovery is a confirmable warning", async (t) => {
+  const f = await submoduleFixture(t);
+  await f.git(f.work, "submodule", "update", "--init");
+  const runner: CommandRunner = { run: (program, args, options) => {
+    if (args.includes("foreach")) throw new Error("Submodule discovery unavailable");
+    return f.runner.run(program, args, options);
+  } };
+  const runtime = new GitRuntime(local, connection, runner);
+  const risk = await runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main");
+  assert.match(risk.submodules?.[0]?.warning ?? "", /could not inspect submodules/);
+  await runtime.deleteWorktree(f.repo, f.work, "work/test", true);
+});
 
 test("GitRuntime imports ordinary folders and resolves symlinks without accepting files or missing paths", async (t) => {
   const temporary = await mkdtemp(join(tmpdir(), "superthread-import-"));

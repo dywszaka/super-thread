@@ -116,6 +116,35 @@ test("failed checks cannot be bypassed with force and do not delete any workspac
   assert.equal(f.service.snapshot().workThreads[0]!.status, "active");
 });
 
+for (const submodule of [
+  { path: "deps/child", hasUncommittedChanges: true, hasUntrackedFiles: true, unmergedCommitCount: 2 },
+  { path: "deps/clean", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 },
+  { path: "deps/unknown", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, warning: "could not verify commits" }
+]) {
+  test(`submodule ${submodule.path} warnings allow workspace deletion and Finish after confirmation`, async () => {
+    const f = await fixture();
+    const risk = { hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, submodules: [submodule] };
+    f.risks.set("/work/one", risk);
+    f.risks.set("/work/two", risk);
+    const preview = await f.service.inspectWorkThreadFinish(f.threadId);
+    const inspected = preview.workspaces[0]!;
+    assert.equal(inspected.error, undefined);
+    assert.match(inspected.risks.join("\n"), new RegExp(submodule.path));
+    if (submodule.hasUncommittedChanges) assert.match(inspected.risks.join("\n"), /uncommitted changes.*untracked files.*2 commit\(s\) not merged/);
+    if (submodule.warning) assert.match(inspected.risks.join("\n"), /could not verify commits/);
+    await assert.rejects(() => f.service.deleteWorkspace("one"), /Workspace delete blocked.*Submodule/);
+    assert.equal(f.calls.length + f.killed.length, 0);
+    assert.equal(f.service.snapshot().workspaces.length, 3);
+    await f.service.deleteWorkspace("one", true);
+    await assert.rejects(() => f.service.finishWorkThread(f.input()), /Workspace delete blocked.*Submodule/);
+    assert.equal(f.service.snapshot().workThreads[0]!.status, "active");
+    await f.service.finishWorkThread({ ...f.input(), forceWorkspaceIds: ["two"] });
+    assert.deepEqual(f.calls.map((call) => call.force), [true, true]);
+    assert.equal(f.service.snapshot().workspaces.length, 0);
+    assert.equal(f.service.snapshot().workThreads[0]!.status, "archived");
+  });
+}
+
 test("partial deletion failure keeps thread active and retry touches only remaining workspaces", async () => {
   const f = await fixture(); f.failedDeletes.add("/work/two");
   await assert.rejects(() => f.service.finishWorkThread(f.input()), /1 workspace\(s\) deleted.*not archived/);

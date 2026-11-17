@@ -52,7 +52,8 @@ import { sortedWorkThreads } from "../../shared/work-thread-order";
 import { JsonStore } from "../persistence/json-store";
 import { DeviceCommandRunner, type CommandRunner } from "../runtime/command-runner";
 import { DirectoryRuntime } from "../runtime/directory-runtime";
-import { GitRuntime, type RepositoryInfo } from "../runtime/git-runtime";
+import { GitRuntime, type RepositoryInfo, type WorkspaceDeleteRisk } from "../runtime/git-runtime";
+export type { WorkspaceDeleteRisk } from "../runtime/git-runtime";
 import { SshTunnelSupervisor } from "../runtime/ssh-tunnel-supervisor";
 import type { SshTunnelRuntime } from "../../shared/domain";
 import { tunnelConflicts } from "../../shared/ssh-tunnels";
@@ -93,12 +94,6 @@ export interface WorkspaceGitRuntime {
   linkWorktreePaths(checkoutPath: string, workspacePath: string, paths: string[]): Promise<void>;
   inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk>;
   deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void>;
-}
-
-export interface WorkspaceDeleteRisk {
-  hasUncommittedChanges: boolean;
-  hasUntrackedFiles: boolean;
-  unmergedCommitCount: number;
 }
 
 export interface WorkspaceDirectoryRuntime {
@@ -1184,6 +1179,14 @@ export class WorkspaceService extends EventEmitter {
     if (risk.hasUncommittedChanges) risks.push("uncommitted changes");
     if (risk.hasUntrackedFiles) risks.push("untracked files");
     if (risk.unmergedCommitCount > 0) risks.push(`${risk.unmergedCommitCount} commit${risk.unmergedCommitCount === 1 ? "" : "s"} not merged into the base branch`);
+    for (const submodule of risk.submodules ?? []) {
+      const details = ["will be deleted"];
+      if (submodule.hasUncommittedChanges) details.push("uncommitted changes");
+      if (submodule.hasUntrackedFiles) details.push("untracked files");
+      if (submodule.unmergedCommitCount > 0) details.push(`${submodule.unmergedCommitCount} commit(s) not merged into the submodule version recorded by the base branch`);
+      if (submodule.warning) details.push(submodule.warning);
+      risks.push(`Submodule “${submodule.path}”: ${details.join("; ")}`);
+    }
     return risks;
   }
 

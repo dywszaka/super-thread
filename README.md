@@ -49,6 +49,8 @@ The implementation deliberately keeps the MVP domain to `WorkThread`, `Project`,
 
 Embedded terminals support ordinary shells only; workspace tmux opens exclusively in iTerm. Remote terminals keep one interactive SSH connection and never create periodic SSH sessions for activity checks. The overview distinguishes local activity from remote connection counts.
 
+Workspace deletion and Work Thread Finish recursively warn about initialized submodules, including uncommitted changes, untracked files, and commits not included in the submodule versions recorded by the project's base branch. Incomplete submodule checks also appear as warnings. Users can confirm force deletion to proceed; cancelling keeps the workspace and terminals intact. Clean initialized submodules require the same confirmation because Git requires force removal.
+
 On macOS, closing the window leaves the application runtime alive, so PTY sessions and established SSH tunnels continue and terminals can be reattached when the window is reopened. Tunnel retry timers and wake reconnects are suspended until a window is reopened. Quitting the application terminates the local runtime; recovery across a full runtime restart is intentionally a post-MVP concern.
 
 The sidebar has independently collapsible **Work Threads** and **Workspaces** sections. The Workspaces section lists standalone workspaces and its add button creates one without a work thread. **All workspaces** also includes workspaces in active work threads.
