@@ -574,6 +574,16 @@ input, textarea, [contenteditable="true"], .selectable {
   background: var(--accent);
 }
 
+.thread-row.contains-current {
+  color: var(--foreground);
+}
+
+.thread-row.contains-current .thread-scope > svg,
+.thread-row.contains-current .thread-pinned-indicator,
+.workspace-tree-row.selected > svg {
+  color: inherit;
+}
+
 .thread-row button {
   border: 0;
   background: transparent;

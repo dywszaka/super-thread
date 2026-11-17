@@ -197,13 +197,14 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
   };
 
   const workspaceRow = (workspace: Workspace, inScope: boolean): React.ReactNode => {
+    const isCurrent = activeWorkspaceId === workspace.id && inScope;
     const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
     const Icon = device?.type === "remote" ? Server : Laptop;
     const projectName = workspaceProjectName(snapshot, workspace);
     const deviceName = device?.name ?? "Unknown device";
     const context = `${deviceName} · ${projectName}`;
     return (
-      <button key={workspace.id} className={`workspace-tree-row ${activeWorkspaceId === workspace.id && inScope ? "selected" : ""}`} title={`${workspace.name}\n${context}`} aria-label={`${workspace.name}, Device: ${deviceName}, Project: ${projectName}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => openWorkspace(workspace)}>
+      <button key={workspace.id} className={`workspace-tree-row ${isCurrent ? "selected" : ""}`} aria-current={isCurrent ? "page" : undefined} title={`${workspace.name}\n${context}`} aria-label={`${workspace.name}, Device: ${deviceName}, Project: ${projectName}`} onContextMenu={(event) => openWorkspaceMenu(event, workspace)} onClick={() => openWorkspace(workspace)}>
         <Icon size={13} aria-hidden="true" />
         <span className="workspace-tree-label">
           <strong>{workspace.name}</strong>
@@ -250,6 +251,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
             const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
             const isExpanded = expandedThreadIds.includes(thread.id);
             const isSelected = scope.type === "work-thread" && scope.id === thread.id;
+            const isCurrent = isSelected && !activeWorkspaceId;
             return (
               <div
                 className={`thread-tree ${draggingThreadId === thread.id ? "dragging" : ""} ${dropTarget?.targetId === thread.id ? `drop-${dropTarget.placement}` : ""}`}
@@ -269,7 +271,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                   if (target) void reorderThread(target);
                 }}
               >
-                <div className={`thread-row ${isSelected ? "selected" : ""}`} onContextMenu={(event) => openThreadMenu(event, thread)}
+                <div className={`thread-row ${isCurrent ? "selected" : isSelected ? "contains-current" : ""}`} onContextMenu={(event) => openThreadMenu(event, thread)}
                   draggable
                   onDragStart={(event) => {
                     if (reorderBusy.current) { event.preventDefault(); return; }
@@ -285,7 +287,7 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
                   <button className="thread-disclosure" onClick={() => toggleThreadExpanded(thread.id)} aria-label={`${isExpanded ? "Collapse" : "Expand"} ${thread.name}`}>
                     {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
-                  <button className="thread-scope" onKeyDown={(event) => {
+                  <button className="thread-scope" aria-current={isCurrent ? "page" : undefined} onKeyDown={(event) => {
                     if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
                     event.preventDefault();
                     const group = activeThreads.filter((item) => item.pinned === thread.pinned);
