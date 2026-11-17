@@ -35,7 +35,8 @@ test("time filters use saved document time or creation time, with an inclusive c
 
 test("recent weeks are rolling seven-day windows; months clamp local month ends and leap years", () => {
   const now = new Date(2026, 10, 16, 15, 30).getTime();
-  assert.equal(workThreadTimeCutoff("all", 1, now), null);
+  assert.equal(workThreadTimeCutoff("weeks", 0, now), null);
+  assert.equal(workThreadTimeCutoff("months", 0, now), null);
   assert.equal(workThreadTimeCutoff("weeks", 2, now), now - 14 * 24 * 60 * 60 * 1000);
   for (const [year, months, expectedYear, expectedMonth, expectedDay] of [[2026, 1, 2026, 1, 28], [2024, 1, 2024, 1, 29], [2026, 3, 2025, 11, 31]]) {
     const result = new Date(workThreadTimeCutoff("months", months!, new Date(year!, 2, 31, 15, 30).getTime())!);

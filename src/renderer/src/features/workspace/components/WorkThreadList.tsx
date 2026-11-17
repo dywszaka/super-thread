@@ -21,19 +21,20 @@ function HighlightedText({ segments }: { segments: readonly SearchSegment[] }): 
 export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.ReactNode {
   const [status, setStatus] = useState<WorkThreadStatus | "all">("active");
   const [projectId, setProjectId] = useState("");
-  const [timeUnit, setTimeUnit] = useState<WorkThreadTimeUnit>("all");
-  const [timeCount, setTimeCount] = useState(1);
+  const [timeUnit, setTimeUnit] = useState<WorkThreadTimeUnit>("weeks");
+  const [timeCount, setTimeCount] = useState(0);
   const [clock, setClock] = useState(Date.now());
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isComposing, setIsComposing] = useState(false);
   const [search] = useState(() => new WorkThreadSearch());
   const searchField = useRef<HTMLInputElement | null>(null);
-  const selectedProjectId = snapshot.projects.some((project) => project.id === projectId) ? projectId : "";
+  const selectedProject = snapshot.projects.find((project) => project.id === projectId);
+  const selectedProjectId = selectedProject?.id ?? "";
   const projects = useMemo(() => [...snapshot.projects].sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code)), [snapshot.projects]);
   const results = useMemo(() => search.search(filterWorkThreads(snapshot.workThreads, snapshot.workspaces, selectedProjectId, workThreadTimeCutoff(timeUnit, timeCount, clock)), searchQuery), [search, snapshot.workThreads, snapshot.workspaces, selectedProjectId, timeUnit, timeCount, clock, searchQuery]);
   const threads = results[status];
-  const hasFilters = Boolean(selectedProjectId) || timeUnit !== "all";
+  const hasFilters = Boolean(selectedProjectId) || timeCount > 0;
   const clearSearch = (): void => {
     setSearchInput("");
     setSearchQuery("");
@@ -42,8 +43,8 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   };
   const clearFilters = (): void => {
     setProjectId("");
-    setTimeUnit("all");
-    setTimeCount(1);
+    setTimeUnit("weeks");
+    setTimeCount(0);
     clearSearch();
   };
   useEffect(() => {
@@ -59,12 +60,10 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   }, [searchInput, isComposing]);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
-  const content = useRef<HTMLDivElement>(null);
   const documentSlot = useRef<HTMLDivElement>(null);
   const drawerAnimation = useRef<Animation | null>(null);
   const list = useRef<HTMLElement>(null);
   const listScroll = useRef(0);
-  const [compact, setCompact] = useState(false);
   const documentTrigger = useRef<HTMLButtonElement | null>(null);
   const restoreListFocus = useRef(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -113,17 +112,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
   useLayoutEffect(() => () => drawerAnimation.current?.cancel(), []);
 
   useLayoutEffect(() => {
-    const element = content.current;
-    if (!element) return;
-    const measure = (): void => setCompact(element.clientWidth < 960);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  useLayoutEffect(() => {
-    if (drawerPresent && compact) return;
+    if (drawerPresent) return;
     if (list.current) list.current.scrollTop = listScroll.current;
     if (!drawerPresent && restoreListFocus.current) {
       restoreListFocus.current = false;
@@ -131,7 +120,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
       if (trigger?.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
       else searchField.current?.focus({ preventScroll: true });
     }
-  }, [drawerPresent, compact]);
+  }, [drawerPresent]);
 
   const archive = async (id: string, name: string): Promise<void> => {
     if (!confirm(`Archive “${name}”?\n\nIts workspaces will be hidden from active views. Running terminal sessions will continue.`)) return;
@@ -172,18 +161,19 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
 
   return (
     <main className="work-thread-page">
-      <header className="work-thread-page-header drag">
+      <header className="work-thread-page-header drag" inert={drawerPresent} aria-hidden={drawerPresent}>
         <SidebarReopenButton />
         <div><h1>Work Threads</h1><p>Organize related workspaces without changing their runtime state.</p></div>
         <button className="button primary no-drag" onClick={() => openDialog("workThread")}><Plus size={14} /> New Work Thread</button>
       </header>
-      <div ref={content} className={`work-thread-content ${drawerPresent ? "has-document" : ""} ${compact ? "is-compact" : ""}`}>
-        <div className="work-thread-list-region" inert={drawerPresent && compact} aria-hidden={drawerPresent && compact}>
-          <section ref={list} className="work-thread-page-body no-drag" onScroll={(event) => { if (!compact || !drawerPresent) listScroll.current = event.currentTarget.scrollTop; }}>
+      {drawerPresent && <button type="button" className="work-thread-document-backdrop no-drag" aria-label="Dismiss document drawer" tabIndex={-1} onClick={closeDocument} />}
+      <div className="work-thread-content">
+        <div className="work-thread-list-region" inert={drawerPresent} aria-hidden={drawerPresent}>
+          <section ref={list} className="work-thread-page-body no-drag" onScroll={(event) => { listScroll.current = event.currentTarget.scrollTop; }}>
             <div className="work-thread-list-toolbar">
               <div className="work-thread-search" role="search" aria-label="Search work threads">
                 <Search size={15} aria-hidden="true" />
-                <input ref={searchField} type="search" aria-label="Search names and documents" placeholder="Search names and documents…" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} onCompositionStart={() => setIsComposing(true)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} />
+                <input ref={searchField} type="search" aria-label="Search names and documents" placeholder="Search threads…" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} onCompositionStart={() => setIsComposing(true)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} />
                 {searchInput && <button className="icon-button" type="button" aria-label="Clear search" onClick={clearSearch}><X size={14} /></button>}
               </div>
               <div className="segmented thread-status-filter" role="group" aria-label="Work thread status">
@@ -192,20 +182,21 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                 <button aria-pressed={status === "archived"} className={status === "archived" ? "active" : ""} onClick={() => setStatus("archived")}>Archived ({results.archived.length})</button>
               </div>
               <div className="work-thread-filters">
-                <label className="work-thread-project-filter">Project
-                  <select aria-label="Filter by project" value={selectedProjectId} onChange={(event) => setProjectId(event.target.value)}>
-                    <option value="">All projects</option>
-                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name} · {project.code}</option>)}
+                <select className="work-thread-project-filter" aria-label="Filter by project" title={selectedProject ? `${selectedProject.name} · ${selectedProject.code}` : "All projects"} value={selectedProjectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">All projects</option>
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name} · {project.code}</option>)}
+                </select>
+                <div className={`work-thread-time-filter ${timeCount === 0 ? "is-inactive" : ""}`} role="group" aria-label="Filter by document update time" title={timeCount === 0 ? "No time filter (0)" : `Document updated in the last ${timeCount} ${timeUnit}`}>
+                  <select className="work-thread-time-count" aria-label="Number of weeks or months" value={timeCount} onChange={(event) => { setTimeCount(Number(event.target.value)); setClock(Date.now()); }}>
+                    {Array.from({ length: 13 }, (_, count) => <option key={count} value={count}>{count}</option>)}
                   </select>
-                </label>
-                <div className="work-thread-time-filter" role="group" aria-label="Filter by document update time">
-                  <span>Last update</span>
-                  {timeUnit !== "all" && <label className="work-thread-time-count">Last <input type="number" aria-label="Number of weeks or months" min={1} max={1200} step={1} value={timeCount} onChange={(event) => setTimeCount(Math.max(1, Math.min(1200, Math.trunc(Number(event.target.value) || 1))))} /></label>}
-                  <select aria-label="Time range" value={timeUnit} onChange={(event) => { setTimeUnit(event.target.value as WorkThreadTimeUnit); setClock(Date.now()); }}>
-                    <option value="all">All time</option><option value="weeks">Weeks</option><option value="months">Months</option>
-                  </select>
+                  <div className="segmented work-thread-time-units" role="group" aria-label="Time unit">
+                    <button aria-label="Weeks" aria-pressed={timeUnit === "weeks"} className={timeUnit === "weeks" ? "active" : ""} onClick={() => { setTimeUnit("weeks"); setClock(Date.now()); }}>周</button>
+                    <span aria-hidden="true">｜</span>
+                    <button aria-label="Months" aria-pressed={timeUnit === "months"} className={timeUnit === "months" ? "active" : ""} onClick={() => { setTimeUnit("months"); setClock(Date.now()); }}>月</button>
+                  </div>
                 </div>
-                {hasFilters && <button className="button" onClick={clearFilters}>Clear filters</button>}
+                {hasFilters && <button className="icon-button" aria-label="Clear filters" title="Clear filters" onClick={clearFilters}><X size={14} /></button>}
               </div>
             </div>
             <div className="work-thread-cards">
@@ -238,7 +229,7 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
           {documentThread && <aside id="work-thread-document-drawer" className="work-thread-document-drawer no-drag" role="dialog" aria-modal="false" aria-label={`Document for ${documentThread.name}`} onKeyDown={(event) => {
             if (event.key === "Escape" && !event.defaultPrevented) { event.stopPropagation(); closeDocument(); }
           }}>
-            <WorkThreadDocument key={documentThread.id} thread={documentThread} snapshot={snapshot} onClose={closeDocument} backToList={compact} />
+            <WorkThreadDocument key={documentThread.id} thread={documentThread} snapshot={snapshot} onClose={closeDocument} />
           </aside>}
         </div>
       </div>

@@ -1,10 +1,10 @@
 import type { WorkThread, Workspace } from "@/shared/domain";
 import { workThreadDocumentUpdate } from "./selection";
 
-export type WorkThreadTimeUnit = "all" | "weeks" | "months";
+export type WorkThreadTimeUnit = "weeks" | "months";
 
 export function workThreadTimeCutoff(unit: WorkThreadTimeUnit, count: number, now: number): number | null {
-  if (unit === "all") return null;
+  if (count === 0) return null;
   if (unit === "weeks") return now - count * 7 * 24 * 60 * 60 * 1000;
   const cutoff = new Date(now);
   const day = cutoff.getDate();

@@ -1486,6 +1486,8 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-page {
+  position: relative;
+  isolation: isolate;
   min-height: 0;
   flex: 1;
   display: flex;
@@ -1529,14 +1531,15 @@ input, textarea, [contenteditable="true"], .selectable {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   max-width: 960px;
   margin-bottom: var(--space-5);
 }
 
 .work-thread-search {
   min-width: 0;
-  flex: 1 1 240px;
+  flex: 1 1 160px;
+  max-width: 280px;
   height: var(--control-height);
   display: flex;
   align-items: center;
@@ -1594,60 +1597,89 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .thread-status-filter {
-  width: 360px;
+  flex: none;
+  width: auto;
   max-width: 100%;
 }
 
-.work-thread-filters {
-  flex: 1 0 100%;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--text-control);
-  color: var(--muted-foreground);
+.thread-status-filter.segmented button {
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+  font-size: var(--text-xs);
 }
 
-.work-thread-project-filter, .work-thread-time-filter, .work-thread-time-count {
+.work-thread-filters {
+  flex: 1 1 300px;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.work-thread-project-filter {
-  flex: 1 1 220px;
-  max-width: 360px;
+  font-size: var(--text-control);
+  color: var(--foreground);
 }
 
 .work-thread-time-filter {
-  flex-wrap: wrap;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
-.work-thread-filters select, .work-thread-filters input {
+.work-thread-filters select {
   min-width: 0;
   height: var(--control-height);
   padding: 0 var(--space-2);
   border: 1px solid var(--input-border);
   border-radius: var(--radius-control);
   background: var(--control-background);
-  color: var(--foreground);
+  color: inherit;
   font-size: var(--text-control);
 }
 
-.work-thread-filters select:hover, .work-thread-filters input:hover {
+.work-thread-filters select:hover {
   border-color: var(--input-border-hover);
 }
 
-.work-thread-project-filter select {
+.work-thread-project-filter {
   flex: 1;
+  max-width: 200px;
   width: 0;
   text-overflow: ellipsis;
 }
 
-.work-thread-time-count input {
-  width: 68px;
+.work-thread-time-count {
+  width: 52px;
+}
+
+.work-thread-time-units.segmented {
+  height: var(--control-height);
+  width: 80px;
+  align-items: center;
+}
+
+.work-thread-time-units.segmented button {
+  height: 100%;
+  padding: 0;
+  color: inherit;
+}
+
+.work-thread-time-units > span {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.work-thread-time-filter.is-inactive,
+.work-thread-time-filter.is-inactive .segmented button.active {
+  color: var(--muted-foreground);
+}
+
+.work-thread-time-filter.is-inactive .segmented button.active {
+  background: var(--control-background);
+  box-shadow: none;
+}
+
+.work-thread-filters > .icon-button {
+  flex: none;
 }
 
 .work-thread-status-badge {
@@ -3523,6 +3555,7 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-content {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -3537,14 +3570,6 @@ input, textarea, [contenteditable="true"], .selectable {
   display: flex;
   flex-direction: column;
   container-type: inline-size;
-}
-
-.work-thread-content.has-document:not(.is-compact) .work-thread-list-region {
-  flex: 0 0 clamp(360px, 38%, 420px);
-}
-
-.work-thread-content.has-document.is-compact .work-thread-list-region {
-  display: none;
 }
 
 .work-thread-card .work-thread-card-meta {
@@ -3570,11 +3595,26 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-document-slot {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 0 auto;
+  width: calc(100% - 40px);
   display: none;
   min-width: 0;
   min-height: 0;
-  flex: 1;
   overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.work-thread-document-backdrop {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--overlay-background);
+  cursor: pointer;
 }
 
 .work-thread-document-slot.is-open {
@@ -3613,8 +3653,8 @@ input, textarea, [contenteditable="true"], .selectable {
   .work-thread-page-body {
     padding: var(--space-3);
   }
-  .thread-status-filter {
-    width: 100%;
+  .work-thread-filters {
+    flex-basis: 100%;
   }
   .work-thread-card {
     padding: var(--space-3);
