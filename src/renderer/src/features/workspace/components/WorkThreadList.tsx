@@ -1,4 +1,4 @@
-import { ArchiveRestore, Check, FolderGit2, MessagesSquare, Plus, Search, X } from "lucide-react";
+import { ArchiveRestore, FolderGit2, MessagesSquare, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, WorkThread, WorkThreadStatus } from "@/shared/domain";
@@ -192,12 +192,12 @@ export function WorkThreadList({ snapshot }: { snapshot: AppSnapshot }): React.R
                     {Array.from({ length: 13 }, (_, count) => <option key={count} value={count}>{count}</option>)}
                   </select>
                   <div className="segmented work-thread-time-units" role="group" aria-label="Time unit">
-                    <button aria-label="Weeks" aria-pressed={timeUnit === "weeks"} className={timeUnit === "weeks" ? "active" : ""} onClick={() => { setTimeUnit("weeks"); setClock(Date.now()); }}><Check size={10} className="time-unit-check" aria-hidden="true" />周</button>
+                    <button aria-label="Weeks" aria-pressed={timeUnit === "weeks"} className={timeUnit === "weeks" ? "active" : ""} onClick={() => { setTimeUnit("weeks"); setClock(Date.now()); }}>周</button>
                     <span aria-hidden="true">｜</span>
-                    <button aria-label="Months" aria-pressed={timeUnit === "months"} className={timeUnit === "months" ? "active" : ""} onClick={() => { setTimeUnit("months"); setClock(Date.now()); }}><Check size={10} className="time-unit-check" aria-hidden="true" />月</button>
+                    <button aria-label="Months" aria-pressed={timeUnit === "months"} className={timeUnit === "months" ? "active" : ""} onClick={() => { setTimeUnit("months"); setClock(Date.now()); }}>月</button>
                   </div>
                 </div>
-                {hasFilters && <button className="icon-button" aria-label="Clear filters" title="Clear filters" onClick={clearFilters}><X size={14} /></button>}
+                <button className={`icon-button work-thread-clear-filters ${hasFilters ? "" : "is-hidden"}`} aria-label="Clear filters" aria-hidden={!hasFilters} disabled={!hasFilters} title="Clear filters" onClick={clearFilters}><X size={14} /></button>
               </div>
             </div>
             <div className="work-thread-cards">

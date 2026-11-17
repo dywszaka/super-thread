@@ -1599,8 +1599,8 @@ input, textarea, [contenteditable="true"], .selectable {
 .thread-status-filter.segmented {
   flex: none;
   display: grid;
-  grid-template-columns: 76px 94px 108px;
-  width: 288px;
+  grid-template-columns: 62px 80px 94px;
+  width: 246px;
   max-width: 100%;
 }
 
@@ -1614,7 +1614,7 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .thread-status-count {
   flex: none;
-  width: calc(4ch + 10px);
+  width: calc(2ch + 10px);
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: right;
@@ -1622,7 +1622,7 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-filters {
-  flex: 1 1 300px;
+  flex: none;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1654,9 +1654,8 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .work-thread-project-filter {
-  flex: 1;
-  max-width: 200px;
-  width: 0;
+  flex: 0 0 200px;
+  width: 200px;
   text-overflow: ellipsis;
 }
 
@@ -1666,7 +1665,7 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .work-thread-time-units.segmented {
   height: var(--control-height);
-  width: 104px;
+  width: 80px;
   align-items: center;
 }
 
@@ -1682,15 +1681,6 @@ input, textarea, [contenteditable="true"], .selectable {
   color: var(--primary-foreground);
   font-weight: var(--weight-semibold);
   box-shadow: none;
-}
-
-.time-unit-check {
-  flex: none;
-  visibility: hidden;
-}
-
-.active > .time-unit-check {
-  visibility: visible;
 }
 
 .work-thread-time-units > span {
@@ -1710,6 +1700,11 @@ input, textarea, [contenteditable="true"], .selectable {
 
 .work-thread-filters > .icon-button {
   flex: none;
+}
+
+.work-thread-clear-filters.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .work-thread-status-badge {
