@@ -4,7 +4,7 @@ import { FilePreviewDialog } from "./FilePreviewDialog";
 import { FitAddon } from "@xterm/addon-fit";
 import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
-import { AlertTriangle, FileText, Globe, LoaderCircle, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
+import { AlertTriangle, FileText, Globe, LoaderCircle, PanelRight, Plus, RotateCcw, TerminalSquare, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, ManagedSessionKind, Session, TerminalOutput, Workspace } from "@/shared/domain";
@@ -146,6 +146,8 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
   const { activeSessionIds, setActiveSession, sessionCreateRequests, acknowledgeSessionCreateRequest } = useWorkbenchStore();
   const [shortcutHintsVisible, setShortcutHintsVisible] = useState(false);
   const dialog = useWorkbenchStore((state) => state.dialog);
+  const documentCollapsed = useWorkbenchStore((state) => state.workspaceDocumentCollapsed);
+  const hasDocument = snapshot.workThreads.some((thread) => thread.id === workspace.workThreadId && thread.status === "active");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [resumingId, setResumingId] = useState<string | null>(null);
@@ -317,6 +319,7 @@ export function TerminalPane({ snapshot, workspace, visible }: { snapshot: AppSn
           <button className="icon-button terminal-add" disabled={creating} onClick={() => setCreateMenu(!createMenu)} title="New tab"><Plus size={15} /></button>
           {createMenu && <div className="terminal-kind-menu"><button onClick={() => { setCreateMenu(false); setFileDialog({}); }}><FileText size={14} /> File Preview</button><button onClick={() => void createBrowser()}><Globe size={14} /> Browser</button><button disabled={creating} onClick={() => void create("shell")}><TerminalSquare size={14} /> Terminal</button><div className="context-menu-separator" />{terminalPresets.map((preset) => <button key={preset.id} disabled={creating} title={preset.path} onClick={() => void create("shell", undefined, preset.id)}><TerminalSquare size={14} /><span>{preset.name}</span></button>)}<button disabled={creating || !device} onClick={() => { setCreateMenu(false); setCustomDialog(true); }}><Plus size={14} /> Custom…</button></div>}
         </div>
+        {hasDocument && <button className={`icon-button workspace-document-toggle ${documentCollapsed ? "" : "active"}`} title={documentCollapsed ? "Show Doc" : "Hide Doc"} aria-label={documentCollapsed ? "Show Doc" : "Hide Doc"} aria-expanded={!documentCollapsed} aria-controls="workspace-document-drawer" onClick={() => useWorkbenchStore.getState().setWorkspaceDocumentCollapsed(!documentCollapsed)}><PanelRight size={15} /></button>}
       </div>
       <div className="terminal-stage">{visible && active && "url" in active && <BrowserPane key={active.id} tab={active} shortcutsEnabled={shortcutsEnabled} />}{visible && active && "fileType" in active && <FilePreviewPane key={active.id} tab={active} shortcutsEnabled={shortcutsEnabled} onChooseFile={() => setFileDialog({ previewId: active.id, initialDirectory: active.path.split("/").slice(0, -1).join("/") })} />}{tabs.length + pendingForWorkspace.length > 0 ? <>{sessions.map((session) => <TerminalView key={session.id} session={session} active={visible && active?.id === session.id} resuming={resumingId === session.id} onResume={() => void resume(session.id)} onCreate={(kind) => void create(kind)} />)}{pendingForWorkspace.map((pending) => <PendingTerminalView key={pending.id} pending={pending} active={visible && active?.id === pending.id} onRetry={() => void create(pending.kind, pending.id, pending.terminalPresetId)} onClose={() => closePending(pending.id)} />)}</> : <div className="terminal-empty"><TerminalSquare size={30} /><h3>No terminal sessions</h3><div className="terminal-empty-actions"><button className="button primary" disabled={creating} onClick={() => void create("shell")}><Plus size={14} /> {creating ? "Creating…" : "Terminal"}</button></div></div>}</div>
       {fileDialog && <FilePreviewDialog workspace={workspace} previewId={fileDialog.previewId} initialDirectory={fileDialog.initialDirectory} onClose={() => setFileDialog(null)} onOpen={(tab) => { setFileDialog(null); void client.invalidateQueries({ queryKey: ["snapshot"] }).then(() => setActiveSession(workspace.id, tab.id)); }} />}

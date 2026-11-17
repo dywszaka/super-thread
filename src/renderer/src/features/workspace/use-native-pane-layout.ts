@@ -12,7 +12,7 @@ export function useNativePaneLayout(id: string, enabled: boolean, kind: "browser
     const sync = (): void => {
       frame = 0;
       const rect = element.getBoundingClientRect();
-      const covered = dragging || !!document.querySelector('.dialog-overlay, .context-menu, .workspace-popover, .terminal-kind-menu, .work-thread-context-menu, [data-sonner-toast]');
+      const covered = dragging || !!document.querySelector('.dialog-overlay, .context-menu, .workspace-popover, .terminal-kind-menu, .work-thread-context-menu, .workspace-content.is-resizing, [data-sonner-toast]');
       const input = {
         id: !covered && enabled ? id : null,
         bounds: { x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: rect.width, height: rect.height }

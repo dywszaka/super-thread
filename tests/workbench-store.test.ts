@@ -37,6 +37,35 @@ test("each workspace remembers its last active terminal session", () => {
   assert.equal(state.activeSessionIds["workspace-b"], "session-b3");
 });
 
+test("workspace Doc layout starts expanded at one third and persists independently of navigation", () => {
+  const initial = useWorkbenchStore.getInitialState();
+  assert.equal(initial.workspaceDocumentCollapsed, false);
+  assert.equal(initial.workspaceDocumentWidth, 1 / 3);
+  const store = useWorkbenchStore.getState();
+  store.setWorkspaceDocumentWidth(0.45);
+  store.setWorkspaceDocumentCollapsed(true);
+  store.openWorkspace({ id: "workspace-doc", workThreadId: "thread-doc" });
+  store.showAllWorkspaces();
+  const persisted = useWorkbenchStore.persist.getOptions().partialize!(useWorkbenchStore.getState()) as Record<string, unknown>;
+  assert.equal(persisted.workspaceDocumentWidth, 0.45);
+  assert.equal(persisted.workspaceDocumentCollapsed, true);
+  store.setWorkspaceDocumentCollapsed(false);
+  assert.equal(useWorkbenchStore.getState().workspaceDocumentWidth, 0.45);
+  store.setWorkspaceDocumentWidth(1 / 3);
+});
+
+test("workspace Doc width stays bounded and invalid sizes restore the default", () => {
+  const store = useWorkbenchStore.getState();
+  store.setWorkspaceDocumentWidth(-1);
+  assert.equal(useWorkbenchStore.getState().workspaceDocumentWidth, 0.2);
+  store.setWorkspaceDocumentWidth(10);
+  assert.equal(useWorkbenchStore.getState().workspaceDocumentWidth, 0.65);
+  for (const invalid of [NaN, Infinity, -Infinity]) {
+    store.setWorkspaceDocumentWidth(invalid);
+    assert.equal(useWorkbenchStore.getState().workspaceDocumentWidth, 1 / 3);
+  }
+});
+
 test("clearing a missing session only removes that workspace selection", () => {
   useWorkbenchStore.setState({
     activeSessionIds: { "workspace-a": "session-a2", "workspace-b": "session-b3" }

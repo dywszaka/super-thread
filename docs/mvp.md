@@ -528,6 +528,8 @@ interface WorkThread {
 - 文档在输入停止 500ms 后自动保存；切换页面或窗口失去焦点时立即保存，并显示保存中、已保存或保存失败。失败时保留本地恢复草稿并提供重试，不覆盖正在编辑的内容。
 - 文档随 WorkThread 本地持久化，归档、恢复和应用重启不清除文档；永久删除 WorkThread 同时删除文档。文档上限为 2,000,000 个字符，IPC 不裁剪 Markdown 空白。
 - 每个 WorkThread 可管理每日 TODO，Document 与 Todos 在同一页面通过标签切换；All work threads 的文档抽屉也复用该界面。TODO 是本地清单，不包含执行、Agent 或 Workflow 状态。
+- 所属活跃 WorkThread 的 ready Workspace 在主界面右侧提供 Doc 抽屉，复用同一份 Document / Todos 与自动保存。默认展开，宽度为 Workspace 内容区的 1/3，与 Terminal 区域（包含标签栏）同顶同底并排显示；Workspace Header 不在抽屉高度内。标签栏右侧按钮可主动展开或收起，Doc 关闭按钮也可收起；收起时立即保存，Terminal 占满内容区，PTY 和标签选择保持。独立 Workspace 不显示 Doc。Focus 模式保留相同入口。
+- Doc 左边界可拖动调宽，也可聚焦分隔条后用左右方向键调整；双击或 Enter 恢复 1/3，Home / End 调到最小 / 最大比例。宽度偏好限定 20%–65%，窄窗口额外保证 Doc 至少 260px、Terminal 至少 240px；因此默认比例在窄窗口可被最小尺寸约束。宽度及收起状态作为本地 workbench 偏好跨 Workspace 与重启保留。缩放不重建文档编辑器或终端，Browser / File Preview 原生视图随内容边界同步，拖动期间暂时隐藏。
 - TODO 保存 id、1–500 字符标题、`YYYY-MM-DD` 日期、创建/更新时间以及可选完成时间；新建日期默认为用户本地的今天，支持编辑标题/日期、完成、重新打开和删除。所有修改经校验 IPC 在主进程串行持久化，与 Markdown 保存互不覆盖，TODO 修改不改变文档更新时间。
 - WorkThread 的 Todos 显示全部未完成项及完成时间距当前不超过 7 × 24 小时的已完成项，按日期分组并区分 Incomplete / Completed；到期记录只从此视图隐藏，不删除。页面定时以及窗口重新聚焦时刷新时间筛选。
 - 左侧 All todos 汇总所有 active 和 archived WorkThread 的全部 TODO，区分未完成与已完成、按日期分组并显示所属 WorkThread，可新增、编辑、完成、重新打开和删除；侧栏数字表示未完成总数。历史完成记录无时间限制。

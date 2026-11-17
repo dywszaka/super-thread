@@ -13,7 +13,7 @@ import { documentBrowserWorkspaces } from "../document-browser";
 import { SidebarReopenButton } from "./Sidebar";
 import { Field, Modal } from "./Modal";
 
-export function WorkThreadDocument({ thread, snapshot, onClose, backToList = false }: { thread: WorkThread; snapshot: AppSnapshot; onClose?: () => void; backToList?: boolean }): React.ReactNode {
+export function WorkThreadDocument({ thread, snapshot, onClose, backToList = false, autoFocus = Boolean(onClose) }: { thread: WorkThread; snapshot: AppSnapshot; onClose?: () => void; backToList?: boolean; autoFocus?: boolean }): React.ReactNode {
   const [tab, setTab] = useState<"document" | "todos">("document");
   const [linkRequest, setLinkRequest] = useState<{ url: string; workspaceId: string } | null>(null);
   const [openingBrowser, setOpeningBrowser] = useState(false);
@@ -103,7 +103,7 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
         setLinkError("");
         setLinkRequest({ url, workspaceId: browserWorkspaces[0]!.id });
       }}>
-        <MarkdownEditor document={document} autoFocus={Boolean(onClose)} />
+        <MarkdownEditor document={document} autoFocus={autoFocus} />
       </section>
       {tab === "todos" && <div className="thread-todos-panel" role="tabpanel" id={`todos-panel-${thread.id}`} aria-labelledby={`todos-tab-${thread.id}`}><TodoList threads={[thread]} recentOnly /></div>}
       {linkRequest && <div onKeyDown={(event) => event.stopPropagation()}>

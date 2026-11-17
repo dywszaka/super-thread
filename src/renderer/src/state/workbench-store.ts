@@ -32,6 +32,10 @@ interface WorkbenchState {
   activeSessionIds: Record<string, string>;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
+  workspaceDocumentCollapsed: boolean;
+  workspaceDocumentWidth: number;
+  setWorkspaceDocumentCollapsed(collapsed: boolean): void;
+  setWorkspaceDocumentWidth(ratio: number): void;
   focusMode: boolean;
   expandedThreadIds: string[];
   collapsedSidebarSections: Record<SidebarSection, boolean>;
@@ -92,6 +96,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     activeSessionIds: {},
     sidebarCollapsed: false,
     sidebarWidth: 240,
+    workspaceDocumentCollapsed: false,
+    workspaceDocumentWidth: 1 / 3,
+    setWorkspaceDocumentCollapsed: (workspaceDocumentCollapsed) => set({ workspaceDocumentCollapsed }),
+    setWorkspaceDocumentWidth: (ratio) => set({ workspaceDocumentWidth: Number.isFinite(ratio) ? Math.min(0.65, Math.max(0.2, ratio)) : 1 / 3 }),
     focusMode: false,
     expandedThreadIds: [],
     collapsedSidebarSections: { workThreads: false, workspaces: false },
@@ -163,6 +171,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       activeSessionIds: state.activeSessionIds,
       sidebarCollapsed: state.sidebarCollapsed,
       sidebarWidth: state.sidebarWidth,
+      workspaceDocumentCollapsed: state.workspaceDocumentCollapsed,
+      workspaceDocumentWidth: state.workspaceDocumentWidth,
       collapsedSidebarSections: state.collapsedSidebarSections,
       expandedThreadIds: state.expandedThreadIds
     })

@@ -18,6 +18,7 @@ import { WorkThreadDocument } from "./components/WorkThreadDocument";
 import { WorkThreadAgeProvider } from "./components/WorkThreadAge";
 import { useDocumentAutosaveLifecycle } from "./document-autosave";
 import { visibleWorkspaces } from "./selection";
+import { WorkspaceDocumentLayout } from "./components/WorkspaceDocumentLayout";
 
 export function WorkspaceApp(): React.ReactNode {
   const { data: snapshot, error, isLoading } = useQuery({ queryKey: ["snapshot"], queryFn: () => window.desktop.snapshot() });
@@ -96,12 +97,14 @@ export function WorkspaceApp(): React.ReactNode {
         {focusMode ? <FocusTitlebar /> : store.scope.type === "all-todos" ? <AllTodos snapshot={snapshot} /> : store.scope.type === "all-projects" ? <ProjectList snapshot={snapshot} /> : store.scope.type === "all-work-threads" ? <WorkThreadList snapshot={snapshot} /> : store.scope.type === "all-devices" ? <DeviceList snapshot={snapshot} /> : showingOverview ? <WorkspaceList snapshot={snapshot} /> : documentThread ? <WorkThreadDocument key={documentThread.id} thread={documentThread} snapshot={snapshot} /> : <>
           {active ? <><WorkspaceHeader key={active.id} snapshot={snapshot} workspace={active} />{active.status !== "ready" && <div className="workspace-error"><AlertTriangle size={28} /><h3>{active.status === "creating" ? "Creating workspace…" : "Workspace creation failed"}</h3><p className="selectable">{active.error}</p></div>}</> : <EmptyWorkspace title={scopeTitle || "Workspaces"} hasProjects={snapshot.projects.length > 0} workThreadId={scope.type === "work-thread" ? scope.id : undefined} />}
         </>}
+        <WorkspaceDocumentLayout snapshot={snapshot} workspace={showingTerminal ? active : undefined}>
         <div className={`workspace-terminal-stack ${showingTerminal ? "active" : ""}`}>
           {snapshot.workspaces.filter((workspace) => workspace.status === "ready").map((workspace) => {
             const visible = showingTerminal && active?.id === workspace.id;
             return <div key={workspace.id} className={`workspace-terminal-view ${visible ? "active" : ""}`} aria-hidden={!visible}><TerminalPane snapshot={snapshot} workspace={workspace} visible={visible} /></div>;
           })}
         </div>
+        </WorkspaceDocumentLayout>
       </div>
       <WorkspaceDialogs snapshot={snapshot} />
     </div></WorkThreadAgeProvider>
