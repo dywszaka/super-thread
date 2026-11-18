@@ -10,7 +10,8 @@ export function vscodeWorkspaceUrl(snapshot: AppSnapshot, workspaceId: string): 
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   if (!device) throw new Error("Workspace device not found");
 
-  const path = `${encodePath(workspace.path).replace(/\/$/, "")}/`;
+  // VS Code focuses a matching folder first; otherwise request a separate window.
+  const path = `${encodePath(workspace.path).replace(/\/$/, "")}/?windowId=_blank`;
   if (device.type === "local") return `vscode://file${path}`;
 
   const connection = snapshot.connections.find((item) => item.deviceId === device.id && item.transport === "ssh");

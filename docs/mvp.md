@@ -1147,7 +1147,7 @@ nvfp4-kernel ▾ · dev-cuda · work/nvfp4-kernel       [Focus 图标] [⋯]
 
 Workspace 名称优先保留，Device 与 Branch 使用次级文字。宽度不足时省略并可悬停查看完整文字，Header 与操作区均不换行；侧栏收起时保留 macOS 交通灯与展开侧栏按钮的安全区。点击名称展开现有详情浮层，查看 WorkThread、Project、Device、Type、Branch、Base 与完整 Path。
 
-右侧保留 Focus 图标和 Workspace actions 菜单。菜单提供 `Open in VS Code`、`tmux in iTerm`、`New Workspace`、`Rename workspace…` 和 `Delete workspace`；标签栏 `＋` 仍负责新建 Terminal、Browser 和 File Preview。VS Code 对本地 Workspace 使用本地文件 URI，对 Remote Workspace 使用 Remote-SSH URI，并沿用 Device 已保存的 SSH user、host 和非默认 port；tmux 操作在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用 Focus 与外部打开操作；外部打开期间禁用对应菜单项。菜单或详情可通过 Escape 或点击外部关闭，Escape 将焦点归还入口。
+右侧保留 Focus 图标和 Workspace actions 菜单。菜单提供 `Open in VS Code`、`tmux in iTerm`、`New Workspace`、`Rename workspace…` 和 `Delete workspace`；标签栏 `＋` 仍负责新建 Terminal、Browser 和 File Preview。VS Code 对本地 Workspace 使用本地文件 URI，对 Remote Workspace 使用 Remote-SSH URI，并沿用 Device 已保存的 SSH user、host 和非默认 port。两类 URI 均携带 `windowId=_blank`：由 VS Code 按完整目录 URI 匹配并置前已打开的窗口，没有匹配时新建窗口，不替换其他目录的窗口；同项目的不同 worktree 按各自目录分别打开。tmux 操作在 iTerm 当前窗口打开 Workspace 的唯一 tmux session。Workspace 尚未 ready 时禁用 Focus 与外部打开操作；外部打开期间禁用对应菜单项。菜单或详情可通过 Escape 或点击外部关闭，Escape 将焦点归还入口。
 
 有需要注意的 Session 时只显示一个紧凑计数标记，汇总正在执行、等待输入与恢复失败的数量；悬停及辅助技术可读取各项数量，标记颜色优先表示恢复失败、其次等待输入。远程未知活动不推断为忙碌或等待。
 
