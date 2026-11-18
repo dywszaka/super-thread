@@ -1,3 +1,4 @@
+import { DeleteWorkspaceDialog } from "./DeleteWorkspaceDialog";
 import { FinishWorkThreadDialog } from "./FinishWorkThreadDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, Network, Plus, RefreshCw } from "lucide-react";
@@ -232,5 +233,6 @@ function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode 
 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
   const dialog = useWorkbenchStore((state) => state.dialog);
-  return <>{dialog === "finishThread" && <FinishWorkThreadDialog snapshot={snapshot} />}<AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
+  const deleteWorkspaceId = useWorkbenchStore((state) => state.deleteWorkspaceId);
+  return <>{dialog === "deleteWorkspace" && <DeleteWorkspaceDialog key={deleteWorkspaceId} />}{dialog === "finishThread" && <FinishWorkThreadDialog snapshot={snapshot} />}<AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
 }

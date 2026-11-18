@@ -12,9 +12,13 @@ import { threadDocumentAutosave } from "../document-autosave";
 import { documentBrowserWorkspaces } from "../document-browser";
 import { SidebarReopenButton } from "./Sidebar";
 import { Field, Modal } from "./Modal";
+import { WorkspaceChangeDetails } from "./WorkspaceChangeDetails";
+import { workspaceChangesMarkdown, type WorkspaceChangeRecord } from "@/shared/workspace-changes";
+import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/contract";
 
 export function WorkThreadDocument({ thread, snapshot, onClose, backToList = false, autoFocus = Boolean(onClose) }: { thread: WorkThread; snapshot: AppSnapshot; onClose?: () => void; backToList?: boolean; autoFocus?: boolean }): React.ReactNode {
-  const [tab, setTab] = useState<"document" | "todos">("document");
+  const [tab, setTab] = useState<"document" | "todos" | "changes">("document");
+  const [documentRevision, setDocumentRevision] = useState(0);
   const [linkRequest, setLinkRequest] = useState<{ url: string; workspaceId: string } | null>(null);
   const [openingBrowser, setOpeningBrowser] = useState(false);
   const [linkError, setLinkError] = useState("");
@@ -24,6 +28,14 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
   const openWorkspaceDialog = useWorkbenchStore((state) => state.openWorkspaceDialog);
   const document = useMemo(() => threadDocumentAutosave(thread.id, thread.document ?? ""), [thread.id]);
   const state = useSyncExternalStore(document.subscribe, document.getSnapshot);
+  const appendSummary = (record: WorkspaceChangeRecord): void => {
+    const content = `${document.getSnapshot().content.trimEnd()}\n\n${workspaceChangesMarkdown(record)}`;
+    if (content.length > MAX_WORK_THREAD_DOCUMENT_LENGTH) { toast.error("Document is too large to add this summary. Copy or export it instead."); return; }
+    document.edit(content);
+    setDocumentRevision((revision) => revision + 1);
+    setTab("document");
+    void document.flush();
+  };
   const openBrowser = async (url: string, workspaceId: string, fromDialog = false): Promise<void> => {
     if (opening.current) return;
     opening.current = true;
@@ -71,13 +83,15 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
         <div className="segmented" role="tablist" aria-label="Work thread content" onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
           event.preventDefault();
-          const next = event.key === "Home" ? "document" : event.key === "End" ? "todos" : tab === "document" ? "todos" : "document";
+          const tabs = ["document", "todos", "changes"] as const;
+          const next = event.key === "Home" ? "document" : event.key === "End" ? "changes" : tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : 2)) % 3]!;
           void document.flush();
           setTab(next);
           event.currentTarget.querySelector<HTMLButtonElement>(`[id="${next}-tab-${thread.id}"]`)?.focus();
         }}>
           <button role="tab" title="Markdown document" tabIndex={tab === "document" ? 0 : -1} id={`document-tab-${thread.id}`} aria-controls={`document-panel-${thread.id}`} aria-selected={tab === "document"} className={tab === "document" ? "active" : ""} onClick={() => setTab("document")}>Document</button>
           <button role="tab" tabIndex={tab === "todos" ? 0 : -1} id={`todos-tab-${thread.id}`} aria-controls={`todos-panel-${thread.id}`} aria-selected={tab === "todos"} className={tab === "todos" ? "active" : ""} onClick={() => { void document.flush(); setTab("todos"); }}>Todos ({(thread.todos ?? []).filter((todo) => !todo.completedAt).length})</button>
+          <button role="tab" tabIndex={tab === "changes" ? 0 : -1} id={`changes-tab-${thread.id}`} aria-controls={`changes-panel-${thread.id}`} aria-selected={tab === "changes"} className={tab === "changes" ? "active" : ""} onClick={() => { void document.flush(); setTab("changes"); }}>Changes ({thread.workspaceChanges?.length ?? 0})</button>
         </div>
         <div className="thread-document-age-inline"><WorkThreadAge thread={thread} visibility="normal" /></div>
       </div>
@@ -103,9 +117,19 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
         setLinkError("");
         setLinkRequest({ url, workspaceId: browserWorkspaces[0]!.id });
       }}>
-        <MarkdownEditor document={document} autoFocus={autoFocus} />
+        <MarkdownEditor key={documentRevision} document={document} autoFocus={autoFocus} />
       </section>
       {tab === "todos" && <div className="thread-todos-panel" role="tabpanel" id={`todos-panel-${thread.id}`} aria-labelledby={`todos-tab-${thread.id}`}><TodoList threads={[thread]} recentOnly /></div>}
+      {tab === "changes" && <div className="thread-changes-panel no-drag" role="tabpanel" id={`changes-panel-${thread.id}`} aria-labelledby={`changes-tab-${thread.id}`}>
+        {!thread.workspaceChanges?.length && <p className="creation-note">Workspace deletion summaries will appear here. They remain available after Finish and archival.</p>}
+        {[...(thread.workspaceChanges ?? [])].reverse().map((record) => <section key={record.workspaceId} className="creation-workspace">
+          <div className="creation-workspace-heading"><strong>{record.name}</strong><span>{record.outcome === "deleted" ? "Deleted" : record.outcome === "failed" ? "Deletion failed" : "Result unconfirmed"}</span></div>
+          <p>{record.projectName} · {record.deviceName}</p>
+          {record.error && <p className="creation-error">{record.error}</p>}
+          <WorkspaceChangeDetails inspection={record} />
+          <button type="button" className="button" onClick={() => appendSummary(record)}>Add summary to Doc</button>
+        </section>)}
+      </div>}
       {linkRequest && <div onKeyDown={(event) => event.stopPropagation()}>
         <Modal open title="Open link in Browser" description="Choose a workspace for this link." busy={openingBrowser}
           submitLabel="Open" submitDisabled={!browserWorkspaces.some((workspace) => workspace.id === linkRequest.workspaceId)}

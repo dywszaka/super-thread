@@ -754,6 +754,18 @@ Done
 
 # 13. Workspace Delete
 
+### Submodule 改动摘要与留存
+
+- schema 17 为 Workspace 增加可选 `gitBaseline`，为 WorkThread 增加可选 `workspaceChanges`；均为所属对象的嵌入数据，不引入新的顶级领域对象。旧快照不回填虚假的创建起点。
+- 新 Git Workspace 在启动默认终端前记录固定主仓库 commit 和可读取的各级 submodule 起始 commit；worktree 在复制/链接文件之前捕获。未初始化 submodule 的起点由该固定 commit 中的 gitlink 解析，之后初始化不会重新设置起点。直接目录 Workspace 可记录当时已检出的子模块版本；起始已带未提交文件时标记归属不确定，避免将既有工作归为本次开发。创建时无法捕获则记录 unknown，不阻止工作区创建。
+- 旧 Workspace 使用当前 Git 历史的 merge-base 推导起点，明确标为 inferred，说明原始创建点未知；无法推导或缺少对象时标记 unknown。当前 base branch 的移动不能改变新 Workspace 的固定起点。
+- 单独删除采用应用 Modal，和 Finish 共用逐项摘要，显示路径、本次是否涉及改动（未发现变化/文件变化/版本更新/新增/删除/无法确认）、起始/当前 commit、未提交/未跟踪状态、相对当前 base gitlink 尚未合入的提交。父仓库 index 中记录的版本与实际检出 HEAD 不同时单独显示，已暂存但未检出的版本更新仍计入本次变化和未合入风险。详情列出文件路径和起点后的提交 hash/subject，每个子模块最多显示 100 个文件和 20 个提交，截断时明确说明。纯版本变化不推断代码作者；摘要不是对改过后完全撤销的编辑行为的完整审计。
+- 当前删除风险与本次改动分开：已合入当前 base 的提交仍能显示为本次版本变化；检查不完整仍是可确认警告。未初始化且无风险的子模块无需额外 force。main Workspace 仅展示摘要，继续保留项目目录，不因子模块改动要求 force。
+- 只读检查、刷新与取消不写入删除记录、不停止终端。用户确认后，线程所属 Workspace 的完整摘要先保存为 pending，再清理 Git/终端，成功后与 metadata 删除一起保存为 deleted；清理失败保存 failed 和错误。应用中断遗留的 pending 显示“结果未确认”，不能声称删除成功。重试按 workspace ID 更新同一记录，保留已成功项的摘要，整组 Finish 仍仅在全部清理成功后归档。
+- WorkThread 的 Changes 页签提供摘要、结果、复制 Markdown、原生保存对话框导出 `.md`，在 Workspace 删除、Finish、归档与重启后保留。Add summary to Doc 明确追加到当前本地草稿后自动保存，不由删除流程自动重写用户文档。导出取消或失败不影响已有目标文件。
+- 独立 Workspace 提供相同的复制和导出能力，成功删除后结果对话框保持打开，Done 才关闭；独立摘要不作为新的全局历史集合保存。
+- 新窄 IPC `inspectWorkspaceDeletion(id)` 只读检查；`exportWorkspaceChanges(markdown)` 校验有界文本并通过所属窗口的原生保存对话框写入本机，renderer 不获得通用文件写入能力。`deleteWorkspace` 返回删除结果摘要，执行前仍重新检查风险。
+
 删除 `main` Workspace 只停止其 Session 并删除 Workspace、Session、BrowserTab 与 FilePreviewTab metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
 
 删除 `worktree` Workspace：

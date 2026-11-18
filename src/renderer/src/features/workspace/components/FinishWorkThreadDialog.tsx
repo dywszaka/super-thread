@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { AppSnapshot } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Modal } from "./Modal";
+import { WorkspaceChangeDetails } from "./WorkspaceChangeDetails";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -55,6 +56,7 @@ export function FinishWorkThreadDialog({ snapshot }: { snapshot: AppSnapshot }):
       <p className="selectable">{item.path || "No working directory"}</p>
       {!item.keepsDirectory && <p>Delete branch: {item.branch}</p>}
       {item.runningSessionCount > 0 && <p>{item.runningSessionCount} running terminal session(s) will stop.</p>}
+      <WorkspaceChangeDetails inspection={item} busy={busy} />
       {item.error && <p className="field-error" role="alert">Checks failed: {item.error}</p>}
       {item.risks.length > 0 && <>
         <ul className="finish-workspace-risks">{item.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul>

@@ -5,20 +5,17 @@ import { isWorkspaceLinkPath } from "../../shared/workspace-links";
 import { projectCodeSchema } from "../../shared/project-code";
 import { DeviceCommandRunner, type CommandRunner } from "./command-runner";
 import { DirectoryRuntime } from "./directory-runtime";
+import { SubmoduleChanges } from "./submodule-changes";
+import type { SubmoduleChange, WorkspaceChangeInspection, WorkspaceGitBaseline } from "../../shared/workspace-changes";
 
 export interface RepositoryInfo { root: string; name: string; remote?: string; defaultBranch?: string; }
-export interface SubmoduleDeleteRisk {
-  path: string;
-  hasUncommittedChanges: boolean;
-  hasUntrackedFiles: boolean;
-  unmergedCommitCount: number;
-  warning?: string;
-}
+export type SubmoduleDeleteRisk = SubmoduleChange;
 export interface WorkspaceDeleteRisk {
   hasUncommittedChanges: boolean;
   hasUntrackedFiles: boolean;
   unmergedCommitCount: number;
   submodules?: SubmoduleDeleteRisk[];
+  changes?: WorkspaceChangeInspection;
 }
 
 export class GitRuntime {
@@ -107,12 +104,12 @@ ln -s "$source_path" "$target_path"
     }
   }
 
-  async inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk> {
-    const [status, count, submodules] = await Promise.all([
+  async inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceDeleteRisk> {
+    const [status, count, changes] = await Promise.all([
       // Inspect submodule worktrees separately so a broken submodule cannot turn its warning into a hard failure here.
       this.git(workspacePath, ["status", "--porcelain", "--ignore-submodules=all"]),
       this.git(checkoutPath, ["rev-list", "--count", `${baseBranch}..${branch}`]),
-      this.inspectSubmoduleDeleteRisks(workspacePath, baseBranch)
+      new SubmoduleChanges(this.runner).inspect(workspacePath, baseBranch, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base))
     ]);
     const lines = status.split("\n").filter(Boolean);
     let unmergedCommitCount = Number.parseInt(count, 10) || 0;
@@ -121,65 +118,16 @@ ln -s "$source_path" "$target_path"
       hasUncommittedChanges: lines.some((line) => !line.startsWith("??")),
       hasUntrackedFiles: lines.some((line) => line.startsWith("??")),
       unmergedCommitCount,
-      ...(submodules.length ? { submodules } : {})
+      ...(changes.submodules.length || baseline ? { submodules: changes.submodules, changes } : {})
     };
   }
 
-  private async inspectSubmoduleDeleteRisks(workspacePath: string, baseBranch: string): Promise<SubmoduleDeleteRisk[]> {
-    const risks: SubmoduleDeleteRisk[] = [];
-    try {
-      // foreach visits only checked-out submodules. NUL records preserve unusual paths on local and SSH devices.
-      const paths = await this.gitRecords(workspacePath, ["submodule", "foreach", "--quiet", "--recursive", 'printf \'%s\\0\' "$displaypath"']);
-      if (!paths.length) return risks;
-      const baseCommits = new Map<string, string | undefined>();
-      const baseTrees = new Map<string, Map<string, string>>();
-      for (const path of paths.sort((a, b) => a.length - b.length)) {
-        const risk: SubmoduleDeleteRisk = { path, hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 };
-        risks.push(risk);
-        const submodulePath = posix.join(workspacePath, path);
-        try {
-          const status = await this.gitRecords(submodulePath, ["status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=none"]);
-          risk.hasUncommittedChanges = status.some((entry) => !entry.startsWith("??"));
-          risk.hasUntrackedFiles = status.some((entry) => entry.startsWith("??"));
-        } catch {
-          risk.warning = "could not verify uncommitted changes or untracked files";
-        }
-        try {
-          // Resolve nested gitlinks through the version recorded by the base, never through the workspace index.
-          const parent = [...baseCommits.keys()].filter((entry) => path.startsWith(`${entry}/`)).sort((a, b) => b.length - a.length)[0];
-          const parentPath = parent ? posix.join(workspacePath, parent) : workspacePath;
-          const parentRef = parent ? baseCommits.get(parent) : baseBranch;
-          if (!parentRef) throw new Error("No base submodule version");
-          const treeKey = parent ?? "";
-          let tree = baseTrees.get(treeKey);
-          if (!tree) {
-            tree = new Map((await this.gitRecords(parentPath, ["ls-tree", "-r", "-z", "--full-tree", parentRef])).flatMap((entry) => {
-              const match = /^160000 commit ([0-9a-f]+)\t([\s\S]+)$/.exec(entry);
-              return match ? [[match[2]!, match[1]!] as const] : [];
-            }));
-            baseTrees.set(treeKey, tree);
-          }
-          const baseCommit = tree.get(parent ? path.slice(parent.length + 1) : path);
-          baseCommits.set(path, baseCommit);
-          if (!baseCommit) throw new Error("Submodule is absent from the base");
-          const count = await this.git(submodulePath, ["rev-list", "--count", `${baseCommit}..HEAD`]);
-          risk.unmergedCommitCount = Number.parseInt(count, 10) || 0;
-          if (risk.unmergedCommitCount > 0 && await this.isMergeAlreadyIncluded(submodulePath, "HEAD", baseCommit)) risk.unmergedCommitCount = 0;
-        } catch {
-          if (!baseCommits.has(path)) baseCommits.set(path, undefined);
-          risk.warning = [risk.warning, "could not verify commits against the submodule version recorded by the base branch"].filter(Boolean).join("; ");
-        }
-      }
-    } catch {
-      // An incomplete submodule check is a warning users can approve, rather than a permanent deletion block.
-      risks.push({ path: ".", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, warning: "could not inspect submodules; they may contain uncommitted changes or unmerged commits" });
-    }
-    return risks;
+  captureWorkspaceBaseline(workspacePath: string): Promise<WorkspaceGitBaseline> {
+    return new SubmoduleChanges(this.runner).capture(workspacePath);
   }
 
-  private async gitRecords(cwd: string, args: string[]): Promise<string[]> {
-    const { stdout } = await this.runner.run("git", ["-C", cwd, ...args], { preserveOutput: true });
-    return stdout.split("\0").filter(Boolean);
+  inspectWorkspaceChanges(workspacePath: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceChangeInspection> {
+    return new SubmoduleChanges(this.runner).inspect(workspacePath, baseBranch, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base));
   }
 
   private async isMergeAlreadyIncluded(checkoutPath: string, branch: string, baseBranch: string): Promise<boolean> {

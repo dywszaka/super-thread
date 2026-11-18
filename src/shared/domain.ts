@@ -1,4 +1,5 @@
 import { defaultAppSettings } from "./app-settings";
+import type { WorkspaceGitBaseline, WorkspaceChangeRecord } from "./workspace-changes";
 
 export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
@@ -11,7 +12,7 @@ export type SessionKind = ManagedSessionKind;
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input" | "unknown";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 16;
+export const CURRENT_SCHEMA_VERSION = 17;
 
 export interface AppSettings {
   workThreadTemplate: string;
@@ -45,6 +46,7 @@ export interface WorkThread {
   todos?: Todo[];
   /** Projects retained after successful workspace deletion, including Finish. */
   projectIds?: string[];
+  workspaceChanges?: WorkspaceChangeRecord[];
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
@@ -147,6 +149,7 @@ export interface Workspace {
   path: string;
   branch: string;
   baseBranch: string;
+  gitBaseline?: WorkspaceGitBaseline;
   tmuxSessionName?: string;
   status: WorkspaceStatus;
   error?: string;

@@ -820,6 +820,8 @@ Work Threads 标题下常显 Work / Life 分段切换：28px 按钮、语义背�
 
 本节描述 SuperThread 的实际实现；前文 Superset 示例仅作为架构研究资料。
 
+Workspace 删除使用 Modal 的固定头尾和正文滚动，风险确认、刷新、取消与执行态遵循 Finish 的规则。子模块摘要表在弹窗及 WorkThread Changes 页签中复用，路径、状态、起始/当前版本均可换行，详情通过原生 details/summary 展开文件与提交，使用语义正文/警告 token 和显式文本状态；复制/导出按钮允许换行。WorkThread 的 Document / Todos / Changes 使用同一 tablist，支持左右方向键和 Home/End；窄 Doc 中仅分段控件水平滚动，不能撑宽页面。Changes 独立滚动且在归档线程中可查看；Add summary to Doc 明确触发追加并切回 Document。所有按钮为 no-drag；打开弹窗继续隐藏 Browser/预览原生 pane。需检查浅深色、1320×840/880×560、窄 Doc、长路径/列表、取消、失败重试、成功结果、Doc 草稿追加与原生 Markdown 保存。
+
 Work Threads 文档抽屉采用内容区内的绝对定位覆盖层：右侧对齐，宽度为 Work Threads 内容区的 2/3，高度填满标题栏以下的内容区；所有窗口宽度均不改变底层列表的宽度、位置或排版。页面内遮罩覆盖列表及标题栏，使用 --overlay-background，文档使用 --shadow 表达上层；点击遮罩（含底层标题栏）收起抽屉且不透传动作；遮罩 cursor 为 default，使用显式 :active 覆盖全局 button:active 的填充，按下期间保持 --overlay-background，避免闪白。底层标题与列表在覆盖期间保持挂载、inert 且 aria-hidden，抽屉通过关闭按钮或 Escape 收起后恢复滚动与打开条目的焦点；窗口 resize 复用同一个编辑器。列表卡片采用72px最小高度及稳定的名称/动作两列，More 菜单通过 portal 渲染并复用 `.work-thread-context-menu`，支持键盘导航、关闭与焦点恢复。点击记录正文或留白打开 Doc，正文保留可聚焦按钮及 Enter / Space 行为；列表不显示 Terminal 或重复的 Doc 按钮。Restore 与 More 独立响应，不打开文档，归档/删除置于菜单，已有约束及确认保留。
 
 Work Threads 筛选工具栏采用紧凑搜索框（最大 280px）、固定 246px 总宽的状态切换（分段为 62/80/94px，计数预留 2 位数字并使用 tabular-nums，更长数量省略但保留完整 tooltip 与可访问名称）、固定 200px 的项目下拉与时间组合；足够宽时共用一行。项目和时间不显示前置标签，保留可访问名称和完整项目名称/code 的悬停提示。时间组合为 0–12 下拉及「周｜月」按钮，非零时单位选中态采用 primary 实心背景、primary-foreground 反色文字，不显示勾选图标；0 时整组灰显，选中态使用 control-disabled-foreground 背景和 control-disabled-background 文字，控件仍可交互；非零时按所选单位启用筛选。窄窗口允许搜索/状态换行，项目与时间保持同一行，项目名称省略以避免溢出。清空图标始终占据固定空间，无筛选时 visibility:hidden 并禁用，避免项目下拉或时间控件位移；保持焦点环、34px 控件高度和 no-drag。

@@ -3,6 +3,8 @@ import type { BrowserRuntime } from "../runtime/browser-runtime";
 import type { FilePreviewRuntime } from "../runtime/file-preview-runtime";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { join } from "node:path";
+import { writeFile, rename, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { FilePreviewDownloader } from "../runtime/file-preview-download";
 import { z } from "zod";
 import {
@@ -140,6 +142,20 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.listWorkspaceLinkCandidates, (_event, input) => service.listWorkspaceLinkCandidates(workspaceLinkInputSchema.parse(input)));
   handle(channels.renameWorkspace, (_event, input) => service.renameWorkspace(renameWorkspaceSchema.parse(input)));
   handle(channels.deleteWorkspace, (_event, workspaceId, force) => service.deleteWorkspace(sessionIdSchema.parse(workspaceId), Boolean(force)));
+  handle(channels.inspectWorkspaceDeletion, (_event, workspaceId) => service.inspectWorkspaceDeletion(sessionIdSchema.parse(workspaceId)));
+  handle(channels.exportWorkspaceChanges, async (event, input) => {
+    const markdown = z.string().max(2_000_000).parse(input);
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options = { defaultPath: "workspace-changes.md", filters: [{ name: "Markdown", extensions: ["md"] }] };
+    const result = await (owner ? dialog.showSaveDialog(owner, options) : dialog.showSaveDialog(options));
+    if (result.canceled || !result.filePath) return false;
+    const temporary = `${result.filePath}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx", mode: 0o600 });
+      await rename(temporary, result.filePath);
+    } finally { await rm(temporary, { force: true }); }
+    return true;
+  });
   handle(channels.openWorkspaceInVSCode, async (_event, workspaceId) => {
     const url = vscodeWorkspaceUrl(service.snapshot(), sessionIdSchema.parse(workspaceId));
     await shell.openExternal(url);

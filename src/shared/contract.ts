@@ -1,4 +1,5 @@
-import type { FinishWorkThreadInput, WorkThreadFinishInspection } from "./work-thread-finish";
+import type { FinishWorkThreadInput, WorkThreadFinishInspection, WorkspaceDeleteInspection } from "./work-thread-finish";
+import type { WorkspaceChangeRecord } from "./workspace-changes";
 import type { WorkThreadCreation, WorkThreadCreationInput } from "./work-thread-creation";
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
 import { z } from "zod";
@@ -102,6 +103,8 @@ export const channels = {
   listWorkspaceLinkCandidates: "workspace:list-link-candidates",
   renameWorkspace: "workspace:rename",
   deleteWorkspace: "workspace:delete",
+  inspectWorkspaceDeletion: "workspace:inspect-deletion",
+  exportWorkspaceChanges: "workspace:export-changes",
   openWorkspaceInVSCode: "workspace:open-in-vscode",
   openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
   createSession: "session:create",
@@ -418,7 +421,9 @@ export interface DesktopBridge {
   createWorkspace(input: CreateWorkspaceInput): Promise<string>;
   listWorkspaceLinkCandidates(input: WorkspaceLinkInput): Promise<WorkspaceLinkCandidate[]>;
   renameWorkspace(input: RenameWorkspaceInput): Promise<void>;
-  deleteWorkspace(id: string, force?: boolean): Promise<void>;
+  inspectWorkspaceDeletion(id: string): Promise<WorkspaceDeleteInspection>;
+  deleteWorkspace(id: string, force?: boolean): Promise<WorkspaceChangeRecord>;
+  exportWorkspaceChanges(markdown: string): Promise<boolean>;
   openWorkspaceInVSCode(id: string): Promise<void>;
   openWorkspaceTmuxInIterm(id: string): Promise<void>;
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>;

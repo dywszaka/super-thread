@@ -1,3 +1,5 @@
+import type { WorkspaceChangeInspection } from "./workspace-changes";
+
 export interface FinishWorkThreadInput {
   id: string;
   workspaceIds: string[];
@@ -14,6 +16,8 @@ export interface WorkspaceDeleteInspection {
   keepsDirectory: boolean;
   runningSessionCount: number;
   risks: string[];
+  checkedAt?: string;
+  changes?: WorkspaceChangeInspection;
   error?: string;
 }
 

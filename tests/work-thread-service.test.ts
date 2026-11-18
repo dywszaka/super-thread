@@ -92,6 +92,30 @@ function fakeTerminals(created: Session[] = [], failIds = new Set<string>()): Te
   return terminals;
 }
 
+test("workspace creation persists its fixed Git baseline before starting the first terminal", async () => {
+  const order: string[] = [];
+  const baseline = { source: "created" as const, capturedAt: "2026-11-18T00:00:00Z", commit: "a".repeat(40), submodules: [{ path: "libs/core", commit: "b".repeat(40) }] };
+  const runtime: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "/repo", name: "Demo", defaultBranch: "main" }), clone: async () => ({ root: "/repo", name: "Demo" }),
+    createWorktree: async () => ({ path: "/work/baseline", branch: "work/baseline" }),
+    listWorkspaceLinkCandidates: async () => [], linkWorktreePaths: async () => { order.push("links"); },
+    captureWorkspaceBaseline: async (path) => { assert.equal(path, "/work/baseline"); order.push("baseline"); return baseline; },
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }), deleteWorktree: async () => {}
+  };
+  const terminals = fakeTerminals();
+  const { service, store } = await setup(runtime, terminals);
+  terminals.create = () => {
+    assert.deepEqual(service.snapshot().workspaces[0]!.gitBaseline, baseline);
+    order.push("terminal"); return 999;
+  };
+  await store.update((draft) => {
+    draft.projects.push({ id: "project", code: "demo", name: "Demo", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: "/repo", isGit: true, defaultBranch: "main", createdAt: "now" });
+  });
+  await service.createWorkspace({ projectId: "project", deviceId: "dev_local", name: "baseline", kind: "worktree", baseBranch: "main" });
+  assert.deepEqual(order, ["baseline", "links", "terminal"]);
+});
+
 test("work thread creation protects its thread while running and resumes after a real workspace failure", async () => {
   let release!: () => void;
   const held = new Promise<void>((resolve) => { release = resolve; });

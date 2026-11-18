@@ -6,7 +6,7 @@ import type { ManagedSessionKind, Workspace, WorkThreadType } from "@/shared/dom
 
 type SidebarSection = "workThreads" | "workspaces";
 
-type DialogName = "finishThread" | "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
+type DialogName = "deleteWorkspace" | "finishThread" | "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
 const memoryStorage: StateStorage = {
   getItem: () => null,
@@ -42,6 +42,8 @@ interface WorkbenchState {
   sessionCreateRequests: Array<{ id: string; workspaceId: string; kind: ManagedSessionKind }>;
   dialog: DialogName;
   finishThreadId: string | null;
+  deleteWorkspaceId: string | null;
+  openDeleteWorkspace(id: string): void;
   openFinishWorkThread(id: string): void;
   workspaceDialogThreadId: string | null;
   setupProjectTarget: { projectId: string; deviceId: string } | null;
@@ -107,6 +109,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     setupProjectTarget: null,
     dialog: null,
     finishThreadId: null,
+    deleteWorkspaceId: null,
+    openDeleteWorkspace: (deleteWorkspaceId) => set({ dialog: "deleteWorkspace", deleteWorkspaceId }),
     openFinishWorkThread: (finishThreadId) => set({ dialog: "finishThread", finishThreadId }),
     workspaceDialogThreadId: null,
     showAllWorkspaces: () => set({ scope: { type: "all-workspaces" }, projectFilter: null, workThreadFilter: null, activeWorkspaceId: null }),

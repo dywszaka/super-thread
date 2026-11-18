@@ -7,6 +7,19 @@ import { JsonStore } from "../src/main/persistence/json-store";
 import { CURRENT_SCHEMA_VERSION } from "../src/shared/domain";
 import { defaultAppSettings } from "../src/shared/app-settings";
 
+test("schema 17 keeps fixed starting versions and retained deletion summaries across reloads", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-change-records-"));
+  const path = join(directory, "state.json");
+  const baseline = { source: "created", capturedAt: "start", commit: "a".repeat(40), submodules: [{ path: "core", commit: "b".repeat(40) }] };
+  const record = { workspaceId: "removed", name: "Removed", projectName: "Demo", deviceName: "Mac", path: "/removed", branch: "work/removed", checkedAt: "checked", keepsDirectory: false, risks: [], changes: { baseline, submodules: [] }, outcome: "deleted", updatedAt: "done" };
+  await writeFile(path, JSON.stringify({ schemaVersion: 16, workThreads: [{ id: "thread", name: "Thread", status: "archived", pinned: false, document: "Keep my Doc", workspaceChanges: [record], createdAt: "then", updatedAt: "then" }], workspaces: [{ id: "kept", kind: "worktree", gitBaseline: baseline }] }));
+  const loaded = await new JsonStore(path).load();
+  assert.equal(loaded.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.deepEqual(loaded.workspaces[0]!.gitBaseline, baseline);
+  assert.deepEqual(loaded.workThreads[0]!.workspaceChanges, [record]);
+  assert.equal(loaded.workThreads[0]!.document, "Keep my Doc");
+});
+
 test("schema 14 gains default settings without rewriting documents, TODOs, or creation time", async () => {
   const directory = await mkdtemp(join(tmpdir(), "superthread-settings-migration-"));
   const path = join(directory, "state.json");

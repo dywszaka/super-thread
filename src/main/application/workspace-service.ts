@@ -1,4 +1,5 @@
 import type { FinishWorkThreadInput, WorkThreadFinishInspection, WorkspaceDeleteInspection } from "../../shared/work-thread-finish";
+import type { WorkspaceGitBaseline, WorkspaceChangeRecord, WorkspaceChangeInspection } from "../../shared/workspace-changes";
 import { finishWorkThreadSchema } from "../../shared/contract";
 import { WorkThreadCreationCoordinator } from "./work-thread-creation";
 import { normalizeBrowserUrl } from "../../shared/browser-url";
@@ -92,7 +93,9 @@ export interface WorkspaceGitRuntime {
   createWorktree(checkoutPath: string, projectCode: string, workspaceName: string, baseBranch: string): Promise<{ path: string; branch: string }>;
   listWorkspaceLinkCandidates(checkoutPath: string): Promise<WorkspaceLinkCandidate[]>;
   linkWorktreePaths(checkoutPath: string, workspacePath: string, paths: string[]): Promise<void>;
-  inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string): Promise<WorkspaceDeleteRisk>;
+  captureWorkspaceBaseline?(workspacePath: string): Promise<WorkspaceGitBaseline>;
+  inspectWorkspaceChanges?(workspacePath: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceChangeInspection>;
+  inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceDeleteRisk>;
   deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void>;
 }
 
@@ -567,14 +570,19 @@ export class WorkspaceService extends EventEmitter {
       deviceName: snapshot.devices.find((item) => item.id === workspace.deviceId)?.name ?? "Unknown device",
       path: workspace.path, branch: workspace.branch, keepsDirectory,
       runningSessionCount: snapshot.sessions.filter((item) => item.workspaceId === workspace.id && item.status === "running").length,
-      risks: []
+      risks: [], checkedAt: now()
     };
     try {
       if (workspace.status === "creating" || this.workThreadCreation.isCreatingWorkspace(workspace.id)) throw new Error("Wait for workspace creation to finish.");
       if (!keepsDirectory) {
         if (!checkout) throw new Error("Base checkout no longer exists");
         const runtime = this.git(snapshot, this.device(snapshot, workspace.deviceId));
-        inspection.risks = this.workspaceDeleteRisks(await runtime.inspectWorkspaceDeleteRisk(checkout.path, workspace.path, workspace.branch, workspace.baseBranch));
+        const risk = await runtime.inspectWorkspaceDeleteRisk(checkout.path, workspace.path, workspace.branch, workspace.baseBranch, workspace.gitBaseline);
+        inspection.risks = this.workspaceDeleteRisks(risk);
+        inspection.changes = risk.changes;
+      } else if (checkout?.isGit !== false && workspace.path) {
+        const runtime = this.git(snapshot, this.device(snapshot, workspace.deviceId));
+        inspection.changes = await runtime.inspectWorkspaceChanges?.(workspace.path, workspace.baseBranch || "HEAD", workspace.gitBaseline);
       }
     } catch (error) { inspection.error = this.message(error); }
     return inspection;
@@ -669,6 +677,8 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
     if (input.kind === "main") {
       try {
+        const checkout = snapshot.checkouts.find((item) => item.id === this.workspace(snapshot, workspaceId).checkoutId)!;
+        if (checkout.isGit !== false) await this.captureWorkspaceBaseline(workspaceId, checkout.path);
         await this.createInitialWorkspaceSession(workspaceId);
       } catch (error) {
         await this.removeWorkspaceMetadata(workspaceId);
@@ -688,6 +698,7 @@ export class WorkspaceService extends EventEmitter {
       throw error;
     }
     try {
+      await this.captureWorkspaceBaseline(workspaceId, created.path);
       await runtime.linkWorktreePaths(checkout.path, created.path, input.linkPaths ?? []);
       await this.store.update((draft) => {
         const workspace = draft.workspaces.find((item) => item.id === workspaceId);
@@ -720,6 +731,17 @@ export class WorkspaceService extends EventEmitter {
     if (initialized?.status !== "running") throw new Error(initialized?.restoreError ?? "The default terminal exited during workspace initialization.");
   }
 
+  private async captureWorkspaceBaseline(workspaceId: string, path: string): Promise<void> {
+    const snapshot = this.snapshot();
+    const workspace = this.workspace(snapshot, workspaceId);
+    const runtime = this.git(snapshot, this.device(snapshot, workspace.deviceId));
+    if (!runtime.captureWorkspaceBaseline) return;
+    let baseline: WorkspaceGitBaseline;
+    try { baseline = await runtime.captureWorkspaceBaseline(path); }
+    catch { baseline = { source: "unknown", capturedAt: now(), warning: "Could not capture the starting versions" }; }
+    await this.store.update((draft) => { this.workspace(draft, workspaceId).gitBaseline ??= baseline; });
+  }
+
   /**
    * Renames a workspace for display only. The worktree path, `work/*` branch, and tmux session
    * name were fixed at creation, so renaming keeps every runtime identity intact.
@@ -738,33 +760,60 @@ export class WorkspaceService extends EventEmitter {
     this.changed();
   }
 
-  async deleteWorkspace(workspaceId: string, force = false): Promise<void> {
+  async inspectWorkspaceDeletion(workspaceId: string): Promise<WorkspaceDeleteInspection> {
+    const snapshot = this.snapshot();
+    return this.inspectWorkspaceDelete(snapshot, this.workspace(snapshot, workspaceId));
+  }
+
+  async deleteWorkspace(workspaceId: string, force = false): Promise<WorkspaceChangeRecord> {
     const workspace = this.workspace(this.snapshot(), workspaceId);
     if (workspace.workThreadId) this.assertThreadNotFinishing(workspace.workThreadId);
     if (this.deletingWorkspaceIds.has(workspaceId)) throw new Error("Workspace deletion is already in progress.");
     this.deletingWorkspaceIds.add(workspaceId);
-    try { await this.deleteWorkspaceOnce(workspaceId, force); }
+    try { return await this.deleteWorkspaceOnce(workspaceId, force); }
     finally { this.deletingWorkspaceIds.delete(workspaceId); }
   }
 
-  private async deleteWorkspaceOnce(workspaceId: string, force: boolean): Promise<void> {
+  private async deleteWorkspaceOnce(workspaceId: string, force: boolean): Promise<WorkspaceChangeRecord> {
     if (this.workThreadCreation.isCreatingWorkspace(workspaceId)) throw new Error("Wait for work thread creation to finish before deleting this workspace.");
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, workspaceId);
     const inspection = await this.inspectWorkspaceDelete(snapshot, workspace);
     if (inspection.error) throw new Error(inspection.error);
     if (!force && inspection.risks.length) throw new Error(`Workspace delete blocked: ${inspection.risks.join("; ")}. Confirm force delete to remove the worktree and branch.`);
-    for (const session of this.snapshot().sessions.filter((item) => item.workspaceId === workspaceId && (item.status === "running" || this.terminals.has(item.id)))) {
-      this.terminals.kill(session.id);
+    const record: WorkspaceChangeRecord = { ...inspection, checkedAt: inspection.checkedAt!, outcome: "pending", updatedAt: now() };
+    // Persist the evidence before Git removes the directories and their per-worktree submodule objects.
+    await this.storeChangeRecord(workspace.workThreadId, record);
+    try {
+      for (const session of this.snapshot().sessions.filter((item) => item.workspaceId === workspaceId && (item.status === "running" || this.terminals.has(item.id)))) {
+        this.terminals.kill(session.id);
+      }
+      if (!inspection.keepsDirectory) {
+        const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId)!;
+        await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
+      }
+      const completed: WorkspaceChangeRecord = { ...record, outcome: "deleted", updatedAt: now() };
+      await this.removeWorkspaceMetadata(workspaceId, true, completed);
+      return completed;
+    } catch (error) {
+      await this.storeChangeRecord(workspace.workThreadId, { ...record, outcome: "failed", error: this.message(error), updatedAt: now() });
+      throw error;
     }
-    if (!inspection.keepsDirectory) {
-      const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId)!;
-      await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
-    }
-    await this.removeWorkspaceMetadata(workspaceId, true);
   }
 
-  private async removeWorkspaceMetadata(workspaceId: string, retainProject = false): Promise<void> {
+  private async storeChangeRecord(workThreadId: string | undefined, record: WorkspaceChangeRecord): Promise<void> {
+    if (!workThreadId) return;
+    await this.store.update((draft) => {
+      const thread = this.workThread(draft, workThreadId);
+      const records = thread.workspaceChanges ??= [];
+      const index = records.findIndex((item) => item.workspaceId === record.workspaceId);
+      if (index < 0) records.push(structuredClone(record));
+      else records[index] = structuredClone(record);
+    });
+    this.changed();
+  }
+
+  private async removeWorkspaceMetadata(workspaceId: string, retainProject = false, record?: WorkspaceChangeRecord): Promise<void> {
     await this.store.update((draft) => {
       const workspace = draft.workspaces.find((item) => item.id === workspaceId);
       draft.browserTabs = draft.browserTabs.filter((item) => item.workspaceId !== workspaceId);
@@ -774,6 +823,9 @@ export class WorkspaceService extends EventEmitter {
       const thread = draft.workThreads.find((item) => item.id === workspace?.workThreadId);
       if (thread) {
         if (retainProject && workspace) thread.projectIds = [...new Set([...(thread.projectIds ?? []), workspace.projectId])];
+        if (record) {
+          thread.workspaceChanges = [...(thread.workspaceChanges ?? []).filter((item) => item.workspaceId !== record.workspaceId), structuredClone(record)];
+        }
         thread.updatedAt = now();
       }
     });
@@ -1180,6 +1232,7 @@ export class WorkspaceService extends EventEmitter {
     if (risk.hasUntrackedFiles) risks.push("untracked files");
     if (risk.unmergedCommitCount > 0) risks.push(`${risk.unmergedCommitCount} commit${risk.unmergedCommitCount === 1 ? "" : "s"} not merged into the base branch`);
     for (const submodule of risk.submodules ?? []) {
+      if (submodule.initialized === false && !submodule.warning) continue;
       const details = ["will be deleted"];
       if (submodule.hasUncommittedChanges) details.push("uncommitted changes");
       if (submodule.hasUntrackedFiles) details.push("untracked files");

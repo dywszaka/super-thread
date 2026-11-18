@@ -75,29 +75,9 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
       setOpeningTmux(false);
     }
   };
-  const clearDeletedWorkspace = (): void => {
-    const state = useWorkbenchStore.getState();
-    if (state.activeWorkspaceId !== workspace.id) return;
-    if (workspace.workThreadId) state.setActiveWorkspace(null);
-    else state.showAllWorkspaces();
-  };
-  const remove = async (): Promise<void> => {
+  const remove = (): void => {
     setMenu(false);
-    const consequence = workspace.kind === "main"
-      ? "This removes only the SuperThread workspace and its terminal sessions. The project checkout is kept."
-      : `This will delete the Git worktree and branch “${workspace.branch}”.`;
-    if (!confirm(`Delete workspace “${workspace.name}”?\n\n${consequence}`)) return;
-    try {
-      await window.desktop.deleteWorkspace(workspace.id);
-      clearDeletedWorkspace();
-      toast.success("Workspace deleted");
-    } catch (error) {
-      const text = cleanError(error);
-      if (text.includes("Workspace delete blocked") && confirm(`${text}\n\nForce delete this worktree and branch?`)) {
-        try { await window.desktop.deleteWorkspace(workspace.id, true); clearDeletedWorkspace(); toast.success("Workspace force deleted"); }
-        catch (forceError) { toast.error(cleanError(forceError)); }
-      } else toast.error(text);
-    }
+    useWorkbenchStore.getState().openDeleteWorkspace(workspace.id);
   };
   return (
     <header className="workspace-header drag">

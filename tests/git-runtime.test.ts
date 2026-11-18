@@ -111,11 +111,13 @@ async function submoduleFixture(t: TestContext, nested = false) {
 
 test("clean initialized submodules require confirmation and can be force deleted", async (t) => {
   const f = await submoduleFixture(t);
-  assert.equal((await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main")).submodules, undefined);
+  assert.equal((await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main")).submodules?.[0]?.initialized, false);
   await f.git(f.work, "submodule", "update", "--init");
   assert.equal(await f.git(f.work, "status", "--porcelain"), "");
   const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main");
-  assert.deepEqual(risk.submodules, [{ path: f.submoduleName, hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }]);
+  assert.equal(risk.submodules?.[0]?.activity, "unchanged");
+  assert.equal(risk.submodules?.[0]?.initialized, true);
+  assert.equal(risk.submodules?.[0]?.unmergedCommitCount, 0);
   await assert.rejects(() => f.runtime.deleteWorktree(f.repo, f.work, "work/test", false), /containing submodules/);
   await f.runtime.deleteWorktree(f.repo, f.work, "work/test", true);
   await assert.rejects(() => access(f.work));
@@ -143,9 +145,84 @@ test("recursive submodule checks find dirty files and commits even with ignored 
   assert.equal(risk.submodules[0]!.path, f.submoduleName);
   assert.equal(risk.submodules[0]!.hasUncommittedChanges, true);
   assert.equal(risk.submodules[0]!.unmergedCommitCount, 1);
-  assert.deepEqual(risk.submodules[1], { path: `${f.submoduleName}/inner module`, hasUncommittedChanges: false, hasUntrackedFiles: true, unmergedCommitCount: 1 });
+  assert.equal(risk.submodules[1]?.path, `${f.submoduleName}/inner module`);
+  assert.equal(risk.submodules[1]?.hasUncommittedChanges, false);
+  assert.equal(risk.submodules[1]?.hasUntrackedFiles, true);
+  assert.equal(risk.submodules[1]?.unmergedCommitCount, 1);
+  assert.equal(risk.submodules[1]?.activity, "modified");
+  assert.deepEqual(new Set(risk.submodules[1]?.files), new Set(["file.txt", "scratch.txt"]));
+  assert.equal(risk.submodules[1]?.commits?.[0]?.subject, "Nested work");
   await f.runtime.deleteWorktree(f.repo, f.work, "work/test", true);
   await assert.rejects(() => access(f.work));
+});
+
+test("a fixed creation baseline retains submodule changes after the base branch incorporates them", async (t) => {
+  const f = await submoduleFixture(t, true);
+  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+  assert.equal(baseline.source, "created");
+  await f.git(f.work, "submodule", "update", "--init", "--recursive");
+  const child = join(f.work, f.submoduleName);
+  const nested = join(child, "inner module");
+  await writeFile(join(nested, "file.txt"), "completed nested development\n");
+  await f.git(nested, "commit", "-am", "Nested completed work");
+  await f.git(child, "commit", "-am", "Record completed nested work");
+  await f.git(f.work, "commit", "-am", "Record completed submodule work");
+  await f.git(f.repo, "merge", "--ff-only", "work/test");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+  assert.equal(risk.unmergedCommitCount, 0);
+  assert.equal(risk.changes?.baseline.commit, baseline.commit);
+  assert.equal(risk.submodules?.length, 2);
+  for (const sub of risk.submodules!) {
+    assert.equal(sub.unmergedCommitCount, 0);
+    assert.equal(sub.activity, "version");
+    assert.notEqual(sub.currentCommit, sub.startCommit);
+    assert.equal(sub.commits?.length, 1);
+  }
+});
+
+test("removed submodules and uncertain historical starting versions are explicitly labelled", async (t) => {
+  const f = await submoduleFixture(t);
+  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+  await f.git(f.work, "rm", f.submoduleName);
+  await f.git(f.work, "commit", "-m", "Remove dependency");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+  assert.equal(risk.submodules?.[0]?.activity, "removed");
+  assert.equal(risk.submodules?.[0]?.currentCommit, undefined);
+  const unknown = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", { ...baseline, commit: "1".repeat(40), submodules: [] });
+  assert.equal(unknown.submodules?.[0]?.activity, "unknown");
+  assert.match(unknown.changes?.baseline.warning ?? "", /unavailable/);
+});
+
+test("staged submodule version updates remain visible when its checked-out HEAD has not changed", async (t) => {
+  const f = await submoduleFixture(t);
+  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+  await f.git(f.work, "submodule", "update", "--init");
+  const child = join(f.work, f.submoduleName);
+  const start = await f.git(child, "rev-parse", "HEAD");
+  await writeFile(join(child, "file.txt"), "new module code\n");
+  await f.git(child, "commit", "-am", "Staged module update");
+  const update = await f.git(child, "rev-parse", "HEAD");
+  await f.git(child, "checkout", start);
+  await f.git(f.work, "update-index", "--cacheinfo", `160000,${update},${f.submoduleName}`);
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+  const sub = risk.submodules![0]!;
+  assert.equal(sub.activity, "version");
+  assert.equal(sub.currentCommit, start);
+  assert.equal(sub.recordedCommit, update);
+  assert.equal(sub.unmergedCommitCount, 1);
+  assert.equal(sub.commits?.[0]?.subject, "Staged module update");
+});
+
+test("pre-existing dirty submodules are marked as uncertain rather than attributed to new workspace work", async (t) => {
+  const f = await submoduleFixture(t);
+  await f.git(f.work, "submodule", "update", "--init");
+  await writeFile(join(f.work, f.submoduleName, "file.txt"), "pre-existing work\n");
+  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+  assert.equal(baseline.submodules?.[0]?.dirty, true);
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+  assert.equal(risk.submodules?.[0]?.activity, "unknown");
+  assert.equal(risk.submodules?.[0]?.hasUncommittedChanges, true);
+  assert.match(risk.submodules?.[0]?.warning ?? "", /Started with uncommitted files/);
 });
 
 test("missing submodule base objects produce a confirmable warning instead of failing inspection", async (t) => {

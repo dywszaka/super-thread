@@ -150,9 +150,39 @@ test("partial deletion failure keeps thread active and retry touches only remain
   await assert.rejects(() => f.service.finishWorkThread(f.input()), /1 workspace\(s\) deleted.*not archived/);
   assert.equal(f.service.snapshot().workThreads[0]!.status, "active");
   assert.deepEqual(f.service.snapshot().workspaces.map((item) => item.id), ["two", "main"]);
+  const records = f.service.snapshot().workThreads[0]!.workspaceChanges!;
+  assert.equal(records.find((record) => record.workspaceId === "one")?.outcome, "deleted");
+  assert.equal(records.find((record) => record.workspaceId === "two")?.outcome, "failed");
+  assert.match(records.find((record) => record.workspaceId === "two")?.error ?? "", /deletion failed/);
   f.failedDeletes.clear(); await f.service.finishWorkThread(f.input());
   assert.deepEqual(f.calls.map((item) => item.path), ["/work/one", "/work/two"]);
   assert.equal(f.service.snapshot().workThreads[0]!.status, "archived");
+  const reloaded = await new JsonStore(f.statePath).load();
+  assert.equal(reloaded.workThreads[0]!.workspaceChanges?.length, 3);
+  assert.ok(reloaded.workThreads[0]!.workspaceChanges!.every((record) => record.outcome === "deleted" && !record.error));
+});
+
+test("deletion retains structured submodule evidence independently of Doc autosaves and archival", async () => {
+  const f = await fixture();
+  const changes = { baseline: { source: "created" as const, capturedAt: "start", commit: "a".repeat(40) }, submodules: [
+    { path: "deps/core", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, initialized: true, activity: "version" as const,
+      startCommit: "b".repeat(40), currentCommit: "c".repeat(40), files: ["core.ts"], commits: [{ hash: "c".repeat(40), subject: "Completed work" }] }
+  ] };
+  f.risks.set("/work/one", { hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, submodules: changes.submodules, changes });
+  const before = f.service.snapshot();
+  const preview = await f.service.inspectWorkspaceDeletion("one");
+  assert.deepEqual(f.service.snapshot(), before);
+  assert.deepEqual(preview.changes, changes);
+  const deleted = await f.service.deleteWorkspace("one", true);
+  assert.equal(deleted.outcome, "deleted");
+  assert.deepEqual(deleted.changes, changes);
+  await f.service.saveWorkThreadDocument({ id: f.threadId, content: "An unrelated Doc edit" });
+  await f.service.finishWorkThread(f.input());
+  const loaded = await new JsonStore(f.statePath).load();
+  const record = loaded.workThreads[0]!.workspaceChanges!.find((item) => item.workspaceId === "one")!;
+  assert.deepEqual(record.changes, changes);
+  assert.equal(loaded.workThreads[0]!.document, "An unrelated Doc edit");
+  assert.equal(loaded.workThreads[0]!.status, "archived");
 });
 
 test("confirmation cannot delete an added, omitted or foreign workspace", async () => {
