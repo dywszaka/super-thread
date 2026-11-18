@@ -11,6 +11,7 @@ import type { AppSnapshot, ManagedSessionKind, Session, TerminalOutput, Workspac
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { CustomTerminalDialog } from "./CustomTerminalDialog";
 import { installTerminalClipboard } from "../terminal-clipboard";
+import { installTerminalInput } from "../terminal-input";
 import { terminalAppearance } from "../terminal-appearance";
 import { WorkspaceShortcutHints } from "../workspace-shortcut-hints";
 
@@ -46,6 +47,7 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
     fitRef.current = fit;
     let disposed = false;
     let replayComplete = false;
+    const keyboard = installTerminalInput(terminal, container.current);
     const clipboard = installTerminalClipboard(terminal, container.current, {
       platform: window.desktop.platform,
       writeText: (text) => window.desktop.writeClipboard(text),
@@ -100,6 +102,7 @@ function TerminalView({ session, active, resuming, onResume, onCreate }: { sessi
       if (resizeFrame) cancelAnimationFrame(resizeFrame);
       observer.disconnect();
       clipboard.dispose();
+      keyboard.dispose();
       unsubscribe();
       input?.dispose();
       terminalRef.current = null;

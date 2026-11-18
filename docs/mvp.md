@@ -891,8 +891,11 @@ Workspace tmux 的可用性探测、创建必须使用 Device 用户的交互式
 成功后用持久化 Session 替换该标签页，失败后保留错误、Retry 和 Close，且 Retry 复用同一标签页。
 未创建成功的初始化标签页不得写入持久领域数据。
 
-Terminal 输入必须保留 xterm 的原生 IME composition 处理，以支持中文输入法的全角标点等
-非 ASCII 字符。键盘输入使用普通终端语义，不包含应用专用的 Codex Shift+Enter 映射。
+Terminal 输入保留 xterm 的原生 IME composition 处理，并补齐输入法在按键按下期间直接提交
+`insertText`、没有 keypress 的路径，确保中文全角标点首次输入即生效且不重复。普通 Enter
+仍发送回车；非 composition 期间的 Shift+Enter 发送标准 CSI-u `ESC [ 13 ; 2 u`，让 Codex
+等 CLI 区分换行与提交。本机和 SSH 终端使用相同编码，不探测前台应用；输入法候选确认键
+继续交给 xterm，不将候选确认误编码为 CLI 换行。
 
 普通本地 Session 的周期性活动检查只运行本地 `ps`，不得启动登录 shell。远程 Session 不进行后台
 SSH 活动查询，不创建 PID 探测标记，不读取 Codex index，也不为工具查找或会话恢复建立周期查询。
