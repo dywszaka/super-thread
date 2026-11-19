@@ -1,4 +1,5 @@
 import type { FinishWorkThreadInput, WorkThreadFinishInspection, WorkspaceDeleteInspection } from "./work-thread-finish";
+import { MAX_WORK_THREAD_FINISH_NOTE_LENGTH } from "./work-thread-finish";
 import type { WorkspaceChangeRecord } from "./workspace-changes";
 import type { WorkThreadCreation, WorkThreadCreationInput } from "./work-thread-creation";
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
@@ -210,7 +211,9 @@ export const createWorkThreadSchema = z.object({
 export const finishWorkThreadSchema = z.object({
   id: z.string().min(1),
   workspaceIds: z.array(z.string().min(1)),
-  forceWorkspaceIds: z.array(z.string().min(1))
+  forceWorkspaceIds: z.array(z.string().min(1)),
+  outcome: z.enum(["completed", "cancelled"]).default("completed"),
+  note: z.string().max(MAX_WORK_THREAD_FINISH_NOTE_LENGTH).default("")
 }).strict().refine((input) => new Set(input.workspaceIds).size === input.workspaceIds.length &&
   new Set(input.forceWorkspaceIds).size === input.forceWorkspaceIds.length &&
   input.forceWorkspaceIds.every((id) => input.workspaceIds.includes(id)), {

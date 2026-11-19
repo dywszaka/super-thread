@@ -78,6 +78,10 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
           {onClose ? backToList ? <button className="button" onClick={onClose}><ArrowLeft size={14} /> Back to list</button> : <button className="icon-button" onClick={onClose} aria-label="Close document"><X size={16} /></button> : <button className="button" onClick={() => openWorkspaceDialog(thread.id)}><Plus size={14} /> New Workspace</button>}
         </div>
       </header>
+      {thread.completion && <details className="thread-completion no-drag">
+        <summary>{thread.status === "active" ? "Last finish" : "Finished"}: {thread.completion.outcome === "completed" ? "Completed" : "Cancelled"} · <time dateTime={thread.completion.finishedAt}>{new Date(thread.completion.finishedAt).toLocaleString()}</time></summary>
+        <p className="selectable">{thread.completion.note || "No note provided."}</p>
+      </details>}
       <div className="thread-document-age no-drag"><WorkThreadAge thread={thread} details visibility="reminders" /></div>
       <div className="thread-document-toolbar no-drag">
         <div className="segmented" role="tablist" aria-label="Work thread content" onKeyDown={(event) => {

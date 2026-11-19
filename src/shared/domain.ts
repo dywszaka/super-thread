@@ -1,5 +1,6 @@
 import { defaultAppSettings } from "./app-settings";
 import type { WorkspaceGitBaseline, WorkspaceChangeRecord } from "./workspace-changes";
+import type { WorkThreadCompletion } from "./work-thread-finish";
 
 export type DeviceStatus = "online" | "offline" | "unknown";
 export type WorkThreadStatus = "active" | "archived";
@@ -47,6 +48,8 @@ export interface WorkThread {
   /** Projects retained after successful workspace deletion, including Finish. */
   projectIds?: string[];
   workspaceChanges?: WorkspaceChangeRecord[];
+  /** Last successful Finish; absent for threads that were only archived. */
+  completion?: WorkThreadCompletion;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;

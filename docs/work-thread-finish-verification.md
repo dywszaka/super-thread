@@ -18,3 +18,13 @@ Real Electron verification used temporary app data, repositories, and worktrees;
 - The thread is archived only after cleanup, retains its Doc, and can be restored without recreating the deleted workspaces.
 
 Screenshots and the result JSON are retained in the chat's visualization directory under `work-thread-finish/`. Live SSH deletion was not tested against a real host; remote dispatch and check failures are covered with service-runtime fixtures. Physical traffic-light hit testing and dragging were not automated; existing insets and drag regions were preserved.
+
+## Completion outcome and note — 2026-11-19
+
+- `npm test`: 286 passing tests; `npm run build`: TypeScript and all Electron bundles pass.
+- Finish defaults to Completed with an empty optional note. Completed / Cancelled are validated through the existing typed IPC, with a 5,000-character note limit. Outcome, note, and finish time save atomically with archival only after cleanup succeeds.
+- Service tests cover both outcomes, multiline/whitespace retention, legacy defaults, invalid input, reload/restore, replacing the last result on a later Finish, plain Archive without inferred completion, and deletion/archival failures without a new result.
+- A real Electron run with isolated `/tmp/superthread-finish-outcome-qa` data verified native radio keyboard selection, note labeling and limit, refresh retaining inputs, Go back preserving the snapshot and directory, Escape dismissal, reopen defaults, and both successful outcomes through the main/preload/renderer bridge.
+- Cancelled Finish removed a real main-directory Workspace while retaining the directory and Doc. Archived Doc details displayed the saved note as literal text, including HTML-like text, and restoring the thread retained the result as Last finish. An empty thread finished with Completed and an empty note.
+- Light 1320×840 and dark 880×560 screenshots were visually inspected: radio choices and multiline input remain readable, footer stays visible, body scrolls, and the narrow document drawer shows the expandable result without overflow. Existing header drag and modal no-drag regions were checked through computed styles. Physical traffic-light hit testing and window dragging were not automated; native shell configuration is unchanged.
+- A separate Electron process restart verified both persisted outcomes and the multiline note. Screenshots, verification harness, and result JSON are in `/tmp/superthread-finish-outcome-qa`.

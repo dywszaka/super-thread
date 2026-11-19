@@ -2533,6 +2533,15 @@ input, textarea, [contenteditable="true"], .selectable {
 .finish-workspace-risks { color: var(--danger); padding-left: 20px; font-size: var(--text-control); }
 .finish-force-confirmation { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-control); line-height: 1.5; }
 .finish-force-confirmation input { flex-shrink: 0; margin-top: 4px; }
+.finish-outcome { min-width: 0; margin: 0; padding: 0; border: 0; font-size: var(--text-control); }
+.finish-outcome legend { margin-bottom: 8px; font-weight: var(--weight-medium); }
+.finish-outcome-options { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 8px; }
+.finish-outcome-options label { display: flex; align-items: center; gap: 8px; min-height: var(--control-height); cursor: pointer; }
+.finish-outcome-options input { margin: 0; accent-color: var(--foreground); }
+.field textarea.finish-note { height: auto; min-height: 80px; max-height: 240px; padding: 10px; resize: vertical; }
+.thread-completion { flex-shrink: 0; min-width: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: var(--text-control); overflow-wrap: anywhere; }
+.thread-completion summary { cursor: pointer; }
+.thread-completion p { margin: 8px 0 0; max-height: 120px; overflow: auto; white-space: pre-wrap; line-height: 1.5; }
 
 .workspace-changes { min-width: 0; margin: 12px 0; font-size: var(--text-control); }
 .workspace-change-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }

@@ -551,7 +551,8 @@ export class WorkspaceService extends EventEmitter {
         if (draft.workspaces.some((item) => item.workThreadId === input.id)) throw new Error("Workspaces remain. Finish again after reviewing the current list.");
         const thread = this.workThread(draft, input.id);
         const timestamp = now();
-        Object.assign(thread, { status: "archived", archivedAt: timestamp, updatedAt: timestamp });
+        Object.assign(thread, { status: "archived", archivedAt: timestamp, updatedAt: timestamp,
+          completion: { outcome: input.outcome, note: input.note, finishedAt: timestamp } });
       });
       this.changed();
     } catch (error) {

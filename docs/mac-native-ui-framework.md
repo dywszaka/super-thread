@@ -857,3 +857,5 @@ Work Thread 创建与 Settings 复用 Modal 的固定头尾及正文滚动布局
 Work Thread 创建采用三步向导，复用 Modal 固定头尾与正文滚动布局。步骤指示包含当前步骤的可访问语义，切步后焦点及正文滚动回到内容起点；Workspace 配置卡片复用独立创建表单，使用语义边框与禁用状态。确认页逐项显示 Waiting / Creating / Created / Failed 与错误文字，不仅依赖颜色。创建中仍可通过关闭按钮、Escape、遮罩或 Hide 收起向导，主进程继续运行；再次打开恢复状态。底部提供 Back、Next / Create / Continue 与 Discard 操作，窄窗口允许换行且始终可见。需验证多个 Workspace 的长正文滚动、失败修正、浅深色及最小窗口。
 
 Work Thread 的 Finish 使用 Modal 确认，侧栏菜单、列表 More 与 active Doc 标题栏均可进入。正文逐项显示目录保留/删除后果、设备/项目、终端数量及风险，风险须通过文字清单和单项 force checkbox 表达；失败检查阻止提交。复用现有语义 token、no-drag、固定头尾和正文滚动布局。提交前可取消或刷新检查；运行中禁用关闭/重复提交；失败后刷新剩余项并清空 force 确认。需检查浅深色、880×560、多 Workspace 长列表、Doc 窄标题栏及取消不改变数据。
+
+Finish 正文开头使用原生 radio 与 fieldset/legend 选择 Completed（默认）/ Cancelled，随后为带可见 label 的可选多行 Note。关闭弹窗按钮使用 Go back，与取消结果区分；选择取消仍执行清理和归档。提交期间禁用字段；刷新及失败重试保留输入。Doc 顶部通过 details/summary 查看最近 Finish 记录，说明保留换行、长词换行并限制滚动高度，避免挤出正文；恢复后显示 Last finish。

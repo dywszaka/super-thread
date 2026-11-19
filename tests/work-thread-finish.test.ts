@@ -8,6 +8,7 @@ import { WorkspaceService, type WorkspaceGitRuntime, type WorkspaceDeleteRisk } 
 import { JsonStore } from "../src/main/persistence/json-store";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { finishWorkThreadSchema } from "../src/shared/contract";
+import { MAX_WORK_THREAD_FINISH_NOTE_LENGTH } from "../src/shared/work-thread-finish";
 
 async function fixture() {
   const statePath = join(await mkdtemp(join(tmpdir(), "superthread-finish-")), "state.json");
@@ -69,6 +70,39 @@ test("finish IPC requires exact, unique workspace IDs and explicit per-workspace
   for (const patch of [{ force: true }, { forceWorkspaceIds: ["foreign"] }, { workspaceIds: ["one", "one"] }, { forceWorkspaceIds: ["one", "one"] }, { id: "" }]) assert.equal(finishWorkThreadSchema.safeParse({ ...valid, ...patch }).success, false);
 });
 
+test("finish IPC defaults to completed and validates outcomes and note limits", () => {
+  const input = { id: "thread", workspaceIds: [], forceWorkspaceIds: [] };
+  assert.deepEqual(finishWorkThreadSchema.parse(input), { ...input, outcome: "completed", note: "" });
+  assert.equal(finishWorkThreadSchema.parse({ ...input, outcome: "cancelled", note: "  原因\n保留格式  " }).note, "  原因\n保留格式  ");
+  assert.equal(finishWorkThreadSchema.safeParse({ ...input, note: "a".repeat(MAX_WORK_THREAD_FINISH_NOTE_LENGTH) }).success, true);
+  for (const patch of [{ outcome: "unknown" }, { outcome: null }, { note: 1 }, { note: null }, { note: "a".repeat(MAX_WORK_THREAD_FINISH_NOTE_LENGTH + 1) }]) {
+    assert.equal(finishWorkThreadSchema.safeParse({ ...input, ...patch }).success, false);
+  }
+});
+
+for (const outcome of ["completed", "cancelled"] as const) {
+  test(`${outcome} outcome and multiline note persist with successful Finish and survive restore`, async () => {
+    const f = await fixture();
+    const note = "  收尾说明\n保留 <script>literal text</script>  ";
+    await f.service.finishWorkThread({ ...f.input(), outcome, note });
+    const thread = f.service.snapshot().workThreads[0]!;
+    assert.deepEqual(thread.completion, { outcome, note, finishedAt: thread.archivedAt });
+    assert.equal(thread.completion!.finishedAt, thread.updatedAt);
+    assert.deepEqual((await new JsonStore(f.statePath).load()).workThreads[0]!.completion, thread.completion);
+    await f.service.restoreWorkThread(f.threadId);
+    await f.service.saveWorkThreadDocument({ id: f.threadId, content: "New draft" });
+    assert.deepEqual(f.service.snapshot().workThreads[0]!.completion, thread.completion);
+    await f.service.finishWorkThread(f.input());
+    assert.deepEqual(f.service.snapshot().workThreads[0]!.completion, { outcome: "completed", note: "", finishedAt: f.service.snapshot().workThreads[0]!.archivedAt });
+  });
+}
+
+test("plain archive and legacy snapshots have no inferred Finish outcome", async () => {
+  const f = await fixture();
+  await f.service.archiveWorkThread(f.threadId);
+  assert.equal((await new JsonStore(f.statePath).load()).workThreads[0]!.completion, undefined);
+});
+
 test("finish previews checks without mutation, deletes all owned workspaces and archives while preserving Doc/TODO", async () => {
   const f = await fixture();
   const before = f.service.snapshot();
@@ -84,6 +118,7 @@ test("finish previews checks without mutation, deletes all owned workspaces and 
   assert.deepEqual(after.workThreads[0]!.projectIds, ["project"]);
   assert.deepEqual(after.workThreads[0]!.todos, before.workThreads[0]!.todos);
   assert.ok(after.workThreads[0]!.archivedAt);
+  assert.deepEqual(after.workThreads[0]!.completion, { outcome: "completed", note: "", finishedAt: after.workThreads[0]!.archivedAt });
   assert.equal(after.workspaces.length + after.sessions.length + after.browserTabs.length + after.filePreviewTabs.length, 0);
   assert.deepEqual(f.calls, [{ path: "/work/one", force: false, deviceId: "dev_local" }, { path: "/work/two", force: false, deviceId: "remote" }]);
   assert.deepEqual(f.killed, ["session-one", "session-two", "session-main"]);
@@ -147,8 +182,9 @@ for (const submodule of [
 
 test("partial deletion failure keeps thread active and retry touches only remaining workspaces", async () => {
   const f = await fixture(); f.failedDeletes.add("/work/two");
-  await assert.rejects(() => f.service.finishWorkThread(f.input()), /1 workspace\(s\) deleted.*not archived/);
+  await assert.rejects(() => f.service.finishWorkThread({ ...f.input(), outcome: "cancelled", note: "Not saved yet" }), /1 workspace\(s\) deleted.*not archived/);
   assert.equal(f.service.snapshot().workThreads[0]!.status, "active");
+  assert.equal(f.service.snapshot().workThreads[0]!.completion, undefined);
   assert.deepEqual(f.service.snapshot().workspaces.map((item) => item.id), ["two", "main"]);
   const records = f.service.snapshot().workThreads[0]!.workspaceChanges!;
   assert.equal(records.find((record) => record.workspaceId === "one")?.outcome, "deleted");
@@ -251,6 +287,7 @@ test("failed archival after successful deletion can retry an empty thread withou
   await assert.rejects(() => f.service.finishWorkThread(f.input()), /3 workspace\(s\) deleted/);
   assert.equal(f.service.snapshot().workThreads[0]!.status, "active");
   assert.equal(f.service.snapshot().workspaces.length, 0);
+  assert.equal(f.service.snapshot().workThreads[0]!.completion, undefined);
   failArchive = false;
   await f.service.finishWorkThread(f.input());
   assert.equal(f.calls.length, 2);

@@ -512,6 +512,7 @@ interface WorkThread {
   documentUpdatedAt?: Date
   todos?: Todo[]
   projectIds?: string[] // successfully deleted Workspaces' projects, retained for filtering
+  completion?: { outcome: "completed" | "cancelled"; note: string; finishedAt: Date } // last successful Finish
   createdAt: Date
   updatedAt: Date
   archivedAt?: Date
@@ -546,10 +547,12 @@ interface WorkThread {
 - 搜索结果高亮名称命中，文档命中时展示首个命中附近至多约 180 字符的纯文本片段并高亮，覆盖 Markdown 标题、列表、表格、代码与链接文字；不执行文档 HTML。无匹配结果时显示独立空态及清空操作。点击继续打开现有 Doc 抽屉，不在编辑器内定位或高亮；改变搜索不关闭已打开的文档，关闭抽屉时若原触发结果已被过滤则将焦点返回搜索框。自动保存成功后搜索结果随快照更新，文档提取结果按内容缓存。
 - 列表显示 Last update，使用用户本地时间、24 小时制及 `MMDD HH:mm` 格式（如 `1008 09:05`）。
 - 点击列表记录（包括卡片留白）打开页面内覆盖式 Markdown 编辑抽屉，键盘可聚焦记录并通过 Enter / Space 打开；Restore / More 不触发文档打开。列表不再提供 Terminal 跳转或重复的 Doc 按钮。抽屉使用固定布局宽度，从右侧滑入、关闭时滑出，不在动画期间反复缩放编辑器；快速关闭/重开反转当前动画。所有窗口中抽屉均覆盖在当前列表上方，宽度为 Work Threads 内容区的 2/3；底层列表不缩窄、不换行重排，遮罩点击只关闭抽屉，不执行被遮挡的列表或标题栏动作；悬停显示普通箭头，按下时不变色或闪白。收起后保留筛选与滚动。抽屉复用自动保存，关闭立即保存草稿，支持关闭按钮和 Escape；退出动画结束后卸载编辑器并恢复焦点。系统开启减少动态效果时直接切换；Archived 文档也可编辑。
-- Finish 是独立的收尾操作，可从侧栏 WorkThread 菜单、All work threads 的 More 和 active Doc 标题栏进入。先展示全部 Workspace 的项目/设备、路径、目录保留或 worktree/branch 删除后果、运行终端数量及与单独删除相同的 Git 风险检查；风险项逐个勾选确认强制删除，检查失败不能强制绕过。取消不删除任何数据。
-- 主进程接收 `finishWorkThread({ id, workspaceIds, forceWorkspaceIds })`，校验确认列表与当前归属完全一致、force ID 不越界；先复查整组，删除时逐项再次检查。未提交改动、未跟踪文件、未合并提交均沿用 `deleteWorkspace` 的检查；main/普通目录及历史 base alias 仅删除 metadata 与终端/浏览器/预览记录，保留项目目录。`inspectWorkThreadFinish(id)` 返回确认所需的逐项检查结果，不改变数据。
+- Finish 是独立的收尾操作，可从侧栏 WorkThread 菜单、All work threads 的 More 和 active Doc 标题栏进入。先展示全部 Workspace 的项目/设备、路径、目录保留或 worktree/branch 删除后果、运行终端数量及与单独删除相同的 Git 风险检查；风险项逐个勾选确认强制删除，检查失败不能强制绕过。返回或关闭弹窗不删除任何数据。
+- Finish 弹窗可选择完成情况 Completed（完成，默认）或 Cancelled（取消），并填写可选的多行说明（最多 5,000 字符，保留空白）。两种结果均执行相同的 Workspace 清理与归档；Go back 仅关闭弹窗，不执行 Finish。刷新检查及失败重试保留当前完成情况与说明，重新打开弹窗默认完成、空说明。
+- 主进程接收 `finishWorkThread({ id, workspaceIds, forceWorkspaceIds, outcome?, note? })`，校验确认列表与当前归属完全一致、force ID 不越界；先复查整组，删除时逐项再次检查。未提交改动、未跟踪文件、未合并提交均沿用 `deleteWorkspace` 的检查；main/普通目录及历史 base alias 仅删除 metadata 与终端/浏览器/预览记录，保留项目目录。`inspectWorkThreadFinish(id)` 返回确认所需的逐项检查结果，不改变数据。
 - Finish 仅适用于 active 线程，创建中不能执行；执行期间禁止同线程重复 Finish、Archive、Delete，以及创建/单独删除其 Workspace 或新建终端。全部 Workspace 删除后才归档；文档、TODO 与项目/checkouts 保留，不增加 finished 状态。空线程可以直接 Finish。
-- 删除中途失败立即停止，显示已删除数量和失败原因，线程不归档；已删除 Workspace 不回滚，重新检查后仅处理剩余项。确认后新增/减少 Workspace 必须刷新重审；新出现的 Git 风险仍会阻止未经 force 确认的删除。Restore 仅恢复线程，不能恢复已删除的 worktree。
+- 全部清理成功后，将 `completion: { outcome, note, finishedAt }` 与归档状态在同一事务中持久化；省略 outcome / note 的旧调用默认 completed / 空字符串，非法结果或超长说明在 IPC 入口拒绝。旧记录不推断完成情况，普通 Archive 不新增完成记录，不需要快照迁移。Doc 顶部可展开查看最后一次 Finish 的结果、时间与原文说明；恢复为 active 后标为 Last finish，下次成功 Finish 覆盖。说明独立于文档和 TODO，不影响文档搜索及更新时间。
+- 删除中途失败立即停止，显示已删除数量和失败原因，线程不归档，也不更新完成记录；已删除 Workspace 不回滚，重新检查后仅处理剩余项。确认后新增/减少 Workspace 必须刷新重审；新出现的 Git 风险仍会阻止未经 force 确认的删除。Restore 仅恢复线程，不能恢复已删除的 worktree。
 - 归档只隐藏整组内容，不停止 Session 或删除 Git Worktree。
 - 只有没有 Workspace 的 WorkThread 可以永久删除；删除确认必须说明其文档和全部 TODO 也将永久删除。
 
