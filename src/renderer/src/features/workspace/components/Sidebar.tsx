@@ -1,14 +1,14 @@
-import { ArrowRightLeft, BriefcaseBusiness, Heart, ListTodo, Archive, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
+import { ArrowRightLeft, ListTodo, Archive, CircleCheck, ChevronDown, ChevronLeft, ChevronRight, FolderGit2, Laptop, Layers3, MessagesSquare, MonitorCog, Pencil, Pin, Plus, Server, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, ReorderWorkThreadsInput, WorkThread, Workspace } from "@/shared/domain";
-import appIcon from "../../../assets/icon.png";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../selection";
 import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
 import { WorkThreadAge } from "./WorkThreadAge";
 import { RenameWorkThreadDialog } from "./RenameWorkThreadDialog";
-import { threadsOfType, workThreadType, workThreadTypes } from "@/shared/work-thread-type";
+import { threadsOfType, workThreadType } from "@/shared/work-thread-type";
+import { WorkThreadTypeSelect } from "./WorkThreadTypeSelect";
 
 interface WorkThreadMenuState {
   thread: WorkThread;
@@ -222,7 +222,10 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
 
   return (
     <aside className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
-      <div className="sidebar-title drag"><div className="brand no-drag"><img className="brand-mark" src={appIcon} alt="Super Thread" /></div><button className="sidebar-collapse no-drag" onClick={() => setSidebarCollapsed(true)} title="Hide sidebar"><ChevronLeft size={15} /></button></div>
+      <div className="sidebar-title drag">
+        <WorkThreadTypeSelect value={selectedType} onChange={(value) => { clearDrag(); setThreadMenu(null); setWorkspaceMenu(null); switchWorkThreadType(value); }} />
+        <button className="sidebar-collapse no-drag" onClick={() => setSidebarCollapsed(true)} title="Hide sidebar"><ChevronLeft size={15} /></button>
+      </div>
       <nav className="primary-scopes no-drag" aria-label="All items">
         <button className={`scope-row all ${scope.type === "all-workspaces" && !activeWorkspaceId ? "selected" : ""}`} onClick={showAllWorkspaces}><span><Layers3 size={15} /> <em title="All workspaces">All workspaces</em></span><b>{allActiveWorkspaces.length}</b></button>
         <button className={`scope-row all ${scope.type === "all-projects" ? "selected" : ""}`} onClick={showAllProjects}><span><FolderGit2 size={15} /> <em title="All projects">All projects</em></span><b>{snapshot.projects.length}</b></button>
@@ -239,12 +242,6 @@ export function Sidebar({ snapshot }: { snapshot: AppSnapshot }): React.ReactNod
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
       }}>
         <SidebarSectionHeading title="Work Threads" listId="sidebar-work-threads" collapsed={collapsedSidebarSections.workThreads} onToggle={() => toggleSidebarSection("workThreads")} createLabel="New work thread" onCreate={() => openDialog("workThread")} />
-        <div className="thread-type-switch no-drag" role="group" aria-label="Work thread type">
-          {workThreadTypes.map(({ value, label }) => {
-            const Icon = value === "work" ? BriefcaseBusiness : Heart;
-            return <button key={value} type="button" aria-pressed={selectedType === value} title={`Show ${label} threads`} onClick={() => { clearDrag(); setThreadMenu(null); setWorkspaceMenu(null); switchWorkThreadType(value); }}><Icon size={13} aria-hidden="true" />{label}</button>;
-          })}
-        </div>
         <div id="sidebar-work-threads" className="scope-list thread-list" hidden={collapsedSidebarSections.workThreads}>
           {activeThreads.length === 0 && <p className="sidebar-empty">No active {selectedType === "work" ? "Work" : "Life"} threads</p>}
           {activeThreads.map((thread) => {

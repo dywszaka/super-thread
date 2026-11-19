@@ -816,7 +816,7 @@ Features
 
 ## 15. SuperThread 当前视觉实现规范
 
-Work Threads 标题下常显 Work / Life 分段切换：28px 按钮、语义背景/边框、工作与生活图标、aria-pressed 选中态及现有 focus-visible 焦点环，显式 no-drag；184px 侧栏宽度下两个名称完整可见。切换同步更新线程树、All work threads / All todos 与计数，空类型给出对应 Work / Life 提示。All 页面标题标明当前类型，侧栏收起后仍能辨认。创建向导 Type 使用原生 select，确认页展示类型；Move to Work / Life 复用侧栏菜单与列表 More 的样式及操作反馈。浅深色、最窄侧栏、键盘与创建草稿恢复需验证。
+侧栏顶部原应用图标位置改为 Work / Life 文字下拉：不显示应用图标，32px 高的透明触发器显示当前名称与小箭头，hover / 展开时使用语义选中背景；圆角浮层沿侧栏左右各留 12px，使用现有菜单的语义背景、弱边框与阴影，当前项显示勾选。保留 76px 交通灯安全区、独立侧栏收起按钮与显式 no-drag；184px 最窄侧栏中名称完整可见。浮层复用菜单遮挡检测以暂停原生 Browser / File Preview；menuitemradio / aria-checked 表达选中项，支持 Enter / Space、方向键、Home / End、Escape 恢复焦点、Tab 离开、点击外部及窗口失焦关闭。Work Threads 标题下不再显示分段切换。切换同步更新线程树、All work threads / All todos 与计数，空类型给出对应 Work / Life 提示。All 页面标题标明当前类型，侧栏收起后仍能辨认。创建向导 Type 使用原生 select，确认页展示类型；Move to Work / Life 复用侧栏菜单与列表 More 的样式及操作反馈。浅深色、最窄侧栏、键盘与创建草稿恢复需验证。
 
 本节描述 SuperThread 的实际实现；前文 Superset 示例仅作为架构研究资料。
 

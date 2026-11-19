@@ -225,33 +225,39 @@ input, textarea, [contenteditable="true"], .selectable {
 }
 
 .sidebar-title {
+  position: relative;
   height: 56px;
   flex: none;
   display: flex;
   align-items: center;
-  padding: 0 12px 0 76px;
+  padding: 0 8px 0 76px;
   border-bottom: 1px solid transparent;
 }
 
-.brand {
+.thread-type-select {
+  flex: none;
+}
+
+.thread-type-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
+  gap: 6px;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
 }
 
-.brand-mark {
-  width: 20px;
-  height: 20px;
-  flex: none;
-  display: block;
-  object-fit: contain;
+.thread-type-trigger:hover, .thread-type-trigger[aria-expanded="true"] {
+  background: var(--accent);
 }
 
-.brand strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: var(--weight-semibold);
+.thread-type-trigger svg {
+  color: var(--muted-foreground);
 }
 
 .sidebar-collapse {
@@ -487,41 +493,6 @@ input, textarea, [contenteditable="true"], .selectable {
   gap: 1px;
 }
 
-.thread-type-switch {
-  display: flex;
-  gap: 2px;
-  margin: 2px 6px 8px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--control-background);
-}
-
-.thread-type-switch button {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--foreground);
-  font-size: var(--text-control);
-}
-
-.thread-type-switch button:hover {
-  background: var(--accent);
-}
-
-.thread-type-switch button[aria-pressed="true"] {
-  background: var(--accent);
-  box-shadow: 0 0 0 1px var(--border);
-  font-weight: var(--weight-medium);
-}
-
 .thread-tree {
   position: relative;
   min-width: 0;
@@ -672,6 +643,35 @@ input, textarea, [contenteditable="true"], .selectable {
 .work-thread-context-menu button svg:last-child {
   justify-self: end;
   color: var(--link);
+}
+
+.thread-type-menu {
+  position: absolute;
+  top: 48px;
+  left: 12px;
+  right: 12px;
+  width: auto;
+  padding: 5px;
+  border-color: var(--border);
+  border-radius: var(--radius);
+}
+
+.thread-type-menu button {
+  grid-template-columns: 1fr 14px;
+  padding: 0 10px;
+}
+
+.thread-type-menu button[aria-checked="true"] {
+  background: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
+.thread-type-menu button:focus-visible {
+  outline-offset: -2px;
+}
+
+.thread-type-menu button svg:last-child {
+  color: var(--foreground);
 }
 
 .context-menu-separator {
