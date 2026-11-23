@@ -105,21 +105,62 @@ ln -s "$source_path" "$target_path"
   }
 
   async inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceDeleteRisk> {
+    const base = await this.refreshDeletionBase(checkoutPath, baseBranch);
     const [status, count, changes] = await Promise.all([
       // Inspect submodule worktrees separately so a broken submodule cannot turn its warning into a hard failure here.
       this.git(workspacePath, ["status", "--porcelain", "--ignore-submodules=all"]),
-      this.git(checkoutPath, ["rev-list", "--count", `${baseBranch}..${branch}`]),
-      new SubmoduleChanges(this.runner).inspect(workspacePath, baseBranch, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base))
+      this.git(checkoutPath, ["rev-list", "--count", `${base}..${branch}`]),
+      new SubmoduleChanges(this.runner).inspect(workspacePath, base, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base))
     ]);
     const lines = status.split("\n").filter(Boolean);
     let unmergedCommitCount = Number.parseInt(count, 10) || 0;
-    if (unmergedCommitCount > 0 && await this.isMergeAlreadyIncluded(checkoutPath, branch, baseBranch)) unmergedCommitCount = 0;
+    if (unmergedCommitCount > 0 && await this.isMergeAlreadyIncluded(checkoutPath, branch, base)) unmergedCommitCount = 0;
     return {
       hasUncommittedChanges: lines.some((line) => !line.startsWith("??")),
       hasUntrackedFiles: lines.some((line) => line.startsWith("??")),
       unmergedCommitCount,
       ...(changes.submodules.length || baseline ? { submodules: changes.submodules, changes } : {})
     };
+  }
+
+  private async refreshDeletionBase(checkoutPath: string, baseBranch: string): Promise<string> {
+    const ref = await this.git(checkoutPath, ["rev-parse", "--symbolic-full-name", baseBranch]);
+    if (!ref.startsWith("refs/heads/") && !ref.startsWith("refs/remotes/")) return baseBranch;
+    let remote: string | undefined;
+    let source: string | undefined;
+    let target: string | undefined;
+    if (ref.startsWith("refs/heads/")) {
+      const branches = await this.git(checkoutPath, ["for-each-ref", "--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)", ref]);
+      const upstream = branches.split("\n").map((line) => line.split("\0")).find(([name]) => name === ref);
+      if (upstream?.[1]) {
+        [, remote, source, target] = upstream;
+        // A local upstream has no remote to refresh.
+        if (remote === ".") return baseBranch;
+      }
+    }
+    if (!remote) {
+      const remotes = (await this.git(checkoutPath, ["remote"])).split("\n").filter(Boolean);
+      if (ref.startsWith("refs/remotes/")) {
+        const name = ref.slice("refs/remotes/".length);
+        remote = remotes.sort((a, b) => b.length - a.length).find((item) => name.startsWith(`${item}/`));
+        if (!remote) throw new Error(`Cannot resolve the remote for base branch "${baseBranch}"`);
+        source = `refs/heads/${name.slice(remote.length + 1)}`;
+        target = ref;
+      } else if (remotes.includes("origin")) {
+        remote = "origin";
+        source = ref;
+        target = `refs/remotes/origin/${ref.slice("refs/heads/".length)}`;
+      } else return baseBranch;
+    }
+    if (!source || !target?.startsWith("refs/remotes/")) throw new Error(`Cannot resolve the remote base branch "${baseBranch}"`);
+    try {
+      // Fetch refs only: never pull into the checkout or change either index.
+      // Pin one commit so concurrent inspections cannot change this comparison's base.
+      await this.git(checkoutPath, ["fetch", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "--", remote, `+${source}:${target}`], 30_000);
+      return await this.git(checkoutPath, ["rev-parse", "--verify", `${target}^{commit}`]);
+    } catch (error) {
+      throw new Error(`Unable to refresh base branch "${baseBranch}" from "${remote}": ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   captureWorkspaceBaseline(workspacePath: string): Promise<WorkspaceGitBaseline> {

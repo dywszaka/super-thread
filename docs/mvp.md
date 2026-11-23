@@ -764,17 +764,17 @@ Done
 - 旧 Workspace 使用当前 Git 历史的 merge-base 推导起点，明确标为 inferred，说明原始创建点未知；无法推导或缺少对象时标记 unknown。当前 base branch 的移动不能改变新 Workspace 的固定起点。
 - 单独删除采用应用 Modal，和 Finish 共用逐项摘要，显示路径、本次是否涉及改动（未发现变化/文件变化/版本更新/新增/删除/无法确认）、起始/当前 commit、未提交/未跟踪状态、相对当前 base gitlink 尚未合入的提交。父仓库 index 中记录的版本与实际检出 HEAD 不同时单独显示，已暂存但未检出的版本更新仍计入本次变化和未合入风险。详情列出文件路径和起点后的提交 hash/subject，每个子模块最多显示 100 个文件和 20 个提交，截断时明确说明。纯版本变化不推断代码作者；摘要不是对改过后完全撤销的编辑行为的完整审计。
 - 当前删除风险与本次改动分开：已合入当前 base 的提交仍能显示为本次版本变化；检查不完整仍是可确认警告。未初始化且无风险的子模块无需额外 force。main Workspace 仅展示摘要，继续保留项目目录，不因子模块改动要求 force。
-- 只读检查、刷新与取消不写入删除记录、不停止终端。用户确认后，线程所属 Workspace 的完整摘要先保存为 pending，再清理 Git/终端，成功后与 metadata 删除一起保存为 deleted；清理失败保存 failed 和错误。应用中断遗留的 pending 显示“结果未确认”，不能声称删除成功。重试按 workspace ID 更新同一记录，保留已成功项的摘要，整组 Finish 仍仅在全部清理成功后归档。
+- 预检查、刷新与取消不写入删除记录、不停止终端；worktree 检查可 fetch 更新 Git 远端跟踪 ref，但不修改本地分支、文件或 index。用户确认后，线程所属 Workspace 的完整摘要先保存为 pending，再清理 Git/终端，成功后与 metadata 删除一起保存为 deleted；清理失败保存 failed 和错误。应用中断遗留的 pending 显示“结果未确认”，不能声称删除成功。重试按 workspace ID 更新同一记录，保留已成功项的摘要，整组 Finish 仍仅在全部清理成功后归档。
 - WorkThread 的 Changes 页签提供摘要、结果、复制 Markdown、原生保存对话框导出 `.md`，在 Workspace 删除、Finish、归档与重启后保留。Add summary to Doc 明确追加到当前本地草稿后自动保存，不由删除流程自动重写用户文档。导出取消或失败不影响已有目标文件。
 - 独立 Workspace 提供相同的复制和导出能力，成功删除后结果对话框保持打开，Done 才关闭；独立摘要不作为新的全局历史集合保存。
-- 新窄 IPC `inspectWorkspaceDeletion(id)` 只读检查；`exportWorkspaceChanges(markdown)` 校验有界文本并通过所属窗口的原生保存对话框写入本机，renderer 不获得通用文件写入能力。`deleteWorkspace` 返回删除结果摘要，执行前仍重新检查风险。
+- 新窄 IPC `inspectWorkspaceDeletion(id)` 预检查（含必要的 base fetch）；`exportWorkspaceChanges(markdown)` 校验有界文本并通过所属窗口的原生保存对话框写入本机，renderer 不获得通用文件写入能力。`deleteWorkspace` 返回删除结果摘要，执行前仍重新 fetch 并检查风险。
 
 删除 `main` Workspace 只停止其 Session 并删除 Workspace、Session、BrowserTab 与 FilePreviewTab metadata；保留 base checkout 目录、文件、Git 分支及 ProjectCheckout 记录。即使选择 Force Delete，也不删除 main 目录。旧记录缺少或错误标记 `kind` 时，如果 Workspace 路径与 base checkout 路径相同，仍按此规则处理。
 
 删除 `worktree` Workspace：
 
-1. 使用 base checkout 中的本地 ref 检查未提交修改、未跟踪文件，以及相对 base branch 尚未合并的提交（不隐式 fetch）。提交历史不包含原分支时，补充检查合并结果；若无冲突且合并后的 tree 与 base branch 相同，视为内容已合入，兼容 squash merge 及其后 base branch 的更新。检查不修改 checkout/worktree 的文件或 index；仍有内容差异、合并冲突或 Git 不支持该检查时，保留未合并警告。单独删除与 Work Thread Finish 使用相同规则。
-   - 递归检查已初始化的 submodule，按路径提示未提交修改、未跟踪文件和当前 HEAD 中尚未合入 base branch 所记录 submodule 版本的提交；嵌套 submodule 沿 base 中记录的 gitlink 逐级比较，不以 Workspace 中已暂存或已提交的新 gitlink 作为基准。不 fetch；忽略 submodule 的用户配置不能隐藏这些风险。无法验证 submodule 状态、base 缺少对应 gitlink 或本地缺少比较所需对象时，提示检查不完整及潜在代码丢失风险，仍允许用户确认后删除。
+1. 在所属 Device 的 base checkout 中先 fetch 最新远端 base，再检查未提交修改、未跟踪文件，以及相对该 base 尚未合并的提交。优先使用本地 base branch 配置的 upstream remote/branch；无 upstream 但存在 origin 时使用 origin 同名分支；base 本身是远端跟踪 ref 时刷新其对应 remote/branch（支持 remote HEAD）。无可用远端映射的本地 ref、仅本地 upstream、tag 或固定 commit 继续在本地比较。fetch 仅更新对应远端跟踪 ref，不 pull、不切换或移动本地分支、不递归 fetch 子模块；每次检查固定 fetch 后的 commit，主仓库与 submodule 共用该版本。fetch 最长等待 30 秒；远端不可用、分支删除或认证失败时检查报错，不能回退到旧 ref 或通过 force 绕过，且不停止终端或删除 Workspace。打开删除弹窗、刷新与实际删除前的复查均采用该规则；创建 worktree 仍不隐式 fetch。提交历史不包含原分支时，补充检查合并结果；若无冲突且合并后的 tree 与 base 相同，视为内容已合入，兼容 squash merge 及其后 base 的更新。检查不修改 checkout/worktree 的文件或 index；仍有内容差异、合并冲突或 Git 不支持该检查时，保留未合并警告。单独删除与 Work Thread Finish 使用相同规则。
+   - 递归检查已初始化的 submodule，按路径提示未提交修改、未跟踪文件和当前 HEAD 中尚未合入刷新后 base 所记录 submodule 版本的提交；嵌套 submodule 沿 base 中记录的 gitlink 逐级比较，不以 Workspace 中已暂存或已提交的新 gitlink 作为基准。子模块自身不 fetch；忽略 submodule 的用户配置不能隐藏这些风险。无法验证 submodule 状态、base 缺少对应 gitlink 或本地缺少比较所需对象时，提示检查不完整及潜在代码丢失风险，仍允许用户确认后删除。
    - 已初始化的 submodule 即使干净，也提示其目录将被删除并请求 force 确认，以满足 Git 的删除要求。上述 submodule 风险属于可确认警告，不构成永久禁止；用户取消时不停止终端、不删除目录或记录，明确确认后使用 `git worktree remove --force`，单独删除与 Finish 共用该流程。未初始化的 submodule 不额外要求 force。
 2. 停止所有 Session
 3. 删除 Git Worktree

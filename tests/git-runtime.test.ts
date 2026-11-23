@@ -17,6 +17,7 @@ class FakeRunner implements CommandRunner {
     if (command.includes("--show-toplevel")) return { stdout: "/code/demo", stderr: "", exitCode: 0 };
     if (command.includes("get-url")) return { stdout: "git@example.com:team/demo.git", stderr: "", exitCode: 0 };
     if (command.includes("symbolic-ref")) return { stdout: "origin/main", stderr: "", exitCode: 0 };
+    if (command.includes("rev-parse --symbolic-full-name")) return { stdout: "refs/heads/main", stderr: "", exitCode: 0 };
     if (command.includes("status --porcelain")) return { stdout: " M src/main.ts\n?? scratch.txt", stderr: "", exitCode: 0 };
     if (command.includes("rev-list --count")) return { stdout: "2", stderr: "", exitCode: 0 };
     return { stdout: "", stderr: "", exitCode: 0 };
@@ -156,29 +157,39 @@ test("recursive submodule checks find dirty files and commits even with ignored 
   await assert.rejects(() => access(f.work));
 });
 
-test("a fixed creation baseline retains submodule changes after the base branch incorporates them", async (t) => {
-  const f = await submoduleFixture(t, true);
-  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
-  assert.equal(baseline.source, "created");
-  await f.git(f.work, "submodule", "update", "--init", "--recursive");
-  const child = join(f.work, f.submoduleName);
-  const nested = join(child, "inner module");
-  await writeFile(join(nested, "file.txt"), "completed nested development\n");
-  await f.git(nested, "commit", "-am", "Nested completed work");
-  await f.git(child, "commit", "-am", "Record completed nested work");
-  await f.git(f.work, "commit", "-am", "Record completed submodule work");
-  await f.git(f.repo, "merge", "--ff-only", "work/test");
-  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
-  assert.equal(risk.unmergedCommitCount, 0);
-  assert.equal(risk.changes?.baseline.commit, baseline.commit);
-  assert.equal(risk.submodules?.length, 2);
-  for (const sub of risk.submodules!) {
-    assert.equal(sub.unmergedCommitCount, 0);
-    assert.equal(sub.activity, "version");
-    assert.notEqual(sub.currentCommit, sub.startCommit);
-    assert.equal(sub.commits?.length, 1);
-  }
-});
+for (const base of ["local", "remote"]) {
+  test(`a fixed creation baseline retains submodule changes after the ${base} base branch incorporates them`, async (t) => {
+    const f = await submoduleFixture(t, true);
+    if (base === "remote") {
+      const origin = `${f.repo}-origin.git`;
+      await f.git(f.repo, "init", "--bare", origin);
+      await f.git(f.repo, "remote", "add", "origin", origin);
+      await f.git(f.repo, "push", "-u", "origin", "main");
+    }
+    const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+    assert.equal(baseline.source, "created");
+    await f.git(f.work, "submodule", "update", "--init", "--recursive");
+    const child = join(f.work, f.submoduleName);
+    const nested = join(child, "inner module");
+    await writeFile(join(nested, "file.txt"), "completed nested development\n");
+    await f.git(nested, "commit", "-am", "Nested completed work");
+    await f.git(child, "commit", "-am", "Record completed nested work");
+    await f.git(f.work, "commit", "-am", "Record completed submodule work");
+    if (base === "remote") await f.git(f.work, "push", "origin", "HEAD:refs/heads/main");
+    else await f.git(f.repo, "merge", "--ff-only", "work/test");
+    const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+    assert.equal(risk.unmergedCommitCount, 0);
+    assert.equal(risk.changes?.baseline.commit, baseline.commit);
+    if (base === "remote") assert.equal(await f.git(f.repo, "rev-parse", "main"), baseline.commit);
+    assert.equal(risk.submodules?.length, 2);
+    for (const sub of risk.submodules!) {
+      assert.equal(sub.unmergedCommitCount, 0);
+      assert.equal(sub.activity, "version");
+      assert.notEqual(sub.currentCommit, sub.startCommit);
+      assert.equal(sub.commits?.length, 1);
+    }
+  });
+}
 
 test("removed submodules and uncertain historical starting versions are explicitly labelled", async (t) => {
   const f = await submoduleFixture(t);

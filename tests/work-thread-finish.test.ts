@@ -145,6 +145,8 @@ test("dirty, untracked and unmerged changes block the entire group until that wo
 
 test("failed checks cannot be bypassed with force and do not delete any workspace", async () => {
   const f = await fixture(); f.failedChecks.add("/work/two");
+  assert.match((await f.service.inspectWorkspaceDeletion("two")).error!, /SSH unavailable/);
+  await assert.rejects(() => f.service.deleteWorkspace("two", true), /SSH unavailable/);
   assert.match((await f.service.inspectWorkThreadFinish(f.threadId)).workspaces[1]!.error!, /SSH unavailable/);
   await assert.rejects(() => f.service.finishWorkThread({ ...f.input(), forceWorkspaceIds: ["two"] }), /SSH unavailable/);
   assert.equal(f.calls.length + f.killed.length, 0);

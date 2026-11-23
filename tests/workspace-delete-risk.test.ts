@@ -36,7 +36,101 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     await git(checkout, "merge", "--squash", "work/test");
     await commit(checkout, "squashed feature");
   };
-  return { checkout, worktree, runtime, git, commit, inspect, squash };
+  return { root, checkout, worktree, runtime, git, commit, inspect, squash };
+}
+
+async function remoteFixture(t: { after(fn: () => Promise<void>): void }, remote = "origin", remoteBranch = "master") {
+  const f = await fixture(t);
+  const repository = join(f.root, "remote repository.git");
+  const publisher = join(f.root, "publisher");
+  await f.git(f.checkout, "init", "--bare", repository);
+  await f.git(f.checkout, "remote", "add", remote, repository);
+  await f.git(f.checkout, "push", "-u", remote, `master:refs/heads/${remoteBranch}`);
+  await f.git(f.checkout, "clone", "--no-local", f.checkout, publisher);
+  await f.git(publisher, "remote", "rename", "origin", "source");
+  await f.git(publisher, "remote", "add", "publish", repository);
+  const publish = () => f.git(publisher, "push", "publish", `HEAD:refs/heads/${remoteBranch}`);
+  const initial = await f.git(f.checkout, "rev-parse", "master");
+  return { ...f, repository, publisher, publish, initial };
+}
+
+for (const merge of ["squash", "ordinary"] as const) {
+  test(`deletion fetches a remote ${merge} merge while preserving local branches, files and indexes`, async (t) => {
+    const f = await remoteFixture(t);
+    const baseline = await f.runtime.captureWorkspaceBaseline(f.worktree);
+    await f.git(f.publisher, "merge", merge === "squash" ? "--squash" : "--ff-only", "source/work/test");
+    if (merge === "squash") await f.commit(f.publisher, "squash on remote");
+    await f.publish();
+    assert.equal(await f.git(f.checkout, "rev-parse", "origin/master"), f.initial);
+    await writeFile(join(f.checkout, "original.txt"), "staged checkout change\n");
+    await f.git(f.checkout, "add", "original.txt");
+    await writeFile(join(f.worktree, "feature.txt"), "staged workspace change\n");
+    await f.git(f.worktree, "add", "feature.txt");
+    await writeFile(join(f.worktree, "feature.txt"), "unstaged workspace change\n");
+    await writeFile(join(f.worktree, "scratch.txt"), "untracked\n");
+    const state = async (path: string) => Promise.all([
+      f.git(path, "status", "--porcelain"), f.git(path, "diff"), f.git(path, "diff", "--cached"), f.git(path, "rev-parse", "HEAD")
+    ]);
+    const before = await Promise.all([state(f.checkout), state(f.worktree)]);
+    const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.checkout, f.worktree, "work/test", "master", baseline);
+    assert.equal(risk.unmergedCommitCount, 0);
+    assert.equal(risk.hasUncommittedChanges, true);
+    assert.equal(risk.hasUntrackedFiles, true);
+    assert.deepEqual(risk.changes?.baseline, baseline);
+    assert.equal(await f.git(f.checkout, "rev-parse", "master"), f.initial);
+    assert.equal(await f.git(f.checkout, "rev-parse", "origin/master"), await f.git(f.publisher, "rev-parse", "HEAD"));
+    assert.deepEqual(await Promise.all([state(f.checkout), state(f.worktree)]), before);
+  });
+}
+
+test("deletion follows the base branch's configured remote and differently named upstream branch", async (t) => {
+  const f = await remoteFixture(t, "upstream", "release/stable");
+  // An unrelated origin must not override the explicitly configured upstream.
+  await f.git(f.checkout, "remote", "add", "origin", join(f.root, "unavailable.git"));
+  await f.git(f.publisher, "merge", "--ff-only", "source/work/test");
+  await f.publish();
+  assert.equal((await f.inspect()).unmergedCommitCount, 0);
+  assert.equal(await f.git(f.checkout, "rev-parse", "master"), f.initial);
+});
+
+test("a base without an upstream fetches the same branch from origin", async (t) => {
+  const f = await remoteFixture(t);
+  await f.git(f.checkout, "branch", "--unset-upstream", "master");
+  await f.git(f.publisher, "merge", "--ff-only", "source/work/test");
+  await f.publish();
+  assert.equal((await f.inspect()).unmergedCommitCount, 0);
+});
+
+for (const base of ["origin/master", "refs/remotes/origin/master", "origin/HEAD", "HEAD"]) {
+  test(`deletion refreshes the remote base selected as ${base}`, async (t) => {
+    const f = await remoteFixture(t);
+    await f.git(f.checkout, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master");
+    await f.git(f.publisher, "merge", "--ff-only", "source/work/test");
+    await f.publish();
+    assert.equal((await f.runtime.inspectWorkspaceDeleteRisk(f.checkout, f.worktree, "work/test", base)).unmergedCommitCount, 0);
+  });
+}
+
+test("refreshing after a remote rewind restores the unmerged warning", async (t) => {
+  const f = await remoteFixture(t);
+  await f.git(f.publisher, "merge", "--ff-only", "source/work/test");
+  await f.publish();
+  assert.equal((await f.inspect()).unmergedCommitCount, 0);
+  await f.git(f.publisher, "push", "--force", "publish", `${f.initial}:refs/heads/master`);
+  assert.equal((await f.inspect()).unmergedCommitCount, 2);
+});
+
+for (const failure of ["unavailable remote", "deleted branch"]) {
+  test(`${failure} fails the deletion check instead of trusting a stale merged base`, async (t) => {
+    const f = await remoteFixture(t);
+    await f.git(f.publisher, "merge", "--ff-only", "source/work/test");
+    await f.publish();
+    assert.equal((await f.inspect()).unmergedCommitCount, 0);
+    if (failure === "unavailable remote") await f.git(f.checkout, "remote", "set-url", "origin", join(f.root, "missing.git"));
+    else await f.git(f.publisher, "push", "publish", ":refs/heads/master");
+    await assert.rejects(f.inspect, /Unable to refresh base branch "master" from "origin"/);
+    assert.equal(await f.git(f.worktree, "rev-parse", "--abbrev-ref", "HEAD"), "work/test");
+  });
 }
 
 test("squashing multiple workspace commits into master permits normal worktree deletion", async (t) => {
@@ -103,6 +197,36 @@ test("ordinary merges still permit deletion without a content check", async (t) 
 });
 
 for (const type of ["local", "remote"] as const) {
+  test(`deletion fetches and pins the upstream commit through the ${type} device runner`, async () => {
+    const commit = "a".repeat(40);
+    let fetched = false;
+    const runner: CommandRunner = { run: async (program, args, options) => {
+      assert.equal(program, "git");
+      let stdout = "";
+      if (args.includes("--symbolic-full-name")) stdout = "refs/heads/master";
+      else if (args.includes("for-each-ref")) stdout = "refs/heads/master\0upstream\0refs/heads/release\0refs/remotes/upstream/release";
+      else if (args.includes("fetch")) {
+        assert.deepEqual(args, ["-C", "/base checkout", "fetch", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "--", "upstream", "+refs/heads/release:refs/remotes/upstream/release"]);
+        assert.equal(options?.timeoutMs, 30_000);
+        fetched = true;
+      } else if (args.includes("--verify")) {
+        assert.equal(fetched, true);
+        assert.equal(args.at(-1), "refs/remotes/upstream/release^{commit}");
+        stdout = commit;
+      } else if (args.includes("rev-list")) {
+        assert.equal(fetched, true);
+        assert.equal(args.at(-1), `${commit}..work/test`);
+        stdout = "0";
+      } else if (args.includes("ls-tree")) {
+        assert.equal(args.at(-1), commit);
+      }
+      return { stdout, stderr: "", exitCode: 0 };
+    } };
+    const runtime = new GitRuntime({ ...local, type }, connection, runner);
+    assert.equal((await runtime.inspectWorkspaceDeleteRisk("/base checkout", "/workspace", "work/test", "master")).unmergedCommitCount, 0);
+    assert.equal(fetched, true);
+  });
+
   test(`squash checks use the ${type} device runner and retain warnings when unsupported`, async () => {
     let unsupported = false;
     const runner: CommandRunner = { run: async (program, args) => {
