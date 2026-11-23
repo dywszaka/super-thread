@@ -307,7 +307,7 @@ export class WorkspaceService extends EventEmitter {
       await this.recordProjectAndCheckout(info, device.id, input.projectCode, requestedName);
       return;
     }
-    const device = this.localDevice(snapshot);
+    const device = this.device(snapshot, input.deviceId);
     const unsafe = unsafeProjectName(requestedName || repositoryNameFromUrl(input.repositoryUrl));
     if (unsafe) throw new Error(unsafe);
     const info = await this.git(snapshot, device).clone(input.repositoryUrl, input.parentDirectory);
@@ -1381,11 +1381,6 @@ export class WorkspaceService extends EventEmitter {
   private git(snapshot: AppSnapshot, device: Device): WorkspaceGitRuntime { return this.gitRuntimeFactory(device, this.connection(snapshot, device.id)); }
   private directory(snapshot: AppSnapshot, device: Device): WorkspaceDirectoryRuntime {
     return this.directoryRuntimeFactory(device, this.connection(snapshot, device.id));
-  }
-  private localDevice(snapshot: AppSnapshot): Device {
-    const value = snapshot.devices.find((item) => item.type === "local");
-    if (!value) throw new Error("Local device is not available");
-    return value;
   }
   private project(snapshot: AppSnapshot, projectId: string): Project {
     const value = snapshot.projects.find((item) => item.id === projectId);

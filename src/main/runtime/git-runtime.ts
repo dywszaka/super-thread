@@ -41,8 +41,9 @@ export class GitRuntime {
 
   async clone(repositoryUrl: string, parentDirectory: string): Promise<RepositoryInfo> {
     const rawName = repositoryUrl.split(/[/:]/).at(-1)?.replace(/\.git$/, "") || "repository";
-    const target = this.device.type === "remote" ? posix.join(parentDirectory, rawName) : join(parentDirectory, rawName);
-    await this.runner.run("git", ["clone", repositoryUrl, target], { timeoutMs: 10 * 60_000 });
+    const parent = await new DirectoryRuntime(this.device, this.connection, this.runner).resolve(parentDirectory);
+    const target = this.device.type === "remote" ? posix.join(parent, rawName) : join(parent, rawName);
+    await this.runner.run("git", ["clone", "--", repositoryUrl, target], { timeoutMs: 10 * 60_000 });
     return this.inspect(target);
   }
 

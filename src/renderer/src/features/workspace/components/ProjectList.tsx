@@ -42,7 +42,7 @@ export function ProjectList({ snapshot }: { snapshot: AppSnapshot }): React.Reac
       <section className="project-page-body no-drag">
         <div className="project-summary"><span><strong>{snapshot.projects.length}</strong> projects</span><span><strong>{snapshot.checkouts.length}</strong> checkouts</span><span><strong>{snapshot.workspaces.length}</strong> workspaces</span></div>
         <div className="project-cards">
-          {snapshot.projects.length === 0 && <div className="project-list-empty"><FolderGit2 size={28} /><h2>No projects yet</h2><p>Add an existing folder or clone a Git repository onto this Mac.</p><button className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button></div>}
+          {snapshot.projects.length === 0 && <div className="project-list-empty"><FolderGit2 size={28} /><h2>No projects yet</h2><p>Add an existing folder or clone a Git repository onto a local or remote device.</p><button className="button primary" onClick={() => openDialog("project")}><Plus size={14} /> Add Project</button></div>}
           {snapshot.projects.map((project) => {
             const checkouts = snapshot.checkouts.filter((checkout) => checkout.projectId === project.id);
             const workspaces = snapshot.workspaces.filter((workspace) => workspace.projectId === project.id);

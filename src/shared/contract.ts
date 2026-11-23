@@ -169,6 +169,7 @@ export const addProjectSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("import"), deviceId: z.string().min(1), path: z.string().trim().min(1), projectCode: projectCodeSchema, projectName: projectNameSchema.optional() }).strict(),
   z.object({
     mode: z.literal("clone"),
+    deviceId: z.string().min(1),
     repositoryUrl: z.string().trim().min(1),
     parentDirectory: z.string().trim().min(1),
     projectName: projectNameSchema.optional(),

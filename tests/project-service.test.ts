@@ -57,29 +57,52 @@ test("AddProject import records a checkout on the selected remote device", async
   assert.equal(service.snapshot().checkouts[0]?.path, "/srv/demo");
 });
 
-test("AddProject clone always runs against the local device", async () => {
-  const clonedOn: string[] = [];
-  const { service } = await setup((device) => fakeGit({
-    clone: async (_repositoryUrl, parentDirectory) => {
-      clonedOn.push(device.id);
-      return { root: join(parentDirectory, "demo"), name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" };
-    }
-  }));
+for (const deviceId of ["dev_local", "dev_remote"]) {
+  test(`AddProject clone records its checkout on the selected device ${deviceId}`, async () => {
+    const clonedOn: string[] = [];
+    const { service } = await setup((device) => fakeGit({
+      clone: async (_repositoryUrl, parentDirectory) => {
+        clonedOn.push(device.id);
+        return { root: join(parentDirectory, "demo"), name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" };
+      }
+    }));
 
-  await service.addProject({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" });
+    await service.addProject({ projectCode: "demo", mode: "clone", deviceId, repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" });
 
-  assert.deepEqual(clonedOn, ["dev_local"]);
-  assert.equal(service.snapshot().checkouts[0]?.deviceId, "dev_local");
-});
+    assert.deepEqual(clonedOn, [deviceId]);
+    assert.equal(service.snapshot().checkouts[0]?.deviceId, deviceId);
+    assert.equal(service.snapshot().checkouts[0]?.path, "/Users/me/code/demo");
+  });
+}
 
 test("AddProject allows identical names and remotes at different paths on one device", async () => {
   const { service } = await setup(() => fakeGit());
   await service.addProject({ projectCode: "demo", mode: "import", deviceId: "dev_local", path: "/code/demo" });
   await service.addProject({ projectCode: "demo-2", mode: "import", deviceId: "dev_local", path: "/other/demo" });
-  await service.addProject({ projectCode: "demo-3", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/cloned" });
+  await service.addProject({ projectCode: "demo-3", mode: "clone", deviceId: "dev_local", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/cloned" });
   assert.equal(service.snapshot().projects.length, 3);
   assert.deepEqual(service.snapshot().projects.map((project) => project.name), ["demo", "demo", "demo"]);
   assert.deepEqual(service.snapshot().checkouts.map((checkout) => checkout.path), ["/code/demo", "/other/demo", "/cloned/demo"]);
+});
+
+test("AddProject clone rejects missing devices before running Git and records nothing on failure", async () => {
+  const clonedOn: string[] = [];
+  let fail = true;
+  const { service } = await setup((device) => fakeGit({ clone: async () => {
+    clonedOn.push(device.id);
+    if (fail) throw new Error("SSH authentication failed");
+    return { root: "/srv/demo", name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main" };
+  } }));
+  const input = { mode: "clone" as const, deviceId: "dev_remote", projectCode: "demo", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/srv" };
+  await assert.rejects(() => service.addProject({ ...input, deviceId: "missing" }), /Device not found/);
+  assert.deepEqual(clonedOn, []);
+  await assert.rejects(() => service.addProject(input), /SSH authentication failed/);
+  assert.deepEqual(service.snapshot().projects, []);
+  assert.deepEqual(service.snapshot().checkouts, []);
+  fail = false;
+  await service.addProject(input);
+  assert.equal(service.snapshot().projects.length, 1);
+  assert.equal(service.snapshot().checkouts[0]?.deviceId, "dev_remote");
 });
 
 test("AddProject rejects duplicate device paths atomically, including concurrent imports", async () => {
@@ -219,7 +242,7 @@ test("project codes are required, path-safe, trimmed, and unique across devices 
   await service.addProject(input);
   assert.equal(service.snapshot().projects[0]?.code, "demo-core");
   await assert.rejects(() => service.addProject({ ...input, deviceId: "dev_remote", path: "/srv/demo", projectCode: "DEMO-CORE" }), /already exists/);
-  await assert.rejects(() => service.addProject({ mode: "clone", repositoryUrl: "git@example.com:demo.git", parentDirectory: "/code", projectCode: "demo-core" }), /already exists/);
+  await assert.rejects(() => service.addProject({ mode: "clone", deviceId: "dev_local", repositoryUrl: "git@example.com:demo.git", parentDirectory: "/code", projectCode: "demo-core" }), /already exists/);
 });
 
 test("concurrent imports and edits enforce project code uniqueness inside the serialized write", async () => {

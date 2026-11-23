@@ -305,7 +305,7 @@ export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {
 
 export type AddProjectInput =
   | { mode: "import"; deviceId: string; path: string; projectCode: string; projectName?: string }
-  | { mode: "clone"; repositoryUrl: string; parentDirectory: string; projectCode: string; projectName?: string };
+  | { mode: "clone"; deviceId: string; repositoryUrl: string; parentDirectory: string; projectCode: string; projectName?: string };
 
 export type SetupProjectInput =
   | { projectId: string; deviceId: string; mode: "import"; path: string }

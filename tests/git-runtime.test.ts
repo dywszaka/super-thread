@@ -5,7 +5,7 @@ import { tmpdir, homedir } from "node:os";
 import test, { type TestContext } from "node:test";
 import type { CommandResult, Device, DeviceConnection } from "../src/shared/domain";
 import { GitRuntime } from "../src/main/runtime/git-runtime";
-import { ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
+import { DeviceCommandRunner, ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
 
 class FakeRunner implements CommandRunner {
   calls: Array<{ program: string; args: string[]; cwd?: string }> = [];
@@ -28,6 +28,49 @@ const local: Device = { id: "local", name: "Mac", type: "local", status: "online
 const connection: DeviceConnection = { deviceId: "local", transport: "local", config: {} };
 const remote: Device = { id: "remote", name: "GPU", type: "remote", status: "online", createdAt: "now" };
 const remoteConnection: DeviceConnection = { deviceId: "remote", transport: "ssh", config: { host: "gpu.example", user: "builder" } };
+
+test("remote clone resolves the parent on its device and uses the same SSH config as fetch", async () => {
+  const calls: Array<{ program: string; args: string[]; timeoutMs?: number }> = [];
+  const root = "/home/builder/code with spaces/demo";
+  const runner: CommandRunner = { run: async (program, args, options) => {
+    calls.push({ program, args, timeoutMs: options?.timeoutMs });
+    const command = args.at(-1)!;
+    const stdout = command === "'pwd'" ? "/home/builder"
+      : command.includes("'pwd' '-P'") ? command.includes("/demo'") ? root : "/home/builder/code with spaces"
+      : command.includes("--show-toplevel") ? root
+      : command.includes("get-url") ? "git@example.com:team/demo.git"
+      : command.includes("symbolic-ref --short") ? "origin/main"
+      : command.includes("rev-parse") ? "refs/heads/main"
+      : command.endsWith("'remote'") ? "origin" : "";
+    return { stdout, stderr: "", exitCode: 0 };
+  } };
+  const runtime = new GitRuntime(remote, remoteConnection, new DeviceCommandRunner(remoteConnection, runner));
+  assert.deepEqual(await runtime.clone("git@example.com:team/demo.git", "~/code with spaces"), {
+    root, name: "demo", remote: "git@example.com:team/demo.git", defaultBranch: "main"
+  });
+  await runtime.inspectWorkspaceDeleteRisk(root, "/work/demo", "work/demo", "main");
+  const clone = calls.find((call) => call.args.at(-1)?.includes("'clone'"))!;
+  const fetch = calls.find((call) => call.args.at(-1)?.includes("'fetch'"))!;
+  assert.ok(clone);
+  assert.ok(fetch);
+  assert.equal(clone.args.at(-1), "'git' 'clone' '--' 'git@example.com:team/demo.git' '/home/builder/code with spaces/demo'");
+  assert.equal(clone.timeoutMs, 600_000);
+  // Neither operation overrides ForwardAgent or the SSH config file; OpenSSH owns agent forwarding.
+  assert.deepEqual(clone.args.slice(0, -1), ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "builder@gpu.example"]);
+  assert.deepEqual(fetch.args.slice(0, -1), clone.args.slice(0, -1));
+  assert.ok(calls.every((call) => call.program === "ssh"));
+});
+
+test("clone failures propagate before repository inspection", async () => {
+  const calls: string[] = [];
+  const runner: CommandRunner = { run: async (program) => {
+    calls.push(program);
+    if (program === "git") throw new Error("Permission denied (publickey)");
+    return { stdout: "/srv", stderr: "", exitCode: 0 };
+  } };
+  await assert.rejects(() => new GitRuntime(remote, remoteConnection, runner).clone("git@example.com:demo.git", "/srv"), /Permission denied/);
+  assert.deepEqual(calls, ["pwd", "git"]);
+});
 
 test("GitRuntime records Git metadata for a project directory", async () => {
   const runner = new FakeRunner();

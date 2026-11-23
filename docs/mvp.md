@@ -450,7 +450,7 @@ git clone <repository-url> ~/code/llama.cpp
 
 然后创建 ProjectCheckout。
 
-Clone 是独立于 New Workspace 的 Project Setup 操作。Local 与 Remote Device 均可选择 base directory，并由所属 Device Runtime 在该目录下执行 `git clone`；远端使用 SSH 连接及该设备自身的 Git 凭据。
+Clone 是独立于 New Workspace 的 Project Setup 操作。Local 与 Remote Device 均可选择 base directory，并由所属 Device Runtime 在该目录下执行 `git clone`；新建项目的 Clone URL 同样支持选择 Local 或 Remote Device，并在所选设备浏览或输入父目录；切换设备清空目录选择。父目录由目标设备解析（包括 `~` 和软链接），clone 成功并读取仓库信息后才记录 Project 与该设备的 ProjectCheckout；失败保留表单以便修正重试。远端 clone 与 fetch 共用 SSH 命令执行器，沿用本机 `~/.ssh/config`（包括 `ForwardAgent`）及 SSH Agent 环境；已配置 Agent 转发时可使用本机 Agent 中的密钥访问 Git 远端，无需把私钥复制到设备。
 
 ### Import Existing Directory
 

@@ -26,13 +26,16 @@ test("settings allow empty templates and reject invalid or unordered reminder th
 });
 import { reorderWorkThreadsSchema, addProjectSchema, addRemoteDeviceSchema, browseDirectorySchema, createSessionSchema, createWorkspaceSchema, renameSessionSchema, renameWorkThreadSchema, renameWorkspaceSchema, reorderSessionsSchema, setupProjectSchema, updateProjectSchema, updateRemoteDeviceSchema } from "../src/shared/contract";
 
-test("AddProject import is device-scoped and clone is local-only at the contract boundary", () => {
+test("AddProject import and clone require a selected device at the contract boundary", () => {
   assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "import", deviceId: "dev_remote", path: "/srv/demo" }).success, true);
   assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "import", path: "/srv/demo" }).success, false);
-  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" }).success, true);
-  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "demo-gpu" }).success, true);
-  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "../demo" }).success, false);
-  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", repositoryUrl: "git@example.com:team/demo.git", deviceId: "dev_remote", parentDirectory: "/srv" }).success, false);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", deviceId: "dev_local", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", deviceId: "dev_local", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "demo-gpu" }).success, true);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", deviceId: "dev_local", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/Users/me/code", projectName: "../demo" }).success, false);
+  assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", deviceId: "dev_remote", repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/srv" }).success, true);
+  for (const deviceId of [undefined, "", null]) {
+    assert.equal(addProjectSchema.safeParse({ projectCode: "demo", mode: "clone", deviceId, repositoryUrl: "git@example.com:team/demo.git", parentDirectory: "/srv" }).success, false);
+  }
 });
 
 test("SetupProject requires the path that matches the selected setup mode", () => {

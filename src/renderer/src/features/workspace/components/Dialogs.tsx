@@ -115,20 +115,21 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   const [projectCode, setProjectCode] = useState("");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const device = snapshot.devices.find((item) => item.id === deviceId);
-  const localDevice = snapshot.devices.find((item) => item.type === "local");
   const codeError = projectCodeError(projectCode, snapshot.projects);
-  const valid = !codeError && (mode === "import"
-    ? Boolean(deviceId && path.trim())
-    : Boolean(localDevice && url.trim() && parent.trim()));
+  const valid = !codeError && Boolean(device) && (mode === "import"
+    ? Boolean(path.trim())
+    : Boolean(url.trim() && parent.trim()));
   useEffect(() => {
-    if (!snapshot.devices.some((item) => item.id === deviceId)) setDeviceId(snapshot.devices[0]?.id || "");
+    if (!snapshot.devices.some((item) => item.id === deviceId)) {
+      setDeviceId(snapshot.devices[0]?.id || ""); setPath(""); setParent("");
+    }
   }, [snapshot.devices, deviceId]);
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
       const name = projectName.trim();
       if (mode === "import") await window.desktop.addProject({ mode, deviceId, path, projectCode, ...(name ? { projectName: name } : {}) });
-      else await window.desktop.addProject({ mode, repositoryUrl: url, parentDirectory: parent, projectCode, ...(name ? { projectName: name } : {}) });
+      else await window.desktop.addProject({ mode, deviceId, repositoryUrl: url, parentDirectory: parent, projectCode, ...(name ? { projectName: name } : {}) });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       toast.success("Project added"); closeDialog(); setPath(""); setUrl(""); setParent(""); setProjectName(""); setProjectCode("");
     } catch (error) {
@@ -138,13 +139,12 @@ export function AddProjectDialog({ snapshot }: { snapshot: AppSnapshot }): React
   return (
     <Modal open={dialog === "project"} title="Add project" description="Add a folder with or without Git. Each directory can be added once per device." busy={busy} submitDisabled={!valid} submitLabel={mode === "import" ? "Import Project" : "Clone Project"} onClose={closeDialog} onSubmit={submit}>
       <div className="segmented"><button type="button" className={mode === "import" ? "active" : ""} onClick={() => setMode("import")}><HardDrive size={15} /> Import existing</button><button type="button" className={mode === "clone" ? "active" : ""} onClick={() => setMode("clone")}><Link size={15} /> Clone URL</button></div>
+      <Field label="Device"><select name="deviceId" value={deviceId} disabled={busy} onChange={(e) => { setDeviceId(e.target.value); setPath(""); setParent(""); setTouched((value) => ({ ...value, path: false, parent: false })); }} required>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
       {mode === "import" ? <>
-        <Field label="Device"><select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); setPath(""); }} required>{snapshot.devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-        <Field label="Project directory" hint="Git is optional. The selected folder will be used as the project directory." error={touched.path && !path.trim() ? "Choose or enter a project directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, path: true }))}><DirectoryField value={path} onChange={setPath} remote={device?.type === "remote"} deviceId={deviceId} placeholder={device?.type === "remote" ? "~" : "/Users/you/code/project"} /></div></Field>
+        <Field label="Project directory" hint="Git is optional. The selected folder will be used as the project directory." error={touched.path && !path.trim() ? "Choose or enter a project directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, path: true }))}><DirectoryField key={deviceId} value={path} onChange={setPath} remote={device?.type === "remote"} deviceId={deviceId} placeholder={device?.type === "remote" ? "~" : "/Users/you/code/project"} /></div></Field>
       </> : <>
-        <Field label="Git repository URL" error={touched.url && !url.trim() ? "Enter a Git repository URL." : undefined}><input value={url} onChange={(e) => setUrl(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, url: true }))} placeholder="git@github.com:org/repository.git" /></Field>
-        <Field label="Device"><select value={localDevice?.id || ""} disabled required>{localDevice && <option value={localDevice.id}>{localDevice.name}</option>}</select></Field>
-        <Field label="Parent directory" error={touched.parent && !parent.trim() ? "Choose or enter a parent directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, parent: true }))}><DirectoryField value={parent} onChange={setParent} placeholder="/Users/you/code" /></div></Field>
+        <Field label="Git repository URL" error={touched.url && !url.trim() ? "Enter a Git repository URL." : undefined}><input value={url} onChange={(e) => setUrl(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, url: true }))} placeholder="git@github.com:org/repository.git" required autoCorrect="off" autoCapitalize="none" spellCheck={false} /></Field>
+        <Field label="Parent directory" error={touched.parent && !parent.trim() ? "Choose or enter a parent directory." : undefined}><div onBlur={() => setTouched((value) => ({ ...value, parent: true }))}><DirectoryField key={deviceId} value={parent} onChange={setParent} remote={device?.type === "remote"} deviceId={deviceId} placeholder={device?.type === "remote" ? "~/code" : "/Users/you/code"} /></div></Field>
       </>}
       <Field label="Project code" hint="Required and unique across projects. Used as the folder name for new worktrees." error={touched.projectCode || projectCode ? codeError : undefined}><input value={projectCode} disabled={busy} onChange={(event) => setProjectCode(event.target.value)} onBlur={() => setTouched((value) => ({ ...value, projectCode: true }))} placeholder="project-code" required maxLength={80} /></Field>
       <Field label="Project name (optional)" hint="Defaults to the folder name. Names can be reused."><input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="project-name" maxLength={80} /></Field>
