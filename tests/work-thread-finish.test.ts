@@ -9,6 +9,7 @@ import { JsonStore } from "../src/main/persistence/json-store";
 import { TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import { finishWorkThreadSchema } from "../src/shared/contract";
 import { MAX_WORK_THREAD_FINISH_NOTE_LENGTH } from "../src/shared/work-thread-finish";
+import type { WorkspaceChangeInspection } from "../src/shared/workspace-changes";
 
 async function fixture() {
   const statePath = join(await mkdtemp(join(tmpdir(), "superthread-finish-")), "state.json");
@@ -16,6 +17,7 @@ async function fixture() {
   const killed: string[] = [];
   const terminals = Object.assign(new EventEmitter(), { has: () => false, kill: (id: string) => killed.push(id) }) as unknown as TerminalRuntime;
   const risks = new Map<string, WorkspaceDeleteRisk>();
+  const changes = new Map<string, WorkspaceChangeInspection>();
   const failedChecks = new Set<string>();
   const failedDeletes = new Set<string>();
   const calls: Array<{ path: string; force: boolean; deviceId: string }> = [];
@@ -26,6 +28,7 @@ async function fixture() {
     inspect: async () => ({ root: "/repo", name: "Repo" }), clone: async () => ({ root: "/repo", name: "Repo" }),
     createWorktree: async () => { throw new Error("unexpected creation"); },
     linkWorktreePaths: async () => {}, listWorkspaceLinkCandidates: async () => [],
+    inspectWorkspaceChanges: async (path) => changes.get(path)!,
     inspectWorkspaceDeleteRisk: async (_checkout, path) => {
       inspected += 1; await inspectionGate;
       if (failedChecks.has(path)) throw new Error("SSH unavailable");
@@ -34,6 +37,8 @@ async function fixture() {
       return risk;
     },
     deleteWorktree: async (_checkout, path, _branch, force) => {
+      const evidence = risks.get(path)?.changes;
+      if (evidence) assert.deepEqual((await new JsonStore(statePath).load()).workThreads[0]!.workspaceChanges!.find((record) => record.path === path)?.changes, evidence);
       if (failedDeletes.has(path)) throw new Error("deletion failed");
       calls.push({ path, force, deviceId });
     }
@@ -56,7 +61,7 @@ async function fixture() {
     }
   });
   const input = () => ({ id: threadId, workspaceIds: service.snapshot().workspaces.filter((item) => item.workThreadId === threadId).map((item) => item.id), forceWorkspaceIds: [] as string[] });
-  return { service, store, statePath, terminals, threadId, risks, failedChecks, failedDeletes, killed, calls, input,
+  return { service, store, statePath, terminals, threadId, risks, changes, failedChecks, failedDeletes, killed, calls, input,
     hold: (gate: Promise<void>) => { inspectionGate = gate; },
     inspected: () => inspected,
     afterInspection: (callback: () => void) => { afterInspection = callback; }
@@ -222,6 +227,36 @@ test("deletion retains structured submodule evidence independently of Doc autosa
   assert.equal(loaded.workThreads[0]!.document, "An unrelated Doc edit");
   assert.equal(loaded.workThreads[0]!.status, "archived");
 });
+
+for (const outcome of ["completed", "cancelled"] as const) {
+  test(`${outcome} Finish saves repository commits before cleanup and retains local, remote and main histories through failure, retry and restart`, async () => {
+    const f = await fixture();
+    const changes: WorkspaceChangeInspection = { baseline: { source: "created", capturedAt: "start", commit: "a".repeat(40) },
+      repository: { currentCommit: "b".repeat(40), commits: [{ hash: "b".repeat(40), subject: "期间工作" }] }, submodules: [] };
+    for (const path of ["/work/one", "/work/two"]) f.risks.set(path, { hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, changes });
+    f.changes.set("/repo", changes);
+    f.failedDeletes.add("/work/two");
+    const before = f.service.snapshot();
+    const preview = await f.service.inspectWorkThreadFinish(f.threadId);
+    assert.ok(preview.workspaces.every((workspace) => workspace.changes?.repository?.commits.length === 1));
+    assert.deepEqual(f.service.snapshot(), before);
+    await assert.rejects(() => f.service.finishWorkThread({ ...f.input(), outcome }), /1 workspace\(s\) deleted/);
+    const partial = await new JsonStore(f.statePath).load();
+    assert.equal(partial.workThreads[0]!.workspaceChanges![0]!.outcome, "deleted");
+    assert.equal(partial.workThreads[0]!.workspaceChanges![1]!.outcome, "failed");
+    assert.ok(partial.workThreads[0]!.workspaceChanges!.every((record) => record.changes?.repository?.commits[0]?.subject === "期间工作"));
+    f.failedDeletes.clear();
+    await Promise.all([f.service.finishWorkThread({ ...f.input(), outcome }), f.service.saveWorkThreadDocument({ id: f.threadId, content: "Keep this draft" })]);
+    await f.service.restoreWorkThread(f.threadId);
+    const loaded = await new JsonStore(f.statePath).load();
+    const thread = loaded.workThreads[0]!;
+    assert.equal(thread.document, "Keep this draft");
+    assert.equal(thread.completion?.outcome, outcome);
+    assert.equal(thread.workspaceChanges!.length, 3);
+    assert.ok(thread.workspaceChanges!.every((record) => record.outcome === "deleted"));
+    assert.ok(thread.workspaceChanges!.every((record) => JSON.stringify(record.changes) === JSON.stringify(changes)));
+  });
+}
 
 test("confirmation cannot delete an added, omitted or foreign workspace", async () => {
   const f = await fixture();

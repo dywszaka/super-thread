@@ -431,7 +431,14 @@ test("different threads share a main checkout with independent sessions and clea
 });
 
 test("standalone and thread creation share atomic workspace uniqueness rules", async () => {
-  const { service, store } = await setup(undefined, fakeTerminals());
+  const runtime: WorkspaceGitRuntime = {
+    inspect: async () => ({ root: "/tmp/demo", name: "demo" }), clone: async () => ({ root: "/tmp/demo", name: "demo" }),
+    createWorktree: async () => { throw new Error("unexpected worktree creation"); },
+    listWorkspaceLinkCandidates: async () => [], linkWorktreePaths: async () => {},
+    inspectWorkspaceChanges: async () => ({ baseline: { source: "unknown", capturedAt: "now" }, submodules: [] }),
+    inspectWorkspaceDeleteRisk: async () => ({ hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }), deleteWorktree: async () => {}
+  };
+  const { service, store } = await setup(runtime, fakeTerminals());
   await store.update((draft) => {
     draft.projects.push({ id: "project-1", name: "demo", code: "demo", repositoryUrl: "git@example.com:demo.git", defaultBranch: "main", createdAt: "now", updatedAt: "now" });
     draft.checkouts.push({ id: "checkout-1", projectId: "project-1", deviceId: "dev_local", path: "/tmp/demo", createdAt: "now" });

@@ -139,7 +139,11 @@ test("squashing multiple workspace commits into master permits normal worktree d
   await f.squash();
   // The original commit IDs remain absent from master after a squash.
   assert.equal(await f.git(f.checkout, "rev-list", "--count", "master..work/test"), "2");
-  assert.deepEqual(await f.inspect(), { hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 });
+  const risk = await f.inspect();
+  assert.equal(risk.hasUncommittedChanges, false);
+  assert.equal(risk.hasUntrackedFiles, false);
+  assert.equal(risk.unmergedCommitCount, 0);
+  assert.deepEqual(risk.changes?.repository?.commits.map((commit) => commit.subject), ["second feature commit", "first feature commit"]);
   await f.runtime.deleteWorktree(f.checkout, f.worktree, "work/test", false);
   assert.equal(await f.git(f.checkout, "branch", "--list", "work/test"), "");
   assert.equal(await readFile(join(f.checkout, "feature.txt"), "utf8"), "first\nsecond\n");
@@ -160,7 +164,10 @@ test("squash detection tolerates later base commits and preserves dirty files an
     f.git(path, "status", "--porcelain"), f.git(path, "diff"), f.git(path, "diff", "--cached"), f.git(path, "rev-parse", "HEAD")
   ]);
   const before = await Promise.all([state(f.checkout), state(f.worktree)]);
-  assert.deepEqual(await f.inspect(), { hasUncommittedChanges: true, hasUntrackedFiles: true, unmergedCommitCount: 0 });
+  const risk = await f.inspect();
+  assert.equal(risk.hasUncommittedChanges, true);
+  assert.equal(risk.hasUntrackedFiles, true);
+  assert.equal(risk.unmergedCommitCount, 0);
   assert.deepEqual(await Promise.all([state(f.checkout), state(f.worktree)]), before);
 });
 
@@ -211,7 +218,7 @@ for (const type of ["local", "remote"] as const) {
         fetched = true;
       } else if (args.includes("--verify")) {
         assert.equal(fetched, true);
-        assert.equal(args.at(-1), "refs/remotes/upstream/release^{commit}");
+        assert.ok(["refs/remotes/upstream/release^{commit}", "HEAD^{commit}"].includes(args.at(-1)!));
         stdout = commit;
       } else if (args.includes("rev-list")) {
         assert.equal(fetched, true);
@@ -235,7 +242,7 @@ for (const type of ["local", "remote"] as const) {
         assert.deepEqual(args, ["-C", "/base checkout", "merge-tree", "--write-tree", "master", "work/test"]);
         if (unsupported) throw new Error("unknown option: write-tree");
       }
-      return { stdout: args.includes("rev-list") ? "2" : args.includes("status") ? "" : "tree-id", stderr: "", exitCode: 0 };
+      return { stdout: args.includes("rev-list") ? "2" : args.some((arg) => ["status", "log", "submodule", "ls-tree", "ls-files"].includes(arg)) ? "" : "tree-id", stderr: "", exitCode: 0 };
     } };
     const runtime = new GitRuntime({ ...local, type }, connection, runner);
     const inspect = () => runtime.inspectWorkspaceDeleteRisk("/base checkout", "/workspace", "work/test", "master");

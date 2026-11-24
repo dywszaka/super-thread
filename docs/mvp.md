@@ -759,6 +759,9 @@ Done
 
 ### Submodule 改动摘要与留存
 
+- Finish 与单独删除在清理前同时采集主仓库 commits，存入各 Workspace 的 `workspaceChanges[].changes.repository`（可选，含 `currentCommit`、完整 `commits: { hash, subject }[]` 与可选 `warning`）。范围为创建时固定 commit 到本次固定 HEAD 的 Git 可达差集，不依赖当前 base 或是否已合并，不按日期或作者过滤，包含 merge 带入的历史；主仓库不使用子模块的 20 条展示上限。main 目录 Workspace 同样采集。Changes 页提供带数量的可展开列表，并复用复制、导出及明确追加到 Doc；不自动改写正文。记录沿用 pending/deleted/failed、按 workspace ID 重试及归档/恢复/重启保留规则。
+- 创建时为空 Git 仓库记录 `gitBaseline.unborn: true`，之后从首个 commit 开始采集。旧 Workspace 仍使用明确标注的 inferred 起点；unknown 起点显示不能确定期间提交。已保存的旧摘要没有 repository 字段时显示「当时未采集」，不反推已删除 worktree 的历史，不需要快照迁移。重写或切换历史导致起点不再为 HEAD 祖先时显示警告；被 reset/rebase 丢弃、不再可达的提交不包含在范围中，也不声称所有提交均由本次工作作者创建。已知起点但对象缺失或 Git log/SSH 读取失败会阻止清理，不保存假空列表。
+
 - schema 17 为 Workspace 增加可选 `gitBaseline`，为 WorkThread 增加可选 `workspaceChanges`；均为所属对象的嵌入数据，不引入新的顶级领域对象。旧快照不回填虚假的创建起点。
 - 新 Git Workspace 在启动默认终端前记录固定主仓库 commit 和可读取的各级 submodule 起始 commit；worktree 在复制/链接文件之前捕获。未初始化 submodule 的起点由该固定 commit 中的 gitlink 解析，之后初始化不会重新设置起点。直接目录 Workspace 可记录当时已检出的子模块版本；起始已带未提交文件时标记归属不确定，避免将既有工作归为本次开发。创建时无法捕获则记录 unknown，不阻止工作区创建。
 - 旧 Workspace 使用当前 Git 历史的 merge-base 推导起点，明确标为 inferred，说明原始创建点未知；无法推导或缺少对象时标记 unknown。当前 base branch 的移动不能改变新 Workspace 的固定起点。

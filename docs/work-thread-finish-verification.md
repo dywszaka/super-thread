@@ -1,5 +1,14 @@
 # Work Thread Finish verification
 
+## Repository commit collection — 2026-11-24
+
+- `npm test`: 312 passing tests. `npm run build`: TypeScript and all Electron bundles pass.
+- Runtime tests cover fixed creation ranges after ordinary/squash merges, more than 20 commits without truncation, Unicode subjects, main-directory and empty repositories, detached HEAD, inferred/unknown starting points, rewritten history, missing objects, failed history reads, and SSH command quoting. Existing deletion-risk checks remain covered.
+- Service tests verify both Completed and Cancelled, local/remote/main histories, saving evidence before Git deletion, partial failure and retry without losing successful records, concurrent Doc saves, restore and JSON reload. Markdown tests cover full hashes, escaped subjects, warnings, empty ranges and old summaries without collected history.
+- Real Electron verification used `/tmp/superthread-commits-electron-qa-7` with isolated app data and real repositories. Finish preview showed two worktree commits and three main-directory commits, including already merged work. Go back retained the worktree, live terminal and snapshot without a saved summary. Successful Finish stopped the real PTY, removed the worktree and branch, retained the project directory and Doc, and saved both histories. Restore and a separate process restart retained the records.
+- Copy Markdown, export through the existing native-save IPC (the QA harness selected a temporary output path), and Add summary to Doc retained commit text while escaping HTML-like subjects. Repository text rendered literally. Keyboard Space toggled the native disclosure. Light 1320×840 and dark 880×560 screenshots were visually inspected, including long unbroken commit titles and the 426px document drawer; no horizontal overflow, footer controls remained visible, and computed drag/no-drag regions were preserved.
+- Screenshots, profile, result JSON and exported Markdown remain in the temporary QA directory; the harness is `/tmp/superthread-commits-qa.mjs`. Physical traffic-light hit testing/window dragging and a live SSH host were not tested. SSH dispatch and failures are covered by runner/service fixtures. This change does not modify IPC channels, preload loading, Electron packaging or PTY integration, so no packaging run was required.
+
 Verified on macOS, 2026-11-13.
 
 - `npm test`: 236 passing tests.

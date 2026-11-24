@@ -1,5 +1,7 @@
 export interface WorkspaceGitBaseline {
   commit?: string;
+  /** The repository had an unborn branch and no starting commit. */
+  unborn?: true;
   source: "created" | "inferred" | "unknown";
   capturedAt: string;
   submodules?: Array<{ path: string; commit: string; dirty?: boolean }>;
@@ -24,6 +26,12 @@ export interface SubmoduleChange {
 
 export interface WorkspaceChangeInspection {
   baseline: WorkspaceGitBaseline;
+  /** Absent on summaries saved before repository commit collection was supported. */
+  repository?: {
+    currentCommit?: string;
+    commits: Array<{ hash: string; subject: string }>;
+    warning?: string;
+  };
   submodules: SubmoduleChange[];
 }
 
@@ -71,9 +79,18 @@ export function workspaceChangesMarkdown(record: Omit<WorkspaceChangeRecord, "ou
   if (record.error) lines.push(`- Error: ${plain(record.error)}`);
   const changes = record.changes;
   if (changes) {
-    lines.push(`- Starting point: ${changes.baseline.source} · ${changes.baseline.commit ?? "unknown"}`);
+    lines.push(`- Starting point: ${changes.baseline.source} · ${changes.baseline.commit ?? (changes.baseline.unborn ? "Empty repository" : "unknown")}`);
     if (changes.baseline.warning) lines.push(`- Starting point warning: ${plain(changes.baseline.warning)}`);
     lines.push("", "This is a change summary, not a complete history of edits that were later reverted.");
+    const repository = changes.repository;
+    lines.push("", "### Repository commits");
+    if (repository) {
+      lines.push(`- Current commit: ${repository.currentCommit ?? "No commits yet"}`);
+      if (repository.warning) lines.push(`- Warning: ${plain(repository.warning)}`);
+      lines.push("", "Commits reachable from the current commit, excluding the starting history; includes merged commits and may include work by others.");
+      if (repository.commits.length) lines.push(...repository.commits.map((commit) => `- ${commit.hash} ${plain(commit.subject)}`));
+      else lines.push(repository.warning ? "No commits could be identified for this range." : "No commits since starting point.");
+    } else lines.push("Repository commits were not collected in this saved summary.");
     for (const sub of changes.submodules) {
       lines.push("", `### ${plain(sub.path)} — ${submoduleActivityLabel(sub.activity)}`,
         `- State: ${submoduleStateLabel(sub)}`,

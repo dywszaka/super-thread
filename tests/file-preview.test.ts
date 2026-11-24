@@ -18,6 +18,7 @@ async function previewFixture(t: TestContext) {
   await symlink(join(root, "report.md"), join(root, "alias.md"));
   await writeFile(join(root, "not-supported.ts"), "text");
   const snapshot = emptySnapshot();
+  snapshot.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: root, isGit: false, createdAt: "then" });
   snapshot.workThreads.push({ id: "thread", name: "Preview", status: "active", pinned: false, createdAt: "then", updatedAt: "then" });
   snapshot.workspaces.push({ id: "workspace", workThreadId: "thread", projectId: "project", deviceId: "dev_local", checkoutId: "checkout", kind: "main", path: root, name: "preview", branch: "main", baseBranch: "main", status: "ready", createdAt: "then", updatedAt: "then" });
   snapshot.sessions.push({ id: "terminal", workspaceId: "workspace", name: "Terminal", order: 0, status: "exited", shell: "zsh", createdAt: "then" });

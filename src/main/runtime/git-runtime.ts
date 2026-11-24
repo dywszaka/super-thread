@@ -111,7 +111,7 @@ ln -s "$source_path" "$target_path"
       // Inspect submodule worktrees separately so a broken submodule cannot turn its warning into a hard failure here.
       this.git(workspacePath, ["status", "--porcelain", "--ignore-submodules=all"]),
       this.git(checkoutPath, ["rev-list", "--count", `${base}..${branch}`]),
-      new SubmoduleChanges(this.runner).inspect(workspacePath, base, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base))
+      this.inspectWorkspaceChanges(workspacePath, base, baseline)
     ]);
     const lines = status.split("\n").filter(Boolean);
     let unmergedCommitCount = Number.parseInt(count, 10) || 0;
@@ -120,7 +120,7 @@ ln -s "$source_path" "$target_path"
       hasUncommittedChanges: lines.some((line) => !line.startsWith("??")),
       hasUntrackedFiles: lines.some((line) => line.startsWith("??")),
       unmergedCommitCount,
-      ...(changes.submodules.length || baseline ? { submodules: changes.submodules, changes } : {})
+      submodules: changes.submodules, changes
     };
   }
 
@@ -164,12 +164,54 @@ ln -s "$source_path" "$target_path"
     }
   }
 
-  captureWorkspaceBaseline(workspacePath: string): Promise<WorkspaceGitBaseline> {
+  async captureWorkspaceBaseline(workspacePath: string): Promise<WorkspaceGitBaseline> {
+    if (!await this.workspaceHead(workspacePath)) return { source: "created", unborn: true, capturedAt: new Date().toISOString(), submodules: [] };
     return new SubmoduleChanges(this.runner).capture(workspacePath);
   }
 
-  inspectWorkspaceChanges(workspacePath: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceChangeInspection> {
-    return new SubmoduleChanges(this.runner).inspect(workspacePath, baseBranch, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base));
+  private async workspaceHead(path: string): Promise<string | undefined> {
+    try { return await this.git(path, ["rev-parse", "--verify", "HEAD^{commit}"]); }
+    catch (error) {
+      // Distinguish a valid, empty repository from inaccessible or corrupt Git data.
+      if (await this.git(path, ["rev-parse", "--is-inside-work-tree"]) !== "true") throw error;
+      const ref = await this.git(path, ["symbolic-ref", "--quiet", "HEAD"]);
+      if (await this.git(path, ["for-each-ref", "--format=%(refname)", ref])) throw error;
+      return undefined;
+    }
+  }
+
+  async inspectWorkspaceChanges(workspacePath: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceChangeInspection> {
+    // Pin HEAD before reading history so the saved range describes one specific endpoint.
+    const currentCommit = await this.workspaceHead(workspacePath);
+    if (!currentCommit && baseline?.unborn) return { baseline: { ...baseline }, repository: { commits: [] }, submodules: [] };
+    const changes = await new SubmoduleChanges(this.runner).inspect(workspacePath, baseBranch, baseline, (path, branch, base) => this.isMergeAlreadyIncluded(path, branch, base));
+    const repository: NonNullable<WorkspaceChangeInspection["repository"]> = { currentCommit, commits: [] };
+    changes.repository = repository;
+    if ((!changes.baseline.commit && !changes.baseline.unborn) || changes.baseline.source === "unknown") {
+      repository.warning = "The starting commit is unknown; commits from this workspace's lifetime cannot be determined.";
+      return changes;
+    }
+    if (!currentCommit) {
+      if (changes.baseline.commit) throw new Error("Could not collect repository commits: HEAD no longer has a commit.");
+      return changes;
+    }
+    try {
+      // Keep the full list independently of today's merge/deletion risks. Missing objects or
+      // failed history reads must block cleanup rather than save a misleading empty list.
+      const range = changes.baseline.unborn ? currentCommit : `${changes.baseline.commit}..${currentCommit}`;
+      const { stdout } = await this.runner.run("git", ["-C", workspacePath, "log", "--no-color", "--no-decorate", "--no-show-signature", "--no-notes", "--encoding=UTF-8", "--format=%H%x00%s", "-z", range, "--"], { preserveOutput: true });
+      const fields = stdout.split("\0");
+      if (fields.at(-1) === "") fields.pop();
+      if (fields.length % 2) throw new Error("Incomplete commit history output");
+      for (let i = 0; i < fields.length; i += 2) repository.commits.push({ hash: fields[i]!, subject: fields[i + 1]! });
+    } catch (error) {
+      throw new Error(`Could not collect repository commits: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (changes.baseline.commit) {
+      try { await this.git(workspacePath, ["merge-base", "--is-ancestor", changes.baseline.commit, currentCommit]); }
+      catch { repository.warning = "Current history no longer descends from the starting commit. Rebased or switched history may include earlier work; commits no longer reachable from HEAD are excluded."; }
+    }
+    return changes;
   }
 
   private async isMergeAlreadyIncluded(checkoutPath: string, branch: string, baseBranch: string): Promise<boolean> {

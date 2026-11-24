@@ -2544,6 +2544,9 @@ input, textarea, [contenteditable="true"], .selectable {
 .thread-completion p { margin: 8px 0 0; max-height: 120px; overflow: auto; white-space: pre-wrap; line-height: 1.5; }
 
 .workspace-changes { min-width: 0; margin: 12px 0; font-size: var(--text-control); }
+.workspace-repository-commits { margin: 12px 0; overflow-wrap: anywhere; }
+.workspace-repository-commits summary { cursor: pointer; }
+.workspace-repository-commits ul { padding-left: 18px; }
 .workspace-change-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .workspace-change-warning { color: var(--warning); overflow-wrap: anywhere; }
 .workspace-change-table { overflow-x: auto; margin: 12px 0; }

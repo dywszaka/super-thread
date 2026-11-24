@@ -14,6 +14,7 @@ import { emptySnapshot } from "../src/shared/domain";
 async function fixture() {
   const path = join(await mkdtemp(join(tmpdir(), "superthread-browser-")), "state.json");
   const snapshot = emptySnapshot();
+  snapshot.checkouts.push({ id: "checkout", projectId: "project", deviceId: "dev_local", path: "/tmp", isGit: false, createdAt: "then" });
   snapshot.workThreads.push({ id: "thread", name: "Browser", status: "active", pinned: false, createdAt: "then", updatedAt: "then" });
   snapshot.workspaces.push({ id: "workspace", workThreadId: "thread", name: "browser", projectId: "project", deviceId: "dev_local", checkoutId: "checkout", kind: "main", path: "/tmp", branch: "main", baseBranch: "main", status: "ready", createdAt: "then", updatedAt: "then" });
   snapshot.sessions.push({ id: "terminal", workspaceId: "workspace", name: "Terminal", order: 0, status: "exited", shell: "zsh", createdAt: "then" });

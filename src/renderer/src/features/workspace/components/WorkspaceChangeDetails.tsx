@@ -21,8 +21,16 @@ export function WorkspaceChangeDetails({ inspection, busy = false }: { inspectio
     <div className="workspace-change-actions"><button type="button" className="button" disabled={busy || exporting} onClick={() => void copy()}>Copy Markdown</button><button type="button" className="button" disabled={busy || exporting} onClick={() => void save()}>{exporting ? "Exporting…" : "Export Markdown"}</button></div>
     <p className="creation-note">Checked: {inspection.checkedAt ? new Date(inspection.checkedAt).toLocaleString() : "Unknown"}</p>
     {changes ? <>
-      <p className="creation-note">Starting point: {changes.baseline.source === "created" ? "Workspace creation" : changes.baseline.source === "inferred" ? "Inferred from Git history" : "Unknown"} · <code>{changes.baseline.commit?.slice(0, 12) ?? "unavailable"}</code></p>
+      <p className="creation-note">Starting point: {changes.baseline.source === "created" ? "Workspace creation" : changes.baseline.source === "inferred" ? "Inferred from Git history" : "Unknown"} · <code>{changes.baseline.commit?.slice(0, 12) ?? (changes.baseline.unborn ? "Empty repository" : "unavailable")}</code></p>
       {changes.baseline.warning && <p className="workspace-change-warning">{changes.baseline.warning}</p>}
+      {changes.repository ? <>
+        {changes.repository.warning && <p className="workspace-change-warning">{changes.repository.warning}</p>}
+        <details className="workspace-repository-commits"><summary>Repository commits ({changes.repository.commits.length})</summary>
+          <p className="creation-note">Commits reachable from the current commit, excluding the starting history; includes merged commits and may include work by others.</p>
+          <p className="creation-note selectable">Current commit: <code>{changes.repository.currentCommit?.slice(0, 12) ?? "No commits yet"}</code></p>
+          {changes.repository.commits.length ? <ul>{changes.repository.commits.map((commit) => <li key={commit.hash} className="selectable"><code>{commit.hash.slice(0, 12)}</code> {commit.subject}</li>)}</ul> : <p>{changes.repository.warning ? "No commits could be identified for this range." : "No commits since starting point."}</p>}
+        </details>
+      </> : <p className="creation-note">Repository commits were not collected in this saved summary.</p>}
       <p className="creation-note">Changes compare starting and current versions. Edits later reverted may not appear. A version change does not identify who authored the code.</p>
       {changes.submodules.length === 0 ? <p>No submodules found.</p> : <div className="workspace-change-table"><table>
         <thead><tr><th scope="col">Submodule / this workspace</th><th scope="col">Current state</th></tr></thead>
@@ -39,7 +47,7 @@ export function WorkspaceChangeDetails({ inspection, busy = false }: { inspectio
           </td>
         </tr>)}</tbody>
       </table></div>}
-    </> : <p className="creation-note">Submodule change details are unavailable for this workspace.</p>}
+    </> : <p className="creation-note">Git change details are unavailable for this workspace.</p>}
     {"outcome" in inspection && inspection.risks.length > 0 && <details><summary>Deletion warnings at inspection</summary><ul>{inspection.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul></details>}
   </div>;
 }

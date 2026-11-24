@@ -20,6 +20,7 @@ class FakeRunner implements CommandRunner {
     if (command.includes("rev-parse --symbolic-full-name")) return { stdout: "refs/heads/main", stderr: "", exitCode: 0 };
     if (command.includes("status --porcelain")) return { stdout: " M src/main.ts\n?? scratch.txt", stderr: "", exitCode: 0 };
     if (command.includes("rev-list --count")) return { stdout: "2", stderr: "", exitCode: 0 };
+    if (command.includes("HEAD^{commit}") || command.includes("merge-base main HEAD")) return { stdout: "a".repeat(40), stderr: "", exitCode: 0 };
     return { stdout: "", stderr: "", exitCode: 0 };
   }
 }
@@ -104,7 +105,10 @@ test("GitRuntime reports workspace deletion risk and removes worktree plus branc
   const risk = await runtime.inspectWorkspaceDeleteRisk("/code/demo", "/work/demo", "work/feature-x", "main");
   await runtime.deleteWorktree("/code/demo", "/work/demo", "work/feature-x", true);
 
-  assert.deepEqual(risk, { hasUncommittedChanges: true, hasUntrackedFiles: true, unmergedCommitCount: 2 });
+  assert.equal(risk.hasUncommittedChanges, true);
+  assert.equal(risk.hasUntrackedFiles, true);
+  assert.equal(risk.unmergedCommitCount, 2);
+  assert.deepEqual(risk.changes?.repository, { currentCommit: "a".repeat(40), commits: [] });
   assert.equal(runner.calls.some((call) => call.args.includes("fetch")), false);
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("worktree remove --force /work/demo")));
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("branch -D work/feature-x")));
@@ -242,9 +246,10 @@ test("removed submodules and uncertain historical starting versions are explicit
   const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
   assert.equal(risk.submodules?.[0]?.activity, "removed");
   assert.equal(risk.submodules?.[0]?.currentCommit, undefined);
-  const unknown = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", { ...baseline, commit: "1".repeat(40), submodules: [] });
+  const unknown = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", { ...baseline, source: "unknown", commit: "1".repeat(40), submodules: [] });
   assert.equal(unknown.submodules?.[0]?.activity, "unknown");
   assert.match(unknown.changes?.baseline.warning ?? "", /unavailable/);
+  await assert.rejects(() => f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", { ...baseline, commit: "1".repeat(40), submodules: [] }), /Could not collect repository commits/);
 });
 
 test("staged submodule version updates remain visible when its checked-out HEAD has not changed", async (t) => {

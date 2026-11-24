@@ -94,7 +94,7 @@ export class SubmoduleChanges {
         const warnings: string[] = [];
         let statusKnown = true;
         if (affected(currentWarnings, name)) warnings.push("Could not verify the current submodule version");
-        const startKnown = Boolean(baseline.commit) && !affected(startWarnings, name) && baseline.source !== "unknown";
+        const startKnown = Boolean(baseline.commit || baseline.unborn) && !affected(startWarnings, name) && baseline.source !== "unknown";
         const startedDirty = baseline.submodules?.some((entry) => entry.path === name && entry.dirty);
         if (startedDirty) warnings.push("Started with uncommitted files; file changes cannot be attributed to this workspace");
         if (!startKnown) warnings.push("Starting version is uncertain");
