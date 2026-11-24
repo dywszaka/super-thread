@@ -14,6 +14,7 @@ import { projectCodeError } from "@/shared/project-code";
 import { NewWorkThreadDialog } from "./NewWorkThreadDialog";
 import { configurationError, initialWorkspaceConfiguration, WorkspaceConfigurationForm } from "./WorkspaceConfigurationForm";
 import { SettingsDialog } from "./SettingsDialog";
+import { CodexRecordingField } from "./CodexRecordingField";
 
 const message = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -74,6 +75,7 @@ export function AddDeviceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactN
   const { dialog, closeDialog } = useWorkbenchStore();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [codexRecordingEnabled, setCodexRecordingEnabled] = useState(true);
   const [name, setName] = useState("");
   const [host, setHost] = useState("");
   const [user, setUser] = useState("");
@@ -87,9 +89,9 @@ export function AddDeviceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactN
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true);
     try {
-      await window.desktop.addDevice({ name, host, user, port: Number(port), tunnels });
+      await window.desktop.addDevice({ name, host, user, port: Number(port), tunnels, codexRecordingEnabled });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
-      toast.success(`${name} added`); closeDialog(); setName(""); setHost(""); setTunnels([]);
+      toast.success(`${name} added`); closeDialog(); setName(""); setHost(""); setTunnels([]); setCodexRecordingEnabled(true);
     } catch (error) { toast.error(message(error)); } finally { setBusy(false); }
   };
   return (
@@ -97,6 +99,7 @@ export function AddDeviceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactN
       <div className="form-grid two"><Field label="Name" error={touched.name && !name.trim() ? "Enter a device name." : undefined}><input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, name: true }))} placeholder="dev-cuda" /></Field><Field label="Host" error={touched.host && !host.trim() ? "Enter a host name or address." : undefined}><input value={host} onChange={(e) => setHost(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, host: true }))} placeholder="dev-cuda.local" /></Field></div>
       <div className="form-grid two"><Field label="SSH user" error={touched.user && !user.trim() ? "Enter the SSH user." : undefined}><input value={user} onChange={(e) => setUser(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, user: true }))} placeholder="allen" /></Field><Field label="Port" error={touched.port && !(Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) ? "Use a port from 1 to 65535." : undefined}><input type="number" value={port} onChange={(e) => setPort(e.target.value)} onBlur={() => setTouched((value) => ({ ...value, port: true }))} min="1" max="65535" /></Field></div>
       <SshTunnelFields value={tunnels} onChange={setTunnels} connection={tunnelConnection} connections={snapshot.connections} devices={snapshot.devices} />
+      <CodexRecordingField enabled={codexRecordingEnabled} onChange={setCodexRecordingEnabled} disabled={busy} />
       <div className="callout"><Network size={16} /><span>SSH keys and your existing <code>~/.ssh/config</code> are used for authentication.</span></div>
     </Modal>
   );

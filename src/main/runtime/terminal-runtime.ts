@@ -5,6 +5,8 @@ import * as pty from "node-pty";
 import type { Device, DeviceConnection, Session, SessionActivityStatus, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
 import { ProcessCommandRunner } from "./command-runner";
 import { quoteShellArgument } from "./login-shell";
+import { randomBytes } from "node:crypto";
+import { CodexRecordingDecoder, codexRecordingCommand } from "./codex-recording";
 
 interface LiveSession {
   pty: IPty;
@@ -54,21 +56,26 @@ export class TerminalRuntime extends EventEmitter {
     if (this.sessions.has(session.id)) throw new Error("Terminal session is already running");
     const remote = device.type === "remote";
     const cwd = session.cwd || workspace.path;
-    const program = remote ? "ssh" : process.env.SHELL || "/bin/zsh";
+    const token = device.codexRecordingEnabled ? randomBytes(24).toString("hex") : undefined;
+    const bootstrap = token ? codexRecordingCommand("bootstrap", token) : undefined;
+    const program = remote ? "ssh" : bootstrap ? "/bin/sh" : process.env.SHELL || "/bin/zsh";
     const args = remote
-      ? sshTerminalArgs(connection, `cd ${quoteShellArgument(cwd)} && exec "\${SHELL:-/bin/sh}" -l`)
-      : ["-l"];
+      ? sshTerminalArgs(connection, `cd ${quoteShellArgument(cwd)} && ${bootstrap || 'exec "${SHELL:-/bin/sh}" -l'}`)
+      : bootstrap ? ["-c", bootstrap] : ["-l"];
     const instance = this.spawnPty(program, args, {
       name: "xterm-256color", cols: 100, rows: 30,
       cwd: remote ? os.homedir() : cwd,
-      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>
+      env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("SUPERTHREAD_") && key !== "BASH_FUNC_codex%%")), TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>
     });
     const live: LiveSession = {
       pty: instance, buffer: "", sequence: 0,
       activityStatus: remote ? "unknown" : "idle", probing: false
     };
     this.sessions.set(session.id, live);
+    const decoder = token ? new CodexRecordingDecoder(token, (event) => this.emit("codex-recording", { ...event, terminalId: session.id })) : undefined;
     instance.onData((data) => {
+      data = decoder ? decoder.feed(data) : data;
+      if (!data) return;
       live.buffer = (live.buffer + data).slice(-64_000);
       live.sequence += 1;
       this.emit("output", { sessionId: session.id, data, sequence: live.sequence } satisfies TerminalOutput);

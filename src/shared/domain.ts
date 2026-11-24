@@ -13,7 +13,7 @@ export type SessionKind = ManagedSessionKind;
 export type SessionActivityStatus = "idle" | "busy" | "waiting-input" | "unknown";
 export type SessionExitReason = "process-exit" | "user-closed" | "runtime-stopped" | "restore-failed";
 
-export const CURRENT_SCHEMA_VERSION = 17;
+export const CURRENT_SCHEMA_VERSION = 18;
 
 export interface AppSettings {
   workThreadTemplate: string;
@@ -48,6 +48,7 @@ export interface WorkThread {
   /** Projects retained after successful workspace deletion, including Finish. */
   projectIds?: string[];
   workspaceChanges?: WorkspaceChangeRecord[];
+  codexSessions?: CodexSessionRecord[];
   /** Last successful Finish; absent for threads that were only archived. */
   completion?: WorkThreadCompletion;
   createdAt: string;
@@ -72,7 +73,30 @@ export interface Device {
   status: DeviceStatus;
   createdAt: string;
   terminalPresets?: TerminalPreset[];
+  /** Missing on existing devices means recording is disabled. */
+  codexRecordingEnabled?: boolean;
+  codexRecordingSetup?: { status: "installed" | "error"; message: string };
 }
+
+/** Observed Codex conversations, independent of the lifetime of their PTYs. */
+export interface CodexSessionRecord {
+  codexSessionId: string;
+  projectId: string;
+  projectName: string;
+  projectCode: string;
+  deviceId: string;
+  deviceName: string;
+  workspaceId: string;
+  workspaceName: string;
+  terminalId: string;
+  cwd: string;
+  title?: string;
+  titleSource?: "prompt";
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+export interface SetDeviceCodexRecordingInput { deviceId: string; enabled: boolean; }
 
 /** Reusable shell launch configuration owned by a device. */
 export interface TerminalPreset {
@@ -297,6 +321,7 @@ export interface AddRemoteDeviceInput {
   user: string;
   port?: number;
   tunnels?: SshTunnelConfig[];
+  codexRecordingEnabled?: boolean;
 }
 
 export interface UpdateRemoteDeviceInput extends AddRemoteDeviceInput {

@@ -16,6 +16,7 @@ import type {
   BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
   AddProjectInput,
   AddRemoteDeviceInput,
+  SetDeviceCodexRecordingInput,
   AppSnapshot,
   AppSettings,
   BrowseDirectoryInput,
@@ -79,6 +80,7 @@ export const channels = {
   selectDirectory: "dialog:select-directory",
   browseDirectory: "directory:browse",
   addDevice: "device:add",
+  setDeviceCodexRecording: "device:codex-recording",
   updateDevice: "device:update",
   deleteDevice: "device:delete",
   pingDevices: "device:ping-all",
@@ -137,7 +139,8 @@ export const addRemoteDeviceSchema = z.object({
   host: z.string().trim().min(1).max(255),
   user: z.string().trim().min(1).max(80),
   port: z.number().int().min(1).max(65535).optional(),
-  tunnels: z.array(sshTunnelSchema).max(32).optional()
+  tunnels: z.array(sshTunnelSchema).max(32).optional(),
+  codexRecordingEnabled: z.boolean().optional()
 }).superRefine((input, context) => {
   const bindings = new Set<string>();
   input.tunnels?.forEach((tunnel, index) => {
@@ -152,6 +155,8 @@ export const addRemoteDeviceSchema = z.object({
     bindings.add(binding);
   });
 });
+
+export const setDeviceCodexRecordingSchema = z.object({ deviceId: z.string().min(1), enabled: z.boolean() }).strict();
 
 export const updateRemoteDeviceSchema = z.intersection(
   addRemoteDeviceSchema,
@@ -365,6 +370,7 @@ export const navigateFilePreviewSchema = z.object({ id: z.string().min(1), path:
 export type MenuAction = "settings" | "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal" | "close-tab" | "reload-tab";
 
 export interface DesktopBridge {
+  setDeviceCodexRecording(input: SetDeviceCodexRecordingInput): Promise<void>;
   browseWorkspaceFiles(input: WorkspaceFileInput): Promise<WorkspaceFileLocation>;
   openFilePreview(input: WorkspaceFileInput): Promise<FilePreviewTab>;
   navigateFilePreview(input: NavigateFilePreviewInput): Promise<FilePreviewTab>;

@@ -908,6 +908,20 @@ SSH 活动查询，不创建 PID 探测标记，不读取 Codex index，也不�
 创建 Session 的 UI、IPC 和 runtime 只接受 shell；移除内嵌 Codex 与 tmux 的启动、探测、恢复和控制分支。
 用户仍可自行在普通 shell 或 iTerm 中运行任何 CLI。
 
+### Codex 会话记录
+
+Device 增加 `codexRecordingEnabled` 配置，界面标签为「启用 Codex 会话记录」。新 Device（含首次安装创建的本机 Device）默认开启；旧 Device 缺失该字段时保持关闭，不回填、不读取历史 Codex ID 或记录。已有 Device 可以在 Devices 页勾选并保存；远程 Device 的新增、编辑配置也提供开关。关闭立即停止保存新观察，已有记录继续保留；开启后需新建或重新启动内嵌 Terminal 才能加载集成。
+
+新增/开启时通过该 Device 已有的执行方式自动部署 Python 3 采集脚本到 `~/.superthread/integrations/codex/`，不需要 root。仅合并 `$CODEX_HOME/hooks.json`（默认 `~/.codex/hooks.json`）中的 SuperThread `SessionStart` / `UserPromptSubmit` 命令，保留其他 Hook，修改前备份。安装幂等、原子写入，格式无效时保留原文件并显示错误。安装失败不阻止保存 Device 或使用普通 Terminal；Devices 提供错误详情及 Reinstall collector 重试。安装成功只表示文件已安装，不宣称 Hook 已受信任；用户需要在 Codex `/hooks` 首次确认信任，SuperThread 不绕过信任检查。
+
+仅覆盖 WorkThread 下的本机/SSH 内嵌 bash、zsh Terminal，不覆盖 iTerm、tmux、其他 shell 或另行连接的 Codex app server。用户继续输入 `codex`，集成通过会话内的 shell 函数调用原 CLI；对支持该能力的 CLI 使用 `--no-daemon`，防止共享 daemon 的环境将会话关联到其他 Terminal。保留正常登录 shell 启动文件，不修改用户的 shell 配置。旧 CLI 缺少该参数时显示升级提示并继续运行 CLI，不保存不确定归属。
+
+Terminal 启动时生成只用于当前 PTY 的随机标识。Hook 将真实 Codex `session_id`、事件、cwd 和截断至 160 字符的提问摘要，通过原 PTY/SSH 输出通道的私有 OSC 帧回传。主进程增量解析、校验标识/事件/大小，剥离帧后才发送到 renderer 和 replay；无新后台 SSH、HTTP 服务或周期查询。通过 Terminal → Workspace → WorkThread / Project / Device 关联，不能按 cwd 猜测归属。同目录多个 WorkThread 不混记；独立 Workspace 没有 WorkThread，因此不生成此类记录。
+
+记录是 WorkThread 的 `codexSessions` 值记录，不改变代表 shell PTY 的 `Session`，不引入 Agent / Task / Workflow。保存 Codex ID、项目 ID/名称/code、设备 ID/名称、Workspace ID/名称、首次 Terminal ID、cwd、首条观察到的提问摘要（明确标注「提问摘要」，不冒充 Codex 原生标题）、首次/最近观察时间。不保存完整提示词、会话正文或历史日志。按 `(workThreadId, projectId, deviceId, codexSessionId)` 去重；resume / compact 同一 ID 不增加数量；新建、clear 或 fork 产生新 ID 时新增。一个 ID 在不同 WorkThread 中被使用时，各线程记录自己观察到的关联。
+
+WorkThread 的 Document / Todos / Changes 后增加 **Codex (数量)** 页签，支持同样的键盘导航，按 Project 分组、组内按最近观察时间倒序展示记录；数量为唯一会话数，不是进程启动数、提问数或完整历史总数。没有记录时说明开启、信任 Hook 和新 Terminal 的步骤。此阶段只记录与展示，不提供会话恢复、正文查看或删除记录操作。关闭 Terminal、删除 Workspace、Finish、归档、重启均保留记录及项目/设备名称快照；删除整个 WorkThread 才随之删除。
+
 创建普通 Session：
 
 ```text

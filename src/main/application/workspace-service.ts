@@ -14,6 +14,7 @@ import type {
   CreateTodoInput, UpdateTodoInput, TodoTarget,
   AddProjectInput,
   AddRemoteDeviceInput,
+  SetDeviceCodexRecordingInput,
   AppSnapshot,
   AppSettings,
   BrowseDirectoryInput,
@@ -61,6 +62,7 @@ import { tunnelConflicts } from "../../shared/ssh-tunnels";
 import { ItermRuntime, itermTmuxCommand, type ExternalTerminalRuntime } from "../runtime/iterm-runtime";
 import { TerminalRuntime, type TerminalActivityEvent, type TerminalExitEvent } from "../runtime/terminal-runtime";
 import { interactiveLoginShellCommand, quoteShellArgument } from "../runtime/login-shell";
+import type { CodexRecordingEvent, CodexRecordingInstaller } from "../runtime/codex-recording";
 
 const id = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
 const now = (): string => new Date().toISOString();
@@ -127,6 +129,7 @@ export class WorkspaceService extends EventEmitter {
   private readonly exitsDuringSessionStart = new Map<string, TerminalExitEvent>();
   private readonly closingSessionIds = new Set<string>();
   private windowOpen = true;
+  private readonly recordingSetups = new Map<string, symbol>();
 
   constructor(
     private readonly store: JsonStore,
@@ -135,13 +138,17 @@ export class WorkspaceService extends EventEmitter {
     private readonly directoryRuntimeFactory: DirectoryRuntimeFactory = (device, connection) => new DirectoryRuntime(device, connection),
     private readonly tunnels: DeviceTunnelRuntime = new SshTunnelSupervisor(),
     private readonly commandRunnerFactory: CommandRunnerFactory = (connection) => new DeviceCommandRunner(connection),
-    private readonly externalTerminal: ExternalTerminalRuntime = new ItermRuntime()
+    private readonly externalTerminal: ExternalTerminalRuntime = new ItermRuntime(),
+    private readonly recordingInstaller?: CodexRecordingInstaller
   ) {
     super();
     tunnels.onChanged?.(() => this.emit("tunnels-changed"));
     terminals.on("output", (event) => this.emit("terminal-output", event));
     terminals.on("activity", (event: TerminalActivityEvent) => void this.markSessionActivity(event));
     terminals.on("exit", (event: TerminalExitEvent) => this.handleTerminalExit(event));
+    terminals.on("codex-recording", (event: CodexRecordingEvent) => {
+      void this.recordCodexSession(event).catch((error) => console.error("Unable to save Codex session record", error));
+    });
   }
 
   async initialize(): Promise<void> {
@@ -150,7 +157,7 @@ export class WorkspaceService extends EventEmitter {
       const local = draft.devices.find((device) => device.type === "local");
       if (!local) {
         const deviceId = "dev_local";
-        draft.devices.push({ id: deviceId, name: hostname(), type: "local", status: "online", createdAt: now() });
+        draft.devices.push({ id: deviceId, name: hostname(), type: "local", status: "online", createdAt: now(), codexRecordingEnabled: true });
         draft.connections.push({ deviceId, transport: "local", config: {} });
       } else {
         local.status = "online";
@@ -166,6 +173,8 @@ export class WorkspaceService extends EventEmitter {
       }
     });
     this.tunnels.sync(this.snapshot().connections);
+    const local = this.snapshot().devices.find((device) => device.type === "local");
+    if (local?.codexRecordingEnabled && !local.codexRecordingSetup && this.recordingInstaller) await this.setupCodexRecording(local.id);
     await this.restoreInterruptedSessions();
   }
 
@@ -184,7 +193,7 @@ export class WorkspaceService extends EventEmitter {
   async addDevice(input: AddRemoteDeviceInput): Promise<void> {
     const deviceId = id("dev");
     await this.store.update((draft) => {
-      draft.devices.push({ id: deviceId, name: input.name, type: "remote", status: "unknown", createdAt: now() });
+      draft.devices.push({ id: deviceId, name: input.name, type: "remote", status: "unknown", createdAt: now(), codexRecordingEnabled: input.codexRecordingEnabled ?? true });
       draft.connections.push({
         deviceId,
         transport: "ssh",
@@ -198,6 +207,7 @@ export class WorkspaceService extends EventEmitter {
       this.assertTunnelBindings(draft, draft.connections[draft.connections.length - 1]!);
     });
     this.tunnels.sync(this.snapshot().connections);
+    if (input.codexRecordingEnabled !== false) await this.setupCodexRecording(deviceId);
     await this.pingDevices();
   }
 
@@ -211,7 +221,8 @@ export class WorkspaceService extends EventEmitter {
       const item = draft.devices.find((candidate) => candidate.id === input.id);
       const connection = draft.connections.find((candidate) => candidate.deviceId === input.id);
       const destinationChanged = connection && (connection.config.host !== input.host || connection.config.user !== input.user || (connection.config.port ?? 22) !== (input.port ?? 22));
-      if (item) Object.assign(item, { name: input.name, ...(destinationChanged ? { status: "unknown" } : {}) });
+      if (item) Object.assign(item, { name: input.name, ...(input.codexRecordingEnabled !== undefined ? { codexRecordingEnabled: input.codexRecordingEnabled } : {}), ...(destinationChanged ? { status: "unknown" } : {}) });
+      if (item && destinationChanged) delete item.codexRecordingSetup;
       if (connection) Object.assign(connection, {
         transport: "ssh",
         config: {
@@ -224,7 +235,71 @@ export class WorkspaceService extends EventEmitter {
       if (connection) this.assertTunnelBindings(draft, connection);
     });
     this.tunnels.sync(this.snapshot().connections);
+    if (this.device(this.snapshot(), input.id).codexRecordingEnabled) await this.setupCodexRecording(input.id);
     this.changed();
+  }
+
+  async setDeviceCodexRecording(input: SetDeviceCodexRecordingInput): Promise<void> {
+    this.recordingSetups.delete(input.deviceId);
+    await this.store.update((draft) => {
+      this.device(draft, input.deviceId).codexRecordingEnabled = input.enabled;
+    });
+    this.changed();
+    if (input.enabled) await this.setupCodexRecording(input.deviceId);
+  }
+
+  private async setupCodexRecording(deviceId: string): Promise<void> {
+    if (!this.recordingInstaller) return;
+    const snapshot = this.snapshot();
+    const device = this.device(snapshot, deviceId);
+    if (!device.codexRecordingEnabled) return;
+    const connection = this.connection(snapshot, deviceId);
+    const operation = Symbol();
+    this.recordingSetups.set(deviceId, operation);
+    let setup: NonNullable<Device["codexRecordingSetup"]>;
+    try {
+      const message = await this.recordingInstaller.install(connection);
+      setup = { status: "installed", message };
+    } catch (error) {
+      setup = { status: "error", message: this.message(error) };
+    }
+    await this.store.update((draft) => {
+      const current = draft.devices.find((item) => item.id === deviceId);
+      if (current?.codexRecordingEnabled && this.recordingSetups.get(deviceId) === operation &&
+        JSON.stringify(draft.connections.find((item) => item.deviceId === deviceId)) === JSON.stringify(connection)) {
+        current.codexRecordingSetup = setup;
+      }
+    });
+    if (this.recordingSetups.get(deviceId) === operation) this.recordingSetups.delete(deviceId);
+    this.changed();
+  }
+
+  async recordCodexSession(event: CodexRecordingEvent): Promise<void> {
+    let recorded = false;
+    await this.store.update((draft) => {
+      const terminal = draft.sessions.find((item) => item.id === event.terminalId);
+      const workspace = draft.workspaces.find((item) => item.id === terminal?.workspaceId);
+      const thread = draft.workThreads.find((item) => item.id === workspace?.workThreadId);
+      const device = draft.devices.find((item) => item.id === workspace?.deviceId);
+      const project = draft.projects.find((item) => item.id === workspace?.projectId);
+      if (!terminal || !workspace || !thread || !project || !device?.codexRecordingEnabled) return;
+      const records = thread.codexSessions ??= [];
+      const existing = records.find((item) => item.deviceId === device.id && item.codexSessionId === event.id && item.projectId === project.id);
+      const timestamp = now();
+      // Only the first submitted prompt supplies a display label; no transcript is imported.
+      const title = event.title?.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+      if (existing) {
+        existing.lastSeenAt = timestamp;
+        if (!existing.title && title) Object.assign(existing, { title, titleSource: "prompt" });
+      } else {
+        records.push({ codexSessionId: event.id, projectId: project.id, projectName: project.name, projectCode: project.code,
+          deviceId: device.id, deviceName: device.name, workspaceId: workspace.id, workspaceName: workspace.name,
+          terminalId: terminal.id, cwd: event.cwd, ...(title ? { title, titleSource: "prompt" as const } : {}),
+          firstSeenAt: timestamp, lastSeenAt: timestamp });
+      }
+      recorded = true;
+    });
+    if (recorded) this.changed();
   }
 
   async deleteDevice(deviceId: string): Promise<void> {

@@ -62,6 +62,7 @@ const bridge: DesktopBridge = {
   selectDirectory: () => ipcRenderer.invoke(channels.selectDirectory),
   browseDirectory: (input) => ipcRenderer.invoke(channels.browseDirectory, input),
   addDevice: (input) => ipcRenderer.invoke(channels.addDevice, input),
+  setDeviceCodexRecording: (input) => ipcRenderer.invoke(channels.setDeviceCodexRecording, input),
   updateDevice: (input) => ipcRenderer.invoke(channels.updateDevice, input),
   deleteDevice: (id) => ipcRenderer.invoke(channels.deleteDevice, id),
   pingDevices: () => ipcRenderer.invoke(channels.pingDevices),

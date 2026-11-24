@@ -3,6 +3,7 @@ import test from "node:test";
 import type { IPty } from "node-pty";
 import { foregroundProcessIsBusy, sshTerminalArgs, TerminalRuntime } from "../src/main/runtime/terminal-runtime";
 import type { Device, DeviceConnection, Session, Workspace } from "../src/shared/domain";
+import { CODEX_FRAME_PREFIX } from "../src/main/runtime/codex-recording";
 
 const session: Session = { id: "terminal", workspaceId: "workspace", name: "Terminal", status: "running", kind: "shell", shell: "ssh", createdAt: "now" };
 const device: Device = { id: "remote", name: "Remote", type: "remote", status: "online", createdAt: "now" };
@@ -59,6 +60,33 @@ test("runtime refuses removed managed kinds before spawning", () => {
     assert.throws(() => runtime.create({ ...session, kind } as unknown as Session, workspace, device, connection), /Only shell/);
   }
   assert.equal(spawns, 0);
+});
+
+test("enabled SSH terminals capture only their own metadata on the existing PTY without activity probes", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const terminal = fakePty();
+  let command = "";
+  let probes = 0;
+  const runtime = new TerminalRuntime(async () => { probes++; return ""; }, (program, args) => {
+    assert.equal(program, "ssh");
+    command = (args as string[]).at(-1)!;
+    return terminal.instance;
+  });
+  const events: unknown[] = [];
+  runtime.on("codex-recording", (event) => events.push(event));
+  runtime.create(session, workspace, { ...device, codexRecordingEnabled: true }, connection);
+  const token = /bootstrap '([a-f0-9]{48})'/.exec(command)?.[1];
+  assert.ok(token);
+  assert.match(command, /^cd '\/tmp\/demo worktree' && /);
+  const metadata = { token, id: "remote-conversation", cwd: "/tmp/demo worktree", event: "UserPromptSubmit", title: "A remote session" };
+  const frame = CODEX_FRAME_PREFIX + Buffer.from(JSON.stringify(metadata)).toString("base64") + "\x07";
+  terminal.output("before" + frame.slice(0, 18));
+  terminal.output(frame.slice(18) + "after");
+  assert.deepEqual(runtime.attach(session.id), { data: "beforeafter", sequence: 2 });
+  assert.deepEqual(events, [{ terminalId: session.id, id: metadata.id, cwd: metadata.cwd, event: metadata.event, title: metadata.title }]);
+  t.mock.timers.tick(60_000);
+  assert.equal(probes, 0);
+  runtime.kill(session.id);
 });
 
 test("local activity sampling emits command completion and ignores a late result after exit", async (t) => {

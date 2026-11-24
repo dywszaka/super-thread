@@ -15,9 +15,10 @@ import { Field, Modal } from "./Modal";
 import { WorkspaceChangeDetails } from "./WorkspaceChangeDetails";
 import { workspaceChangesMarkdown, type WorkspaceChangeRecord } from "@/shared/workspace-changes";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/contract";
+import { CodexSessionList } from "./CodexSessionList";
 
 export function WorkThreadDocument({ thread, snapshot, onClose, backToList = false, autoFocus = Boolean(onClose) }: { thread: WorkThread; snapshot: AppSnapshot; onClose?: () => void; backToList?: boolean; autoFocus?: boolean }): React.ReactNode {
-  const [tab, setTab] = useState<"document" | "todos" | "changes">("document");
+  const [tab, setTab] = useState<"document" | "todos" | "changes" | "codex">("document");
   const [documentRevision, setDocumentRevision] = useState(0);
   const [linkRequest, setLinkRequest] = useState<{ url: string; workspaceId: string } | null>(null);
   const [openingBrowser, setOpeningBrowser] = useState(false);
@@ -87,8 +88,8 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
         <div className="segmented" role="tablist" aria-label="Work thread content" onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
           event.preventDefault();
-          const tabs = ["document", "todos", "changes"] as const;
-          const next = event.key === "Home" ? "document" : event.key === "End" ? "changes" : tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : 2)) % 3]!;
+          const tabs = ["document", "todos", "changes", "codex"] as const;
+          const next = event.key === "Home" ? "document" : event.key === "End" ? "codex" : tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]!;
           void document.flush();
           setTab(next);
           event.currentTarget.querySelector<HTMLButtonElement>(`[id="${next}-tab-${thread.id}"]`)?.focus();
@@ -96,6 +97,7 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
           <button role="tab" title="Markdown document" tabIndex={tab === "document" ? 0 : -1} id={`document-tab-${thread.id}`} aria-controls={`document-panel-${thread.id}`} aria-selected={tab === "document"} className={tab === "document" ? "active" : ""} onClick={() => setTab("document")}>Document</button>
           <button role="tab" tabIndex={tab === "todos" ? 0 : -1} id={`todos-tab-${thread.id}`} aria-controls={`todos-panel-${thread.id}`} aria-selected={tab === "todos"} className={tab === "todos" ? "active" : ""} onClick={() => { void document.flush(); setTab("todos"); }}>Todos ({(thread.todos ?? []).filter((todo) => !todo.completedAt).length})</button>
           <button role="tab" tabIndex={tab === "changes" ? 0 : -1} id={`changes-tab-${thread.id}`} aria-controls={`changes-panel-${thread.id}`} aria-selected={tab === "changes"} className={tab === "changes" ? "active" : ""} onClick={() => { void document.flush(); setTab("changes"); }}>Changes ({thread.workspaceChanges?.length ?? 0})</button>
+          <button role="tab" tabIndex={tab === "codex" ? 0 : -1} id={`codex-tab-${thread.id}`} aria-controls={`codex-panel-${thread.id}`} aria-selected={tab === "codex"} className={tab === "codex" ? "active" : ""} onClick={() => { void document.flush(); setTab("codex"); }}>Codex ({thread.codexSessions?.length ?? 0})</button>
         </div>
         <div className="thread-document-age-inline"><WorkThreadAge thread={thread} visibility="normal" /></div>
       </div>
@@ -134,6 +136,7 @@ export function WorkThreadDocument({ thread, snapshot, onClose, backToList = fal
           <button type="button" className="button" onClick={() => appendSummary(record)}>Add summary to Doc</button>
         </section>)}
       </div>}
+      {tab === "codex" && <div className="codex-sessions-panel no-drag" role="tabpanel" id={`codex-panel-${thread.id}`} aria-labelledby={`codex-tab-${thread.id}`}><CodexSessionList thread={thread} snapshot={snapshot} /></div>}
       {linkRequest && <div onKeyDown={(event) => event.stopPropagation()}>
         <Modal open title="Open link in Browser" description="Choose a workspace for this link." busy={openingBrowser}
           submitLabel="Open" submitDisabled={!browserWorkspaces.some((workspace) => workspace.id === linkRequest.workspaceId)}

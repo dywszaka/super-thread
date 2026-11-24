@@ -13,6 +13,7 @@ import {
   createBrowserSchema, navigateBrowserSchema, reorderWorkspaceTabsSchema, browserLayoutSchema, browserCommandSchema,
   addProjectSchema,
   addRemoteDeviceSchema,
+  setDeviceCodexRecordingSchema,
   browseDirectorySchema,
   channels,
   appSettingsSchema,
@@ -116,6 +117,7 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   });
   handle(channels.browseDirectory, (_event, input) => service.browseDirectory(browseDirectorySchema.parse(input)));
   handle(channels.addDevice, (_event, input) => service.addDevice(addRemoteDeviceSchema.parse(input)));
+  handle(channels.setDeviceCodexRecording, (_event, input) => service.setDeviceCodexRecording(setDeviceCodexRecordingSchema.parse(input)));
   handle(channels.updateDevice, (_event, input) => service.updateDevice(updateRemoteDeviceSchema.parse(input)));
   handle(channels.deleteDevice, (_event, id) => service.deleteDevice(sessionIdSchema.parse(id)));
   handle(channels.pingDevices, () => service.pingDevices());

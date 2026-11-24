@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, FolderGit2, Laptop, Pencil, Plus, RefreshCw, Server, TerminalSquare, Trash2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Device, DeviceConnection, SshTunnelConfig, SshTunnelRuntime } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -8,6 +8,7 @@ import { Field, Modal } from "./Modal";
 import { sameTunnel, tunnelConflicts } from "@/shared/ssh-tunnels";
 import { SshTunnelFields, TunnelMapping, TunnelStatus } from "./SshTunnelFields";
 import { SidebarReopenButton } from "./Sidebar";
+import { CodexRecordingField } from "./CodexRecordingField";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -75,6 +76,7 @@ export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.React
                   <code>{address}</code>
                   <div className="device-usage"><span><FolderGit2 size={12} /> {checkouts.length} {checkouts.length === 1 ? "project checkout" : "project checkouts"}</span><span><TerminalSquare size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span>{device.type === "remote" && <span><ArrowRightLeft size={12} /> {connection?.config.tunnels?.length ?? 0} {(connection?.config.tunnels?.length ?? 0) === 1 ? "tunnel" : "tunnels"}</span>}</div>
                   {device.type === "remote" && <DeviceTunnels connection={connection} runtimes={runtimes} />}
+                  <DeviceCodexRecording key={device.id} device={device} />
                 </div>
                 <div className="device-card-actions">
                   {device.type === "remote" && <button className="button" disabled={busy} onClick={() => setEditingId(device.id)}><Pencil size={13} /> Edit</button>}
@@ -88,6 +90,28 @@ export function DeviceList({ snapshot }: { snapshot: AppSnapshot }): React.React
       {editing && editingConnection && <EditDeviceDialog key={editing.id} device={editing} connection={editingConnection} snapshot={snapshot} runtimes={runtimes} onClose={() => setEditingId(null)} />}
     </main>
   );
+}
+
+function DeviceCodexRecording({ device }: { device: Device }): React.ReactNode {
+  const client = useQueryClient();
+  const [enabled, setEnabled] = useState(device.codexRecordingEnabled === true);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setEnabled(device.codexRecordingEnabled === true), [device.codexRecordingEnabled]);
+  const save = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await window.desktop.setDeviceCodexRecording({ deviceId: device.id, enabled });
+      await client.invalidateQueries({ queryKey: ["snapshot"] });
+      toast.success("Codex recording settings saved");
+    } catch (error) { toast.error(cleanError(error)); }
+    finally { setBusy(false); }
+  };
+  return <form className="device-codex-recording" aria-label={`${device.name} Codex recording`} onSubmit={save}>
+    <CodexRecordingField enabled={enabled} onChange={setEnabled} disabled={busy} />
+    {device.codexRecordingEnabled && <p className={device.codexRecordingSetup?.status === "error" ? "field-error" : ""} role="status">{device.codexRecordingSetup?.status === "error" ? `Setup failed: ${device.codexRecordingSetup.message}` : device.codexRecordingSetup?.status === "installed" ? "Collector installed · Trust the hooks in Codex /hooks before recording." : "Collector will be installed when a new terminal opens."}</p>}
+    <button className="button" type="submit" disabled={busy}>{busy ? "Saving…" : enabled === !!device.codexRecordingEnabled && enabled ? "Reinstall collector" : "Save recording setting"}</button>
+  </form>;
 }
 
 function DeviceTunnels({ connection, runtimes }: { connection?: DeviceConnection; runtimes: SshTunnelRuntime[] }): React.ReactNode {
@@ -107,6 +131,7 @@ function DeviceTunnels({ connection, runtimes }: { connection?: DeviceConnection
 function EditDeviceDialog({ device, connection, snapshot, runtimes, onClose }: { device: Device; connection: DeviceConnection; snapshot: AppSnapshot; runtimes: SshTunnelRuntime[]; onClose(): void }): React.ReactNode {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [codexRecordingEnabled, setCodexRecordingEnabled] = useState(device.codexRecordingEnabled === true);
   const [name, setName] = useState(device.name);
   const [host, setHost] = useState(connection.config.host || "");
   const [user, setUser] = useState(connection.config.user || "");
@@ -121,7 +146,7 @@ function EditDeviceDialog({ device, connection, snapshot, runtimes, onClose }: {
     if (conflicts.length) return;
     setBusy(true);
     try {
-      await window.desktop.updateDevice({ id: device.id, name, host, user, port: Number(port), tunnels });
+      await window.desktop.updateDevice({ id: device.id, name, host, user, port: Number(port), tunnels, codexRecordingEnabled });
       await client.invalidateQueries({ queryKey: ["snapshot"] });
       await client.invalidateQueries({ queryKey: ["tunnel-statuses"] });
       toast.success(`${name.trim()} saved. Tunnels connect automatically.`);
@@ -135,6 +160,7 @@ function EditDeviceDialog({ device, connection, snapshot, runtimes, onClose }: {
       <div className="form-grid two"><Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} /></Field><Field label="Host"><input value={host} onChange={(event) => setHost(event.target.value)} required /></Field></div>
       <div className="form-grid two"><Field label="SSH user"><input value={user} onChange={(event) => setUser(event.target.value)} required /></Field><Field label="Port"><input type="number" value={port} onChange={(event) => setPort(event.target.value)} min="1" max="65535" required /></Field></div>
       <SshTunnelFields value={tunnels} onChange={setTunnels} connection={draft} connections={snapshot.connections} devices={snapshot.devices} saved={destinationChanged ? [] : connection.config.tunnels} runtimes={runtimes} />
+      <CodexRecordingField enabled={codexRecordingEnabled} onChange={setCodexRecordingEnabled} disabled={busy} />
     </Modal>
   );
 }

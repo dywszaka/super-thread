@@ -9,6 +9,7 @@ import { createApplicationMenu } from "./menu/create-application-menu";
 import { JsonStore } from "./persistence/json-store";
 import { createMainWindow } from "./windows/create-main-window";
 import { channels } from "../shared/contract";
+import { DeviceCodexRecordingInstaller } from "./runtime/codex-recording";
 
 let mainWindow: BrowserWindow | null = null;
 protocol.registerSchemesAsPrivileged([{ scheme: FILE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -22,7 +23,7 @@ app.whenReady().then(async () => {
     app.dock.setIcon(join(process.resourcesPath, "icon.png"));
   }
 
-  const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")));
+  const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")), undefined, undefined, undefined, undefined, undefined, undefined, new DeviceCodexRecordingInstaller());
   await service.initialize();
   const browsers = new BrowserRuntime(service);
   const previews = new FilePreviewRuntime(service);
