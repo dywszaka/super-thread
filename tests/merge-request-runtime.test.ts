@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { MergeRequestRuntime } from "../src/main/runtime/merge-request-runtime";
 import { DeviceCommandRunner, ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
-import { hostingRepositoryPath, parseGitRemote, normalizeGitHostingUrl, saveGitHostingConnectionSchema } from "../src/shared/git-hosting";
+import { gitHostingTokenUrl, hostingRepositoryPath, parseGitRemote, normalizeGitHostingUrl, saveGitHostingConnectionSchema } from "../src/shared/git-hosting";
 import type { Workspace } from "../src/shared/domain";
 
 async function fixture(t: TestContext) {
@@ -52,13 +52,19 @@ test("remote parsing supports aliases, nested GitLab paths, prefixes, and differ
   assert.equal(alias.suggestedProvider, "gitlab");
   assert.equal(parseGitRemote("git@github.com:team/repo.git")?.suggestedProvider, "github");
   assert.equal(parseGitRemote("ssh://git@gitlab.test:2222/team/repo.git")?.suggestedBaseUrl, "https://gitlab.test");
-  const http = parseGitRemote("https://gitlab.test:8443/gitlab/team/sub/repo.git")!;
-  assert.equal(http.suggestedBaseUrl, "https://gitlab.test:8443");
-  assert.equal(hostingRepositoryPath(http, "https://gitlab.test:8443/gitlab"), "team/sub/repo");
+  for (const protocol of ["http", "https"]) {
+    const baseUrl = `${protocol}://gitlab.test:8080/gitlab`;
+    const remote = parseGitRemote(`${baseUrl}/team/sub/repo.git`)!;
+    assert.equal(remote.suggestedBaseUrl, `${protocol}://gitlab.test:8080`);
+    assert.equal(hostingRepositoryPath(remote, baseUrl), "team/sub/repo");
+    assert.equal(normalizeGitHostingUrl(`${baseUrl}/`), baseUrl);
+    assert.equal(saveGitHostingConnectionSchema.parse({ provider: "gitlab", baseUrl: `${baseUrl}/`, token: "test" }).baseUrl, baseUrl);
+    assert.equal(gitHostingTokenUrl("gitlab", baseUrl), `${baseUrl}/-/user_settings/personal_access_tokens?name=SuperThread&scopes=api`);
+  }
   assert.equal(hostingRepositoryPath(alias, "https://gitlab.test/gitlab"), "team/sub/repo");
   for (const value of ["/tmp/repo.git", "file:///tmp/repo.git", "https://user:password@gitlab.test/team/repo.git", "https://example.com/repo"]) assert.equal(parseGitRemote(value), undefined);
   assert.equal(normalizeGitHostingUrl("https://gitlab.test:8443/gitlab/"), "https://gitlab.test:8443/gitlab");
-  for (const value of ["http://gitlab.test", "https://user:pass@gitlab.test", "https://gitlab.test?token=secret"]) assert.throws(() => normalizeGitHostingUrl(value));
+  for (const value of ["ftp://gitlab.test", "file:///tmp/gitlab", "https://user:pass@gitlab.test", "http://user:pass@gitlab.test", "https://gitlab.test?token=secret", "http://gitlab.test#fragment"]) assert.throws(() => normalizeGitHostingUrl(value));
   assert.equal(saveGitHostingConnectionSchema.safeParse({ provider: "github", baseUrl: "https://enterprise.test", token: "test" }).success, false);
 });
 

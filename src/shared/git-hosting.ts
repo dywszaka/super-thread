@@ -23,7 +23,7 @@ export interface GitRemote {
 
 export function normalizeGitHostingUrl(input: string): string {
   const url = new URL(input.trim());
-  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || /[\\\s]/.test(input)) throw new Error("Enter an HTTPS platform address without credentials, query parameters, or fragments.");
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || /[\\\s]/.test(input)) throw new Error("Enter an HTTP or HTTPS platform address without credentials, query parameters, or fragments.");
   return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
@@ -35,7 +35,7 @@ export function parseGitRemote(remote: string): GitRemote | undefined {
     const path = decodeURIComponent(url.pathname).replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
     if (path.split("/").length < 2 || path.split("/").some((part) => !part || part === "." || part === "..") || /[\u0000-\u0020\\?#]/.test(path)) return undefined;
     return { host: url.host, hostname: url.hostname, path, transport: url.protocol.slice(0, -1) as GitRemote["transport"],
-      suggestedBaseUrl: `https://${url.protocol === "ssh:" ? url.hostname : url.host}`, suggestedProvider: url.hostname === "github.com" ? "github" : "gitlab" };
+      suggestedBaseUrl: url.protocol === "ssh:" ? `https://${url.hostname}` : url.origin, suggestedProvider: url.hostname === "github.com" ? "github" : "gitlab" };
   } catch { return undefined; }
 }
 
@@ -54,7 +54,7 @@ export const saveGitHostingConnectionSchema = z.object({
   provider: z.enum(["github", "gitlab"]),
   baseUrl: z.string().max(2048).transform((value, context) => {
     try { return normalizeGitHostingUrl(value); }
-    catch { context.addIssue({ code: z.ZodIssueCode.custom, message: "Enter an HTTPS platform address." }); return z.NEVER; }
+    catch { context.addIssue({ code: z.ZodIssueCode.custom, message: "Enter an HTTP or HTTPS platform address." }); return z.NEVER; }
   }),
   token: z.string().trim().min(1).max(16384).regex(/^\S+$/, "Token cannot contain whitespace"),
   workspaceId: z.string().min(1).optional()

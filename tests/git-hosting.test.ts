@@ -68,9 +68,12 @@ test("failed writes preserve credentials and failed initial reads can recover", 
   assert.deepEqual(await store.list(), []);
 });
 
-for (const provider of ["github", "gitlab"] as const) {
-  test(`${provider}: API handles prefixes, pagination, fork identity, all states, and explicit creation contents`, async () => {
-    const baseUrl = provider === "github" ? "https://github.com" : "https://gitlab.test:8443/prefix";
+for (const { provider, baseUrl } of [
+  { provider: "github", baseUrl: "https://github.com" },
+  { provider: "gitlab", baseUrl: "https://gitlab.test:8443/prefix" },
+  { provider: "gitlab", baseUrl: "http://gitlab.test:8080/prefix" }
+] as const) {
+  test(`${baseUrl}: API handles prefixes, pagination, fork identity, all states, and explicit creation contents`, async () => {
     const path = provider === "github" ? "team/repo" : "team/sub/repo";
     const webUrl = `${baseUrl}/${path}/${provider === "github" ? "pull" : "-/merge_requests"}/42`;
     const calls: Array<{ url: URL; init: RequestInit }> = [];
@@ -81,7 +84,7 @@ for (const provider of ["github", "gitlab"] as const) {
       assert.equal(init.redirect, "error"); assert.equal(init.credentials, "omit");
       const headers = init.headers as Record<string, string>;
       assert.equal(provider === "github" ? headers.Authorization : headers["PRIVATE-TOKEN"], provider === "github" ? "Bearer test-token" : "test-token");
-      assert.equal(url.origin, provider === "github" ? "https://api.github.com" : "https://gitlab.test:8443");
+      assert.equal(url.origin, provider === "github" ? "https://api.github.com" : new URL(baseUrl).origin);
       if (url.pathname.endsWith("/user")) return Response.json(provider === "github" ? { login: "alice" } : { username: "alice" });
       if (init.method === "POST") return Response.json(provider === "github" ? { html_url: webUrl } : { web_url: webUrl });
       if (url.searchParams.has("page")) {

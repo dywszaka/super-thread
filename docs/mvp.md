@@ -628,7 +628,7 @@ interface Workspace {
 
 Workspace 操作菜单提供 **Push & create MR…**（GitHub 为 PR）。每次打开菜单检查真实 Git 分支并从 Mac 查询 origin 推送仓库的全部 MR/PR；任意状态（打开、关闭、已合并）已有请求时隐藏创建选项，分页并核对源仓库，避免其他 fork 的同名分支误挡。未连接平台时显示 Connect code hosting；查询错误时显示 Review MR setup，进入同一面板恢复，不假定不存在请求。普通目录、无 origin、detached HEAD、当前分支等于基础分支或多个 origin push URL 不提供创建入口。
 
-首次使用在统一面板配置 GitHub.com、GitLab.com 或自托管 GitLab。Mac 管理 API Token，设备仅负责 Git 操作，均无需 gh/glab。表单提供平台类型、HTTPS 地址、Token 权限说明、系统浏览器创建 Token 链接、可显示/隐藏的密码式输入框；验证账号与当前仓库读取权限后保存并进入确认页，不自动推送。GitHub 引导 Fine-grained Token，指定仓库及 Pull requests 写入、Contents 读取；GitLab 引导 api scope。只读验证不保证创建权限，403/组织审批/SSO 等错误在创建时明确展示。GitLab 支持自定义端口及部署路径前缀；SSH 别名映射按设备与 Git 远端主机保存，可显式选择已有连接。每个平台地址保留一个账号，供本机各 Workspace 复用。
+首次使用在统一面板配置 GitHub.com、GitLab.com 或自托管 GitLab。Mac 管理 API Token，设备仅负责 Git 操作，均无需 gh/glab。表单提供平台类型、HTTP/HTTPS 地址、Token 权限说明、系统浏览器创建 Token 链接、可显示/隐藏的密码式输入框；验证账号与当前仓库读取权限后保存并进入确认页，不自动推送。GitHub 引导 Fine-grained Token，指定仓库及 Pull requests 写入、Contents 读取；GitLab 引导 api scope。只读验证不保证创建权限，403/组织审批/SSO 等错误在创建时明确展示。GitLab 支持自定义端口及部署路径前缀；SSH 别名映射按设备与 Git 远端主机保存，可显式选择已有连接。每个平台地址保留一个账号，供本机各 Workspace 复用。
 
 Settings 的 Code hosting connections 支持查看账号与平台地址、重新验证、替换 Token 和移除连接；移除删除本机 Token 及映射，不撤销平台 Token。Token 在主进程使用当前 Electron 的 safeStorage 加密，独立原子保存到应用数据目录 git-hosting.json，文件权限 0600；密文绑定平台类型和地址，加密或解密不可用时阻止保存/使用，不回退明文。Token 仅经受校验 IPC 输入一次，不可回读，不进入领域快照、workbench 持久化、查询缓存、终端、SSH 或日志。API 请求由 Mac 发起，凭据仅发送到确认的平台 API，拒绝重定向。Mac 须能访问 API；网络、代理/VPN、证书错误可修改连接及重试，不自动改用远端 CLI 或跳过证书验证。
 
