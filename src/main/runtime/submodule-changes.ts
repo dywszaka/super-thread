@@ -82,6 +82,8 @@ export class SubmoduleChanges {
         this.links(path, undefined, initialized, true, "", currentWarnings),
         this.links(path, baseBranch, initialized, false, "", baseWarnings)
       ]);
+      // Keep recorded gitlinks separate from captured HEADs: an existing checkout mismatch is not new work.
+      const startRecorded = new Map(start);
       for (const entry of baseline.submodules ?? []) start.set(entry.path, entry.commit);
       if (startWarnings.size) result.baseline.warning = [baseline.warning, "Some starting versions are unavailable"].filter(Boolean).join("; ");
       const affected = (warnings: Map<string, string>, name: string): boolean => [...warnings.keys()].some((prefix) => !prefix || name.startsWith(`${prefix}/`));
@@ -101,7 +103,8 @@ export class SubmoduleChanges {
         if (sub.initialized) {
           try {
             sub.currentCommit = (await this.git(subPath, ["rev-parse", "HEAD"])).trim();
-            const status = await this.records(subPath, ["status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=none"]);
+            // Nested modules are inspected individually; their dirtiness is not a change to this module's own files.
+            const status = await this.records(subPath, ["status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=all"]);
             for (let i = 0; i < status.length; i += 1) {
               const entry = status[i]!;
               if (entry.startsWith("??")) sub.hasUntrackedFiles = true;
@@ -117,7 +120,8 @@ export class SubmoduleChanges {
             sub.unmergedCommitCount = Number.parseInt(await this.git(subPath, ["rev-list", "--count", ...tips, "--not", target]), 10) || 0;
             if (sub.unmergedCommitCount && (await Promise.all(tips.map((tip) => isIncluded(subPath, tip, target)))).every(Boolean)) sub.unmergedCommitCount = 0;
           } catch { warnings.push("could not verify commits against the submodule version recorded by the base branch"); }
-          const detailRef = sub.currentCommit !== sub.startCommit ? sub.currentCommit : sub.recordedCommit;
+          const detailRef = sub.currentCommit !== sub.startCommit ? sub.currentCommit
+            : sub.recordedCommit !== startRecorded.get(name) ? sub.recordedCommit : sub.currentCommit;
           if (sub.startCommit && detailRef && detailRef !== sub.startCommit) {
             try {
               sub.files!.push(...await this.records(subPath, ["diff", "--name-only", "-z", sub.startCommit, detailRef, "--"]));
@@ -132,7 +136,7 @@ export class SubmoduleChanges {
         sub.activity = !startKnown || !statusKnown || startedDirty || affected(currentWarnings, name) ? "unknown"
           : !sub.currentCommit ? "removed" : !sub.startCommit ? "added"
           : sub.hasUncommittedChanges || sub.hasUntrackedFiles ? "modified"
-          : sub.currentCommit !== sub.startCommit || sub.recordedCommit !== sub.startCommit ? "version" : "unchanged";
+          : sub.currentCommit !== sub.startCommit || sub.recordedCommit !== startRecorded.get(name) ? "version" : "unchanged";
         sub.files = [...new Set(sub.files)];
         sub.detailsTruncated = sub.files.length > DETAIL_LIMIT || sub.commits!.length > COMMIT_LIMIT;
         sub.files = sub.files.slice(0, DETAIL_LIMIT);

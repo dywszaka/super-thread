@@ -878,7 +878,9 @@ export class WorkspaceService extends EventEmitter {
       }
       if (!inspection.keepsDirectory) {
         const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId)!;
-        await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, force);
+        // Git requires --force for initialized submodules even when the fresh inspection found no deletion risks.
+        const gitForce = force || Boolean(inspection.changes?.submodules.some((submodule) => submodule.initialized));
+        await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, gitForce);
       }
       const completed: WorkspaceChangeRecord = { ...record, outcome: "deleted", updatedAt: now() };
       await this.removeWorkspaceMetadata(workspaceId, true, completed);
@@ -1434,6 +1436,8 @@ export class WorkspaceService extends EventEmitter {
     if (risk.unmergedCommitCount > 0) risks.push(`${risk.unmergedCommitCount} commit${risk.unmergedCommitCount === 1 ? "" : "s"} not merged into the base branch`);
     for (const submodule of risk.submodules ?? []) {
       if (submodule.initialized === false && !submodule.warning) continue;
+      if (!submodule.warning && !submodule.hasUncommittedChanges && !submodule.hasUntrackedFiles
+        && (submodule.activity === "unchanged" || submodule.unmergedCommitCount === 0)) continue;
       const details = ["will be deleted"];
       if (submodule.hasUncommittedChanges) details.push("uncommitted changes");
       if (submodule.hasUntrackedFiles) details.push("untracked files");

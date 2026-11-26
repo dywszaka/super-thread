@@ -160,8 +160,7 @@ test("failed checks cannot be bypassed with force and do not delete any workspac
 
 for (const submodule of [
   { path: "deps/child", hasUncommittedChanges: true, hasUntrackedFiles: true, unmergedCommitCount: 2 },
-  { path: "deps/clean", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 },
-  { path: "deps/unknown", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, warning: "could not verify commits" }
+  { path: "deps/unknown", activity: "unchanged" as const, hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, warning: "could not verify commits" }
 ]) {
   test(`submodule ${submodule.path} warnings allow workspace deletion and Finish after confirmation`, async () => {
     const f = await fixture();
@@ -186,6 +185,39 @@ for (const submodule of [
     assert.equal(f.service.snapshot().workThreads[0]!.status, "archived");
   });
 }
+
+test("unchanged submodules do not warn or require approval for deletion and Finish", async () => {
+  const f = await fixture();
+  const submodules = [
+    { path: "vendor/llama.cpp", initialized: true, activity: "unchanged" as const, hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 },
+    { path: "vendor/llama-cpp-python/vendor/llama.cpp", initialized: true, activity: "unchanged" as const, hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 1890 }
+  ];
+  const changes: WorkspaceChangeInspection = { baseline: { source: "created", capturedAt: "start" }, submodules };
+  const risk = { hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, submodules, changes };
+  f.risks.set("/work/one", risk);
+  f.risks.set("/work/two", risk);
+  assert.deepEqual((await f.service.inspectWorkspaceDeletion("one")).risks, []);
+  assert.ok((await f.service.inspectWorkThreadFinish(f.threadId)).workspaces.every((item) => item.risks.length === 0));
+  await f.service.deleteWorkspace("one");
+  await f.service.finishWorkThread(f.input());
+  // Git still needs --force to remove initialized submodules after the risk checks pass.
+  assert.deepEqual(f.calls.map((call) => call.force), [true, true]);
+  assert.equal(f.service.snapshot().workThreads[0]!.status, "archived");
+});
+
+test("only changed submodules appear in deletion warnings", async () => {
+  const f = await fixture();
+  f.risks.set("/work/one", { hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0, submodules: [
+    { path: "vendor/llama-cpp-python", initialized: true, activity: "version", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 1 },
+    { path: "vendor/llama-cpp-python/vendor/llama.cpp", initialized: true, activity: "unchanged", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 1890 },
+    { path: "vendor/model-optimizer", initialized: true, activity: "unchanged", hasUncommittedChanges: false, hasUntrackedFiles: false, unmergedCommitCount: 0 }
+  ] });
+  const inspection = await f.service.inspectWorkspaceDeletion("one");
+  assert.equal(inspection.risks.length, 1);
+  assert.match(inspection.risks[0]!, /Submodule “vendor\/llama-cpp-python”:.*1 commit\(s\)/);
+  await assert.rejects(() => f.service.deleteWorkspace("one"), /Workspace delete blocked/);
+  assert.equal(f.calls.length + f.killed.length, 0);
+});
 
 test("partial deletion failure keeps thread active and retry touches only remaining workspaces", async () => {
   const f = await fixture(); f.failedDeletes.add("/work/two");

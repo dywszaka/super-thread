@@ -788,7 +788,7 @@ Done
 
 1. 在所属 Device 的 base checkout 中先 fetch 最新远端 base，再检查未提交修改、未跟踪文件，以及相对该 base 尚未合并的提交。优先使用本地 base branch 配置的 upstream remote/branch；无 upstream 但存在 origin 时使用 origin 同名分支；base 本身是远端跟踪 ref 时刷新其对应 remote/branch（支持 remote HEAD）。无可用远端映射的本地 ref、仅本地 upstream、tag 或固定 commit 继续在本地比较。fetch 仅更新对应远端跟踪 ref，不 pull、不切换或移动本地分支、不递归 fetch 子模块；每次检查固定 fetch 后的 commit，主仓库与 submodule 共用该版本。fetch 最长等待 30 秒；远端不可用、分支删除或认证失败时检查报错，不能回退到旧 ref 或通过 force 绕过，且不停止终端或删除 Workspace。打开删除弹窗、刷新与实际删除前的复查均采用该规则；创建 worktree 仍不隐式 fetch。提交历史不包含原分支时，补充检查合并结果；若无冲突且合并后的 tree 与 base 相同，视为内容已合入，兼容 squash merge 及其后 base 的更新。检查不修改 checkout/worktree 的文件或 index；仍有内容差异、合并冲突或 Git 不支持该检查时，保留未合并警告。单独删除与 Work Thread Finish 使用相同规则。
    - 递归检查已初始化的 submodule，按路径提示未提交修改、未跟踪文件和当前 HEAD 中尚未合入刷新后 base 所记录 submodule 版本的提交；嵌套 submodule 沿 base 中记录的 gitlink 逐级比较，不以 Workspace 中已暂存或已提交的新 gitlink 作为基准。子模块自身不 fetch；忽略 submodule 的用户配置不能隐藏这些风险。无法验证 submodule 状态、base 缺少对应 gitlink 或本地缺少比较所需对象时，提示检查不完整及潜在代码丢失风险，仍允许用户确认后删除。
-   - 已初始化的 submodule 即使干净，也提示其目录将被删除并请求 force 确认，以满足 Git 的删除要求。上述 submodule 风险属于可确认警告，不构成永久禁止；用户取消时不停止终端、不删除目录或记录，明确确认后使用 `git worktree remove --force`，单独删除与 Finish 共用该流程。未初始化的 submodule 不额外要求 force。
+   - 相对起点未变化、没有自身未提交/未跟踪文件且检查完整的 submodule 不产生删除警告，也不要求额外 force 确认，即使其已有版本相对当前 base 存在未合入提交。起点已检出 HEAD 与父仓库记录的 gitlink 可以不同，分别比较对应的起始版本，不能把已有差异算作本次版本更新。嵌套模块的文件和版本变化在所属模块单独检查，不把嵌套状态向上重复标成父模块的未提交文件。实际改动的未合入提交、未提交/未跟踪文件及检查不完整仍为可确认警告；用户取消时不停止终端、不删除目录或记录。通过风险检查及必要的用户确认后，已初始化的 submodule 自动使用 Git 所要求的 `git worktree remove --force`，单独删除与 Finish 共用该流程。未初始化的 submodule 不额外要求 force。
 2. 停止所有 Session
 3. 删除 Git Worktree
 4. 删除对应 Branch

@@ -157,7 +157,7 @@ async function submoduleFixture(t: TestContext, nested = false) {
   return { repo, work, submoduleName, git, runner, runtime: new GitRuntime(local, connection, runner) };
 }
 
-test("clean initialized submodules require confirmation and can be force deleted", async (t) => {
+test("clean initialized submodules need Git force removal even without changes", async (t) => {
   const f = await submoduleFixture(t);
   assert.equal((await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main")).submodules?.[0]?.initialized, false);
   await f.git(f.work, "submodule", "update", "--init");
@@ -171,6 +171,46 @@ test("clean initialized submodules require confirmation and can be force deleted
   await assert.rejects(() => access(f.work));
   await access(join(f.repo, "file.txt"));
   await assert.rejects(() => f.git(f.repo, "rev-parse", "--verify", "refs/heads/work/test"));
+});
+
+test("a parent version update does not attribute an existing nested version mismatch to new changes", async (t) => {
+  const f = await submoduleFixture(t, true);
+  await f.git(f.work, "submodule", "update", "--init", "--recursive");
+  const child = join(f.work, f.submoduleName);
+  const leaf = join(child, "inner module");
+  await writeFile(join(leaf, "file.txt"), "existing nested version\n");
+  await f.git(leaf, "commit", "-am", "Existing dependency version");
+  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+  // Commit only the parent's own file, leaving its existing nested gitlink mismatch untouched.
+  await writeFile(join(child, "file.txt"), "parent work\n");
+  await f.git(child, "add", "file.txt");
+  await f.git(child, "commit", "-m", "Parent work");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+  const [parent, nested] = risk.submodules!;
+  assert.equal(parent!.activity, "version");
+  assert.equal(parent!.hasUncommittedChanges, false);
+  assert.equal(parent!.unmergedCommitCount, 1);
+  assert.equal(nested!.activity, "unchanged");
+  assert.equal(nested!.currentCommit, nested!.startCommit);
+  assert.equal(nested!.unmergedCommitCount, 1);
+  assert.equal(nested!.warning, undefined);
+  assert.deepEqual(nested!.files, []);
+  assert.deepEqual(nested!.commits, []);
+});
+
+test("nested untracked files warn only on the module that owns them", async (t) => {
+  const f = await submoduleFixture(t, true);
+  const baseline = await f.runtime.captureWorkspaceBaseline(f.work);
+  await f.git(f.work, "submodule", "update", "--init", "--recursive");
+  await writeFile(join(f.work, f.submoduleName, "inner module", "scratch.txt"), "nested work\n");
+  const risk = await f.runtime.inspectWorkspaceDeleteRisk(f.repo, f.work, "work/test", "main", baseline);
+  const [parent, nested] = risk.submodules!;
+  assert.equal(parent!.activity, "unchanged");
+  assert.equal(parent!.hasUncommittedChanges, false);
+  assert.equal(parent!.hasUntrackedFiles, false);
+  assert.equal(nested!.activity, "modified");
+  assert.equal(nested!.hasUntrackedFiles, true);
+  assert.deepEqual(nested!.files, ["scratch.txt"]);
 });
 
 test("recursive submodule checks find dirty files and commits even with ignored or committed gitlinks", async (t) => {
