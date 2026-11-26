@@ -1,4 +1,5 @@
 import { attachWorkspaceShortcuts } from "../windows/workspace-shortcuts";
+import { captureNativePane } from "./native-pane-snapshot";
 import { BrowserWindow, WebContentsView, session } from "electron";
 import type { BrowserLayoutInput, BrowserState, BrowserTab } from "../../shared/domain";
 import { isBrowserUrl } from "../../shared/browser-url";
@@ -138,6 +139,11 @@ export class BrowserRuntime {
     if (layout.id && !this.pages.has(layout.id)) throw new Error("Browser view no longer exists");
     this.layout = layout;
     this.applyLayout();
+  }
+
+  capture(id: string): Promise<string | null> {
+    const page = this.pages.get(id);
+    return captureNativePane(page?.view, page?.visible ?? false);
   }
 
   private applyLayout(): void {

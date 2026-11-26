@@ -1778,7 +1778,7 @@ Review
 
 ## Workspace Browser Tabs
 
-- Browser 在窗口连续缩放时保持网页可见，只更新原生视图边界；切换标签或显示覆盖层时才隐藏。
+- Browser 在窗口连续缩放时保持网页可见，只更新原生视图边界；切换标签或显示覆盖层时才隐藏。菜单、弹窗或拖动覆盖 Browser / File Preview 时，先获取当前视口快照并绘制在 renderer 中，再隐藏原生视图，避免内容区域变黑；关闭覆盖层后恢复同一原生页面，不重载或重置滚动位置。快照只在内存中保留，恢复、切换或关闭标签时释放，过期截图不得隐藏或覆盖新的页面。
 
 BrowserTab 是 Workspace 持有的本机网页视图记录，不复用代表 PTY 进程的 Session。它保存 `id`、`workspaceId`、`url`、`title`、`order`、`createdAt` 和 `updatedAt`；旧快照迁移为没有 Browser 的集合。地址、标题、顺序属于持久数据，加载状态、错误和前进后退能力属于运行时状态。
 

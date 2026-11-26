@@ -3972,6 +3972,8 @@ input, textarea, [contenteditable="true"], .selectable {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
 }
 
 .browser-message {

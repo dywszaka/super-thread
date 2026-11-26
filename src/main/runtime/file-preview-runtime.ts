@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { captureNativePane } from "./native-pane-snapshot";
 import { app, BrowserWindow, WebContentsView, nativeTheme, session, type Session, type WebContents } from "electron";
 import { channels } from "../../shared/contract";
 import type { BrowserLayoutInput, FilePreviewState, FilePreviewTab, NavigateFilePreviewInput } from "../../shared/domain";
@@ -229,6 +230,11 @@ export class FilePreviewRuntime {
   }
 
   states(): FilePreviewState[] { return [...this.pages.values()].map((page) => ({ ...page.state })); }
+
+  capture(id: string): Promise<string | null> {
+    const page = this.pages.get(id);
+    return captureNativePane(page?.view, page?.visible ?? false);
+  }
 
   setLayout(layout: BrowserLayoutInput): void {
     if (layout.id && !this.pages.has(layout.id)) {

@@ -254,6 +254,7 @@ export interface BrowserLayoutInput {
   id: string | null;
   bounds: { x: number; y: number; width: number; height: number };
 }
+export interface NativePaneSnapshotInput { id: string; kind: "browser" | "preview"; }
 
 export interface AppSnapshot {
   schemaVersion: number;

@@ -13,7 +13,7 @@ export { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
 import { normalizeBrowserUrl } from "./browser-url";
 import { isWorkspaceLinkPath } from "./workspace-links";
 import type {
-  FilePreviewTab, FilePreviewState, WorkspaceFileInput, WorkspaceFileLocation, NavigateFilePreviewInput,
+  FilePreviewTab, FilePreviewState, WorkspaceFileInput, WorkspaceFileLocation, NavigateFilePreviewInput, NativePaneSnapshotInput,
   SshTunnelRuntime,
   CreateTodoInput, UpdateTodoInput, TodoTarget,
   BrowserTab, BrowserState, CreateBrowserInput, NavigateBrowserInput, ReorderWorkspaceTabsInput, BrowserLayoutInput,
@@ -48,6 +48,7 @@ import type {
 } from "./domain";
 
 export const channels = {
+  nativePaneSnapshot: "native-pane:snapshot",
   setWorkThreadType: "work-thread:set-type",
   browseWorkspaceFiles: "workspace:files-browse",
   openFilePreview: "preview:open",
@@ -393,6 +394,7 @@ export const browserLayoutSchema = z.object({ id: z.string().min(1).nullable(), 
   width: z.number().finite().min(0).max(32768), height: z.number().finite().min(0).max(32768)
 }).strict() }).strict();
 export const browserCommandSchema = z.object({ id: z.string().min(1), command: z.enum(["back", "forward", "reload"]) }).strict();
+export const nativePaneSnapshotSchema = z.object({ id: z.string().min(1), kind: z.enum(["browser", "preview"]) }).strict();
 export const workspaceFileInputSchema = z.object({
   workspaceId: z.string().min(1),
   path: z.string().max(8192).refine((path) => !path.includes("\0"), "Invalid file path")
@@ -402,6 +404,7 @@ export const navigateFilePreviewSchema = z.object({ id: z.string().min(1), path:
 export type MenuAction = "settings" | "new-work-thread" | "new-workspace" | "add-project" | "add-device" | "new-terminal" | "close-tab" | "reload-tab";
 
 export interface DesktopBridge {
+  nativePaneSnapshot(input: NativePaneSnapshotInput): Promise<string | null>;
   setDeviceCodexRecording(input: SetDeviceCodexRecordingInput): Promise<void>;
   browseWorkspaceFiles(input: WorkspaceFileInput): Promise<WorkspaceFileLocation>;
   openFilePreview(input: WorkspaceFileInput): Promise<FilePreviewTab>;

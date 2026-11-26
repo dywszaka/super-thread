@@ -4,6 +4,7 @@ import { channels, type DesktopBridge, type MenuAction } from "../shared/contrac
 import type { BrowserState, BrowserTab, FilePreviewState, FilePreviewTab, TerminalOutput } from "../shared/domain";
 
 const bridge: DesktopBridge = {
+  nativePaneSnapshot: (input) => ipcRenderer.invoke(channels.nativePaneSnapshot, input),
   browseWorkspaceFiles: (input) => ipcRenderer.invoke(channels.browseWorkspaceFiles, input),
   openFilePreview: (input) => ipcRenderer.invoke(channels.openFilePreview, input),
   navigateFilePreview: (input) => ipcRenderer.invoke(channels.navigateFilePreview, input),

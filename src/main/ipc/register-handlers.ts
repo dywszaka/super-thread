@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { FilePreviewDownloader } from "../runtime/file-preview-download";
 import { z } from "zod";
 import {
-  workspaceFileInputSchema, navigateFilePreviewSchema,
+  workspaceFileInputSchema, navigateFilePreviewSchema, nativePaneSnapshotSchema,
   createTodoSchema, updateTodoSchema, todoTargetSchema,
   createBrowserSchema, navigateBrowserSchema, reorderWorkspaceTabsSchema, browserLayoutSchema, browserCommandSchema,
   addProjectSchema,
@@ -92,6 +92,10 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
     }
   });
   handle(channels.filePreviewStates, () => previews.states());
+  handle(channels.nativePaneSnapshot, (_event, input) => {
+    const { id, kind } = nativePaneSnapshotSchema.parse(input);
+    return (kind === "browser" ? browsers : previews).capture(id);
+  });
   handle(channels.filePreviewLayout, (_event, input) => previews.setLayout(browserLayoutSchema.parse(input)));
   handle(channels.createBrowser, (_event, input) => service.createBrowser(createBrowserSchema.parse(input)));
   handle(channels.navigateBrowser, (_event, input) => { const parsed = navigateBrowserSchema.parse(input); return browsers.navigate(parsed.id, parsed.url); });
