@@ -1,6 +1,9 @@
 import type { FinishWorkThreadInput, WorkThreadFinishInspection, WorkspaceDeleteInspection } from "../../shared/work-thread-finish";
 import type { WorkspaceGitBaseline, WorkspaceChangeRecord, WorkspaceChangeInspection } from "../../shared/workspace-changes";
 import { finishWorkThreadSchema } from "../../shared/contract";
+import { createWorkspaceMergeRequestSchema } from "../../shared/contract";
+import type { CreateWorkspaceMergeRequestInput, WorkspaceMergeRequest, WorkspaceMergeRequestResult } from "../../shared/merge-request";
+import { MergeRequestRuntime } from "../runtime/merge-request-runtime";
 import { WorkThreadCreationCoordinator } from "./work-thread-creation";
 import { normalizeBrowserUrl } from "../../shared/browser-url";
 import { WorkspaceFileRuntime } from "../runtime/workspace-file-runtime";
@@ -125,6 +128,7 @@ export class WorkspaceService extends EventEmitter {
   private readonly pendingFileNavigations = new Map<string, symbol>();
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
   private readonly pendingTmuxOpens = new Map<string, Promise<void>>();
+  private readonly pendingMergeRequests = new Map<string, Promise<WorkspaceMergeRequestResult>>();
   private readonly startingSessionIds = new Set<string>();
   private readonly exitsDuringSessionStart = new Map<string, TerminalExitEvent>();
   private readonly closingSessionIds = new Set<string>();
@@ -612,6 +616,7 @@ export class WorkspaceService extends EventEmitter {
       // Check the entire group before deleting anything, then recheck each workspace at deletion.
       for (const workspace of workspaces) {
         if (this.deletingWorkspaceIds.has(workspace.id)) throw new Error(`Deletion of ${workspace.name} is already in progress.`);
+        this.assertWorkspaceNotPublishing(workspace);
         const inspection = await this.inspectWorkspaceDelete(snapshot, workspace);
         if (inspection.error) throw new Error(`${workspace.name}: ${inspection.error}`);
         if (inspection.risks.length && !input.forceWorkspaceIds.includes(workspace.id)) throw new Error(`Workspace delete blocked: ${workspace.name}: ${inspection.risks.join("; ")}. Refresh the checks and explicitly approve force deletion.`);
@@ -854,6 +859,7 @@ export class WorkspaceService extends EventEmitter {
     if (this.workThreadCreation.isCreatingWorkspace(workspaceId)) throw new Error("Wait for work thread creation to finish before deleting this workspace.");
     const snapshot = this.snapshot();
     const workspace = this.workspace(snapshot, workspaceId);
+    this.assertWorkspaceNotPublishing(workspace);
     const inspection = await this.inspectWorkspaceDelete(snapshot, workspace);
     if (inspection.error) throw new Error(inspection.error);
     if (!force && inspection.risks.length) throw new Error(`Workspace delete blocked: ${inspection.risks.join("; ")}. Confirm force delete to remove the worktree and branch.`);
@@ -1093,6 +1099,41 @@ export class WorkspaceService extends EventEmitter {
     await this.finishSessionStart(session.id);
     this.changed();
     return { session: created ?? { ...session, pid } };
+  }
+
+  async inspectWorkspaceMergeRequest(workspaceId: string): Promise<WorkspaceMergeRequest> {
+    const snapshot = this.snapshot();
+    const workspace = this.workspace(snapshot, workspaceId);
+    if (workspace.status !== "ready") return { state: "unavailable", reason: "Workspace is not ready." };
+    const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
+    if (!checkout || checkout.isGit === false) return { state: "unavailable", reason: "This workspace is not a Git repository." };
+    return new MergeRequestRuntime(this.commandRunnerFactory(this.connection(snapshot, workspace.deviceId))).inspect(workspace);
+  }
+
+  createWorkspaceMergeRequest(raw: CreateWorkspaceMergeRequestInput): Promise<WorkspaceMergeRequestResult> {
+    const input = createWorkspaceMergeRequestSchema.parse(raw);
+    const snapshot = this.snapshot();
+    const workspace = this.workspace(snapshot, input.workspaceId);
+    if (workspace.status !== "ready") throw new Error("Workspace is not ready");
+    if (workspace.workThreadId) this.assertThreadNotFinishing(workspace.workThreadId);
+    if (this.deletingWorkspaceIds.has(workspace.id)) throw new Error("Workspace deletion is already in progress.");
+    const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
+    if (!checkout || checkout.isGit === false) throw new Error("This workspace is not a Git repository.");
+    const key = this.workspacePublishKey(workspace);
+    const pending = this.pendingMergeRequests.get(key);
+    if (pending) return pending;
+    const creating = new MergeRequestRuntime(this.commandRunnerFactory(this.connection(snapshot, workspace.deviceId)))
+      .create(workspace, input.context).finally(() => this.pendingMergeRequests.delete(key));
+    this.pendingMergeRequests.set(key, creating);
+    return creating;
+  }
+
+  private workspacePublishKey(workspace: Workspace): string {
+    return `${workspace.deviceId}\0${workspace.path}`;
+  }
+
+  private assertWorkspaceNotPublishing(workspace: Workspace): void {
+    if (this.pendingMergeRequests.has(this.workspacePublishKey(workspace))) throw new Error("Wait for push and MR creation to finish before deleting this workspace.");
   }
 
   openWorkspaceTmuxInIterm(workspaceId: string): Promise<void> {

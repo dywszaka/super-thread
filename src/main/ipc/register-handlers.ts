@@ -30,6 +30,7 @@ import {
   reorderSessionsSchema,
   renameSessionSchema,
   renameWorkspaceSchema,
+  createWorkspaceMergeRequestSchema,
   setWorkThreadPinnedSchema,
   setWorkThreadTypeSchema,
   reorderWorkThreadsSchema,
@@ -163,6 +164,8 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
     await shell.openExternal(url);
   });
   handle(channels.openWorkspaceTmuxInIterm, (_event, workspaceId) => service.openWorkspaceTmuxInIterm(sessionIdSchema.parse(workspaceId)));
+  handle(channels.inspectWorkspaceMergeRequest, (_event, workspaceId) => service.inspectWorkspaceMergeRequest(sessionIdSchema.parse(workspaceId)));
+  handle(channels.createWorkspaceMergeRequest, (_event, input) => service.createWorkspaceMergeRequest(createWorkspaceMergeRequestSchema.parse(input)));
   handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
   handle(channels.saveTerminalPreset, (_event, input) => service.saveTerminalPreset(saveTerminalPresetSchema.parse(input)));
   handle(channels.deleteTerminalPreset, (_event, input) => service.deleteTerminalPreset(deleteTerminalPresetSchema.parse(input)));

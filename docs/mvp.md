@@ -626,6 +626,10 @@ interface Workspace {
 
 # 11. Workspace Creation
 
+Workspace 操作菜单提供 **Push & create MR**（GitHub 为 **Push & create PR**）。每次打开菜单查询当前真实分支在 origin 推送仓库中的 MR/PR；任意状态（打开、关闭、已合并）已存在时不显示创建选项，查询失败只提供重试与错误说明，不假定尚未创建。普通目录、无 origin、detached HEAD、当前分支等于基础分支时不提供创建操作。
+
+点击后主进程重新查询并校验菜单展示时的分支、基础分支、远端，推送固定提交到 origin 的同名分支，再创建以 Workspace 基础分支为目标的 MR/PR；标题取最新提交主题，正文为空。不自动提交、强制推送、推送其他分支或递归推送子模块。GitHub.com 使用 `gh`，GitLab（含自托管）使用 `glab`，需在 Workspace 所属设备安装并登录；SSH Workspace 沿用原设备连接和凭据，通过该设备的登录 shell 执行 CLI。仅支持同一 origin 仓库内的分支，不自动创建 fork；origin 配置多个 push URL 时不提供入口。重试会复查远端，创建超时也会再查询，避免重复创建；若仅推送成功，提示分支已推送与创建失败原因。运行中同目录创建请求合并，禁止删除该 Workspace 或 Finish 清理；成功提示可打开请求链接。不在领域快照中保存网络状态。
+
 侧栏 Workspaces 分组的加号和 All workspaces 的 New Workspace 打开独立创建表单，省略 Work Thread 字段。在线程内创建时默认选中当前活跃线程。⌘⇧N 按当前范围选择创建表单。独立 Workspace 创建成功后直接打开，详情显示 Standalone。
 
 Workspace 有两种创建模式：

@@ -3,6 +3,7 @@ import { MAX_WORK_THREAD_FINISH_NOTE_LENGTH } from "./work-thread-finish";
 import type { WorkspaceChangeRecord } from "./workspace-changes";
 import type { WorkThreadCreation, WorkThreadCreationInput } from "./work-thread-creation";
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
+import type { CreateWorkspaceMergeRequestInput, WorkspaceMergeRequest, WorkspaceMergeRequestResult } from "./merge-request";
 import { z } from "zod";
 import { projectCodeSchema } from "./project-code";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
@@ -110,6 +111,8 @@ export const channels = {
   exportWorkspaceChanges: "workspace:export-changes",
   openWorkspaceInVSCode: "workspace:open-in-vscode",
   openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
+  inspectWorkspaceMergeRequest: "workspace:merge-request-inspect",
+  createWorkspaceMergeRequest: "workspace:merge-request-create",
   createSession: "session:create",
   saveTerminalPreset: "device:save-terminal-preset",
   deleteTerminalPreset: "device:delete-terminal-preset",
@@ -320,6 +323,16 @@ export const renameWorkspaceSchema = z.object({
   name: workspaceNameSchema
 }).strict();
 
+export const createWorkspaceMergeRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  context: z.object({
+    branch: z.string().min(1).max(255),
+    targetBranch: z.string().min(1).max(255),
+    remoteUrl: z.string().min(1).max(8192),
+    provider: z.enum(["github", "gitlab"])
+  }).strict()
+}).strict();
+
 export const createSessionSchema = z.object({
   workspaceId: z.string().min(1),
   name: z.string().trim().min(1).max(80).optional(),
@@ -436,6 +449,8 @@ export interface DesktopBridge {
   exportWorkspaceChanges(markdown: string): Promise<boolean>;
   openWorkspaceInVSCode(id: string): Promise<void>;
   openWorkspaceTmuxInIterm(id: string): Promise<void>;
+  inspectWorkspaceMergeRequest(id: string): Promise<WorkspaceMergeRequest>;
+  createWorkspaceMergeRequest(input: CreateWorkspaceMergeRequestInput): Promise<WorkspaceMergeRequestResult>;
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
   saveTerminalPreset(input: SaveTerminalPresetInput): Promise<void>;
   deleteTerminalPreset(input: DeleteTerminalPresetInput): Promise<void>;

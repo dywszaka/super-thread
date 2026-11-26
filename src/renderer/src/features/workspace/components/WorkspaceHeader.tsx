@@ -1,5 +1,5 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Code2, ExternalLink, Focus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, Code2, ExternalLink, Focus, GitPullRequest, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AppSnapshot, Workspace } from "@/shared/domain";
@@ -16,6 +16,7 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const [editing, setEditing] = useState(false);
   const [openingInVSCode, setOpeningInVSCode] = useState(false);
   const [openingTmux, setOpeningTmux] = useState(false);
+  const [creatingMergeRequest, setCreatingMergeRequest] = useState(false);
   const detailsButton = useRef<HTMLButtonElement>(null);
   const detailsPopover = useRef<HTMLDivElement>(null);
   const menuAnchor = useRef<HTMLDivElement>(null);
@@ -23,6 +24,16 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const workThread = snapshot.workThreads.find((item) => item.id === workspace.workThreadId);
   const project = snapshot.projects.find((item) => item.id === workspace.projectId);
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
+  const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
+  const canCheckMergeRequest = workspace.status === "ready" && checkout?.isGit !== false && Boolean(checkout);
+  const mergeRequestKey = ["workspace-merge-request", workspace.id, workspace.baseBranch];
+  const mergeRequest = useQuery({
+    queryKey: mergeRequestKey,
+    queryFn: () => window.desktop.inspectWorkspaceMergeRequest(workspace.id),
+    enabled: menu && canCheckMergeRequest && !creatingMergeRequest,
+    staleTime: 0,
+    retry: false
+  });
   const sessions = snapshot.sessions.filter((session) => session.workspaceId === workspace.id);
   const activeCount = sessions.filter((session) => session.status === "running" && session.activityStatus === "busy").length;
   const waitingCount = sessions.filter((session) => session.activityStatus === "waiting-input").length;
@@ -79,6 +90,30 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
     setMenu(false);
     useWorkbenchStore.getState().openDeleteWorkspace(workspace.id);
   };
+  const createMergeRequest = async (): Promise<void> => {
+    if (mergeRequest.data?.state !== "available" || mergeRequest.isFetching || creatingMergeRequest) return;
+    setMenu(false);
+    menuAnchor.current?.querySelector("button")?.focus();
+    setCreatingMergeRequest(true);
+    const notification = toast.loading("Pushing branch and creating merge request…");
+    try {
+      const result = await window.desktop.createWorkspaceMergeRequest({ workspaceId: workspace.id, context: mergeRequest.data.context });
+      client.setQueryData(mergeRequestKey, { state: "existing", url: result.url });
+      toast.success(result.created ? "Merge request created" : "Merge request already exists", {
+        id: notification,
+        action: { label: "Open", onClick: () => void window.desktop.openDocumentLink(result.url).catch((error) => toast.error(cleanError(error))) }
+      });
+    } catch (error) {
+      toast.error(cleanError(error), { id: notification });
+      await client.invalidateQueries({ queryKey: mergeRequestKey });
+    } finally {
+      setCreatingMergeRequest(false);
+    }
+  };
+  const retryMergeRequestCheck = async (): Promise<void> => {
+    const result = await mergeRequest.refetch();
+    if (result.error) toast.error(cleanError(result.error));
+  };
   return (
     <header className="workspace-header drag">
       <SidebarReopenButton />
@@ -93,10 +128,19 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
         <div ref={menuAnchor} className="menu-anchor"><button className="icon-button" onClick={() => { setMenu((open) => !open); setDetails(false); }} aria-label="Workspace actions" title="Workspace actions" aria-expanded={menu}><MoreHorizontal size={17} /></button>{menu && <div className="context-menu">
           <button disabled={workspace.status !== "ready" || openingInVSCode} onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button>
           <button disabled={workspace.status !== "ready" || openingTmux} onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> {openingTmux ? "Opening…" : "tmux in iTerm"}</button>
+          {canCheckMergeRequest && (creatingMergeRequest
+            ? <button disabled><GitPullRequest size={14} /> Pushing and creating MR…</button>
+            : mergeRequest.isFetching || mergeRequest.isPending
+              ? <button disabled><GitPullRequest size={14} /> Checking MR…</button>
+              : mergeRequest.isError
+                ? <button title={cleanError(mergeRequest.error)} onClick={() => void retryMergeRequestCheck()}><GitPullRequest size={14} /> MR unavailable · retry</button>
+                : mergeRequest.data?.state === "available"
+                  ? <button title={`${mergeRequest.data.context.branch} → ${mergeRequest.data.context.targetBranch} · origin`} onClick={() => void createMergeRequest()}><GitPullRequest size={14} /> Push &amp; create {mergeRequest.data.context.provider === "github" ? "PR" : "MR"}</button>
+                  : null)}
           <button onClick={() => { setMenu(false); openWorkspaceDialog(scope.type === "work-thread" ? scope.id : undefined); }}><Plus size={14} /> New Workspace</button>
           <button disabled={workspace.status === "creating"} onClick={() => { setMenu(false); setEditing(true); }}><Pencil size={14} /> Rename workspace…</button>
           <div className="context-menu-separator" />
-          <button className="danger" disabled={workspace.status === "creating"} onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button>
+          <button className="danger" disabled={workspace.status === "creating" || creatingMergeRequest} onClick={() => void remove()}><Trash2 size={14} /> Delete workspace</button>
         </div>}</div>
       </div>
       {details && <div ref={detailsPopover} className="workspace-popover no-drag"><dl><div><dt>Work Thread</dt><dd>{workThread?.name ?? (workspace.workThreadId ? "Unknown work thread" : "Standalone")}</dd></div><div><dt>Project</dt><dd>{project?.name}</dd></div><div><dt>Device</dt><dd>{device?.name}</dd></div><div><dt>Type</dt><dd>{workspace.kind === "main" ? "Project directory" : "Worktree"}</dd></div>{workspace.branch && <><div><dt>Branch</dt><dd>{workspace.branch}</dd></div><div><dt>Base</dt><dd>{workspace.baseBranch}</dd></div></>}<div className="full"><dt>Path</dt><dd className="selectable">{workspace.path}</dd></div></dl></div>}

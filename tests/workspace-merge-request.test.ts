@@ -1,0 +1,62 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { WorkspaceService } from "../src/main/application/workspace-service";
+import { JsonStore } from "../src/main/persistence/json-store";
+import type { CommandRunner } from "../src/main/runtime/command-runner";
+import type { DeviceConnection } from "../src/shared/domain";
+
+test("MR creation uses the workspace device, deduplicates clicks, and blocks cleanup until complete", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "workspace-mr-service-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let resolveLookup!: () => void, announceLookup!: () => void;
+  const lookupStarted = new Promise<void>((resolve) => { announceLookup = resolve; });
+  const lookupGate = new Promise<void>((resolve) => { resolveLookup = resolve; });
+  const calls: string[][] = [];
+  const connections: DeviceConnection[] = [];
+  const runner: CommandRunner = { async run(program, args) {
+    calls.push([program, ...args]);
+    let stdout = "";
+    if (program === "sh") {
+      announceLookup();
+      await lookupGate;
+      stdout = args.join(" ").includes("'list'") ? "[]" : "https://github.com/team/repo/pull/3";
+    } else if (args[2] === "branch") stdout = "work/demo";
+    else if (args[2] === "remote") stdout = args.length === 3 ? "origin" : "git@github.com:team/repo.git";
+    else if (args[2] === "rev-parse") stdout = "a".repeat(40);
+    else if (args[2] === "log") stdout = "Feature";
+    return { stdout, stderr: "", exitCode: 0 };
+  } };
+  const store = new JsonStore(join(root, "state.json"));
+  const service = new WorkspaceService(store, undefined, undefined, undefined, undefined, (connection) => { connections.push(connection); return runner; });
+  await service.initialize();
+  t.after(() => service.shutdown());
+  await store.update((draft) => {
+    draft.devices.push({ id: "remote", name: "SSH", type: "remote", status: "online", createdAt: "now" });
+    draft.connections.push({ deviceId: "remote", transport: "ssh", config: { host: "gpu.test", user: "builder", port: 2222 } });
+    draft.projects.push({ id: "project", code: "demo", name: "Demo", createdAt: "now", updatedAt: "now" });
+    draft.checkouts.push({ id: "checkout", projectId: "project", deviceId: "remote", path: "/srv/repo", isGit: true, createdAt: "now" });
+    draft.workThreads.push({ id: "thread", name: "Demo", status: "active", pinned: false, createdAt: "now", updatedAt: "now" });
+    draft.workspaces.push({ id: "workspace", workThreadId: "thread", name: "demo", projectId: "project", deviceId: "remote", checkoutId: "checkout", kind: "worktree", path: "/srv/work tree", branch: "work/demo", baseBranch: "main", status: "ready", createdAt: "now", updatedAt: "now" });
+  });
+  const input = { workspaceId: "workspace", context: { provider: "github" as const, branch: "work/demo", targetBranch: "main", remoteUrl: "git@github.com:team/repo.git" } };
+  const creating = service.createWorkspaceMergeRequest(input);
+  await lookupStarted;
+  assert.equal(service.createWorkspaceMergeRequest(input), creating);
+  await assert.rejects(service.deleteWorkspace("workspace", true), /Wait for push and MR creation/);
+  await assert.rejects(service.finishWorkThread({ id: "thread", workspaceIds: ["workspace"], forceWorkspaceIds: ["workspace"] }), /Wait for push and MR creation/);
+  assert.equal(service.snapshot().workspaces.length, 1);
+  assert.equal(service.snapshot().workThreads[0]!.status, "active");
+  resolveLookup();
+  assert.deepEqual(await creating, { created: true, url: "https://github.com/team/repo/pull/3" });
+  assert.equal(calls.filter((call) => call[0] === "sh" && call.join(" ").includes("'create'")).length, 1);
+  assert.equal(connections[0]!.transport, "ssh");
+  assert.equal(connections[0]!.config.host, "gpu.test");
+  const count = calls.length;
+  await store.update((draft) => { draft.checkouts[0]!.isGit = false; });
+  assert.equal((await service.inspectWorkspaceMergeRequest("workspace")).state, "unavailable");
+  assert.throws(() => service.createWorkspaceMergeRequest(input), /not a Git repository/);
+  assert.equal(calls.length, count);
+});
