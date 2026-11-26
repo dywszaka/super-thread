@@ -1,4 +1,5 @@
 import os from "node:os";
+import { lstat, realpath } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
 import type { Device, DeviceConnection, WorkspaceLinkCandidate } from "../../shared/domain";
 import { isWorkspaceLinkPath } from "../../shared/workspace-links";
@@ -235,7 +236,83 @@ ln -s "$source_path" "$target_path"
       throw new Error("Cannot delete the base checkout as a workspace worktree");
     }
     await this.git(checkoutPath, ["worktree", "remove", ...(force ? ["--force"] : []), workspacePath]);
-    await this.git(checkoutPath, ["branch", "-D", branch]);
+    await this.deleteBranchIfPresent(checkoutPath, branch);
+  }
+
+  private async removalRegistration(checkoutPath: string, workspacePath: string, canonicalPath: string, branch: string): Promise<boolean> {
+    const listing = await this.git(checkoutPath, ["worktree", "list", "--porcelain", "-z"]);
+    const paths = new Set([posix.resolve(workspacePath), canonicalPath]);
+    const entry = listing.split("\0\0").map((record) => record.split("\0")).find((fields) => fields[0]?.startsWith("worktree ") && paths.has(posix.resolve(fields[0].slice(9))));
+    if (entry && !entry.includes(`branch refs/heads/${branch}`)) throw new Error("The worktree registration has changed. Review this directory before deleting it.");
+    return Boolean(entry);
+  }
+
+  async inspectWorktreeRemoval(checkoutPath: string, workspacePath: string, branch: string): Promise<"intact" | "directory" | "missing"> {
+    return (await this.worktreeRemovalState(checkoutPath, workspacePath, branch)).state;
+  }
+
+  private async worktreeRemovalState(checkoutPath: string, workspacePath: string, branch: string): Promise<{ state: "intact" | "directory" | "missing"; registered: boolean }> {
+    const containsCheckout = (path: string, checkout: string): boolean => path === checkout || checkout.startsWith(`${path.replace(/\/$/, "")}/`);
+    if (!posix.isAbsolute(workspacePath) || containsCheckout(posix.resolve(workspacePath), posix.resolve(checkoutPath))) {
+      throw new Error("Cannot delete the base checkout as a workspace worktree");
+    }
+    let state: { exists: boolean; git: boolean; symbolic: boolean; path: string; checkout: string };
+    if (this.connection.transport === "local") {
+      const stat = async (path: string) => lstat(path).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      });
+      const resolvePath = async (path: string): Promise<string> => realpath(path).catch(async (error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+        return join(await resolvePath(posix.dirname(path)), basename(path));
+      });
+      const directory = await stat(workspacePath);
+      state = { exists: Boolean(directory), symbolic: Boolean(directory?.isSymbolicLink()),
+        git: Boolean(directory && !directory.isSymbolicLink() && await stat(join(workspacePath, ".git"))),
+        path: await resolvePath(workspacePath), checkout: await realpath(checkoutPath) };
+    } else {
+      // lstat distinguishes a removed directory from permission and connection errors. Never
+      // interpret a failed SSH/stat command as evidence that cleanup has already succeeded.
+      const result = await this.runner.run("python3", ["-c", `
+import json, os, stat, sys
+def probe(path):
+    try: return os.lstat(path)
+    except FileNotFoundError: return None
+path, checkout = sys.argv[1:]
+info = probe(path)
+symbolic = info is not None and stat.S_ISLNK(info.st_mode)
+print(json.dumps(dict(exists=info is not None, symbolic=symbolic,
+    git=bool(info is not None and not symbolic and probe(os.path.join(path, '.git'))),
+    path=os.path.realpath(path), checkout=os.path.realpath(checkout))))
+`, workspacePath, checkoutPath], { timeoutMs: 15_000 });
+      state = JSON.parse(result.stdout);
+      if (typeof state.exists !== "boolean" || typeof state.git !== "boolean" || typeof state.symbolic !== "boolean" || typeof state.checkout !== "string" || typeof state.path !== "string") throw new Error("Could not verify the remaining workspace directory");
+    }
+    if (state.symbolic || containsCheckout(state.path, state.checkout)) throw new Error("Refusing to clean up a symlink or the base checkout directory");
+    const registered = await this.removalRegistration(checkoutPath, workspacePath, state.path, branch);
+    return { state: !state.exists ? "missing" : registered && state.git ? "intact" : "directory", registered };
+  }
+
+  async resumeWorktreeDeletion(checkoutPath: string, workspacePath: string, branch: string): Promise<void> {
+    const { state, registered } = await this.worktreeRemovalState(checkoutPath, workspacePath, branch);
+    if (state === "intact") throw new Error("The worktree is available again. Refresh the deletion checks before retrying.");
+    try {
+      if (registered) {
+        await this.git(checkoutPath, ["worktree", "remove", "--force", workspacePath]);
+      } else if (state === "directory") {
+        await this.runner.run("rm", ["-rf", "--", workspacePath]);
+      }
+      if (await this.inspectWorktreeRemoval(checkoutPath, workspacePath, branch) !== "missing") throw new Error("The workspace directory still exists");
+      await this.deleteBranchIfPresent(checkoutPath, branch);
+    } catch (error) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)}. Cleanup is incomplete. If directory removal needs elevated permissions, remove "${workspacePath}" on this device, then refresh and retry deletion or Finish.`);
+    }
+  }
+
+  private async deleteBranchIfPresent(checkoutPath: string, branch: string): Promise<void> {
+    const ref = `refs/heads/${branch}`;
+    const refs = await this.git(checkoutPath, ["for-each-ref", "--format=%(refname)", ref]);
+    if (refs.split("\n").includes(ref)) await this.git(checkoutPath, ["branch", "-D", "--", branch]);
   }
 
   private git(cwd: string, args: string[], timeoutMs?: number): Promise<string> {

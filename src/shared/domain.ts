@@ -177,6 +177,8 @@ export interface Workspace {
   branch: string;
   baseBranch: string;
   gitBaseline?: WorkspaceGitBaseline;
+  /** Durable deletion evidence, retained until forward cleanup completes (including standalone workspaces). */
+  deletion?: WorkspaceChangeRecord;
   tmuxSessionName?: string;
   status: WorkspaceStatus;
   error?: string;

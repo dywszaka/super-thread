@@ -29,6 +29,7 @@ export interface WorkspaceDeleteInspection {
   risks: string[];
   checkedAt?: string;
   changes?: WorkspaceChangeInspection;
+  recovery?: "directory" | "missing";
   error?: string;
 }
 

@@ -47,6 +47,7 @@ export interface WorkspaceChangeRecord {
   risks: string[];
   changes?: WorkspaceChangeInspection;
   outcome: "pending" | "deleted" | "failed";
+  recovery?: "directory" | "missing";
   updatedAt: string;
   error?: string;
 }

@@ -20,6 +20,7 @@ class FakeRunner implements CommandRunner {
     if (command.includes("rev-parse --symbolic-full-name")) return { stdout: "refs/heads/main", stderr: "", exitCode: 0 };
     if (command.includes("status --porcelain")) return { stdout: " M src/main.ts\n?? scratch.txt", stderr: "", exitCode: 0 };
     if (command.includes("rev-list --count")) return { stdout: "2", stderr: "", exitCode: 0 };
+    if (command.includes("for-each-ref --format=%(refname) refs/heads/work/")) return { stdout: args.at(-1)!, stderr: "", exitCode: 0 };
     if (command.includes("HEAD^{commit}") || command.includes("merge-base main HEAD")) return { stdout: "a".repeat(40), stderr: "", exitCode: 0 };
     return { stdout: "", stderr: "", exitCode: 0 };
   }
@@ -111,7 +112,7 @@ test("GitRuntime reports workspace deletion risk and removes worktree plus branc
   assert.deepEqual(risk.changes?.repository, { currentCommit: "a".repeat(40), commits: [] });
   assert.equal(runner.calls.some((call) => call.args.includes("fetch")), false);
   assert.ok(runner.calls.some((call) => call.args.join(" ").includes("worktree remove --force /work/demo")));
-  assert.ok(runner.calls.some((call) => call.args.join(" ").includes("branch -D work/feature-x")));
+  assert.ok(runner.calls.some((call) => call.args.join(" ").includes("branch -D -- work/feature-x")));
 });
 
 for (const [device, deviceConnection] of [[local, connection], [remote, remoteConnection]] as const) {

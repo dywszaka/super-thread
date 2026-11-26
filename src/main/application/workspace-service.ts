@@ -106,6 +106,8 @@ export interface WorkspaceGitRuntime {
   inspectWorkspaceChanges?(workspacePath: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceChangeInspection>;
   inspectWorkspaceDeleteRisk(checkoutPath: string, workspacePath: string, branch: string, baseBranch: string, baseline?: WorkspaceGitBaseline): Promise<WorkspaceDeleteRisk>;
   deleteWorktree(checkoutPath: string, workspacePath: string, branch: string, force: boolean): Promise<void>;
+  inspectWorktreeRemoval?(checkoutPath: string, workspacePath: string, branch: string): Promise<"intact" | "directory" | "missing">;
+  resumeWorktreeDeletion?(checkoutPath: string, workspacePath: string, branch: string): Promise<void>;
 }
 
 export interface WorkspaceDirectoryRuntime {
@@ -664,6 +666,19 @@ export class WorkspaceService extends EventEmitter {
       if (!keepsDirectory) {
         if (!checkout) throw new Error("Base checkout no longer exists");
         const runtime = this.git(snapshot, this.device(snapshot, workspace.deviceId));
+        const previous = workspace.deletion ?? snapshot.workThreads.find((thread) => thread.id === workspace.workThreadId)?.workspaceChanges?.find((record) => record.workspaceId === workspace.id);
+        if (previous && (previous.outcome === "pending" || previous.outcome === "failed") && previous.workspaceId === workspace.id && !previous.keepsDirectory && previous.path === workspace.path && previous.branch === workspace.branch && runtime.inspectWorktreeRemoval && runtime.resumeWorktreeDeletion) {
+          const state = await runtime.inspectWorktreeRemoval(checkout.path, workspace.path, workspace.branch);
+          if (state !== "intact") {
+            inspection.recovery = state;
+            inspection.changes = previous.changes;
+            inspection.checkedAt = previous.checkedAt;
+            inspection.risks = [...previous.risks.filter((risk) => !risk.startsWith("Continue previous deletion:")), state === "directory"
+              ? "Continue previous deletion: Git information is incomplete. Delete the remaining directory and branch using the saved summary; remaining files cannot be checked for new changes. If permission is denied, remove the directory on its device, then refresh and retry."
+              : "Continue previous deletion: the directory is already absent. Keep the saved summary and finish removing any remaining worktree registration, branch and workspace records."];
+            return inspection;
+          }
+        }
         const risk = await runtime.inspectWorkspaceDeleteRisk(checkout.path, workspace.path, workspace.branch, workspace.baseBranch, workspace.gitBaseline);
         inspection.risks = this.workspaceDeleteRisks(risk);
         inspection.changes = risk.changes;
@@ -880,7 +895,9 @@ export class WorkspaceService extends EventEmitter {
         const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId)!;
         // Git requires --force for initialized submodules even when the fresh inspection found no deletion risks.
         const gitForce = force || Boolean(inspection.changes?.submodules.some((submodule) => submodule.initialized));
-        await this.git(snapshot, this.device(snapshot, workspace.deviceId)).deleteWorktree(checkout.path, workspace.path, workspace.branch, gitForce);
+        const runtime = this.git(snapshot, this.device(snapshot, workspace.deviceId));
+        if (inspection.recovery) await runtime.resumeWorktreeDeletion!(checkout.path, workspace.path, workspace.branch);
+        else await runtime.deleteWorktree(checkout.path, workspace.path, workspace.branch, gitForce);
       }
       const completed: WorkspaceChangeRecord = { ...record, outcome: "deleted", updatedAt: now() };
       await this.removeWorkspaceMetadata(workspaceId, true, completed);
@@ -892,8 +909,10 @@ export class WorkspaceService extends EventEmitter {
   }
 
   private async storeChangeRecord(workThreadId: string | undefined, record: WorkspaceChangeRecord): Promise<void> {
-    if (!workThreadId) return;
     await this.store.update((draft) => {
+      const workspace = draft.workspaces.find((item) => item.id === record.workspaceId);
+      if (workspace) workspace.deletion = structuredClone(record);
+      if (!workThreadId) return;
       const thread = this.workThread(draft, workThreadId);
       const records = thread.workspaceChanges ??= [];
       const index = records.findIndex((item) => item.workspaceId === record.workspaceId);
