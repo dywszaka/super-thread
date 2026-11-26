@@ -3,14 +3,13 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
-import { MergeRequestRuntime, mergeRequestRepository } from "../src/main/runtime/merge-request-runtime";
+import { MergeRequestRuntime } from "../src/main/runtime/merge-request-runtime";
 import { DeviceCommandRunner, ProcessCommandRunner, type CommandRunner } from "../src/main/runtime/command-runner";
-import { createWorkspaceMergeRequestSchema } from "../src/shared/contract";
+import { hostingRepositoryPath, parseGitRemote, normalizeGitHostingUrl, saveGitHostingConnectionSchema } from "../src/shared/git-hosting";
 import type { Workspace } from "../src/shared/domain";
-import type { MergeRequestContext } from "../src/shared/merge-request";
 
-async function fixture(t: TestContext, provider: "github" | "gitlab" = "gitlab") {
-  const root = await mkdtemp(join(tmpdir(), "superthread-mr-"));
+async function fixture(t: TestContext) {
+  const root = await mkdtemp(join(tmpdir(), "superthread-mr-git-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "work tree"), remote = join(root, "remote.git");
   await mkdir(path);
@@ -30,134 +29,96 @@ async function fixture(t: TestContext, provider: "github" | "gitlab" = "gitlab")
   await writeFile(join(path, "file"), "feature");
   const title = "Fix 'quotes' $() `commands` 中文";
   await commit(title);
-  const remoteUrl = provider === "github" ? "git@github.com:team/repo.git" : "ssh://git@gitlab.company.test:2222/team/sub/repo.git";
-  const url = provider === "github" ? "https://github.com/team/repo/pull/1" : "https://gitlab.company.test/team/sub/repo/-/merge_requests/1";
-  const state = { existing: false, lookupError: false, createError: false, pushError: false, malformed: false,
-    branchChangedDuringLookup: false, createdOnFailure: false, forkOnly: false, creates: 0, lookups: 0, cli: [] as string[], calls: [] as string[][] };
+  const calls: string[][] = [];
+  const state = { remoteUrl: "git@gitlab.company.test:team/sub/repo.git", pushError: false };
   const runner: CommandRunner = { async run(program, args, options) {
-    state.calls.push([program, ...args]);
-    if (program === "git" && args[2] === "remote" && args[3] === "get-url") return { stdout: remoteUrl, stderr: "", exitCode: 0 };
-    if (program === "git" && args[2] === "push" && state.pushError) throw new Error("push rejected");
-    if (program === "sh") {
-      const command = args.join(" ");
-      state.cli.push(command);
-      let stdout: string;
-      if (command.includes("'list'")) {
-        state.lookups++;
-        if (state.lookupError) throw new Error("authentication failed");
-        if (state.branchChangedDuringLookup) await git("switch", "main");
-        stdout = state.malformed ? "not json" : JSON.stringify(state.existing || state.forkOnly ? [provider === "github"
-          ? { url, isCrossRepository: state.forkOnly }
-          : { web_url: url, source_project_id: state.forkOnly ? 2 : 1, target_project_id: 1 }] : []);
-      } else {
-        state.creates++;
-        if (state.createError) {
-          if (state.createdOnFailure) state.existing = true;
-          throw new Error("API unavailable");
-        }
-        state.existing = true;
-        stdout = `Created request\n${url}`;
-      }
-      return { stdout, stderr: "", exitCode: 0 };
+    calls.push([program, ...args]);
+    assert.equal(program, "git", "MR device runtime must never run gh/glab or a shell");
+    if (args[2] === "remote" && args[3] === "get-url") return { stdout: state.remoteUrl, stderr: "", exitCode: 0 };
+    if (args[2] === "push") {
+      if (state.pushError) throw new Error("Permission denied; secret-bearing transport details");
+      assert.equal(args[args.length - 2], state.remoteUrl);
+      args = args.map((arg) => arg === state.remoteUrl ? remote : arg);
     }
     return processRunner.run(program, args, options);
   } };
   const workspace: Workspace = { id: "workspace", name: "demo", projectId: "project", deviceId: "device", checkoutId: "checkout", kind: "worktree", path, branch: "stale-branch", baseBranch: "origin/main", status: "ready", createdAt: "now", updatedAt: "now" };
-  const context: MergeRequestContext = { branch: "work/demo", targetBranch: "main", remoteUrl, provider };
-  const runtime = new MergeRequestRuntime(runner);
-  return { root, path, remote, remoteUrl, url, state, runner, git, commit, title, workspace, context, runtime };
+  return { root, path, remote, state, calls, git, commit, title, workspace, runtime: new MergeRequestRuntime(runner) };
 }
 
-test("provider parsing supports GitHub, nested/self-hosted GitLab, and HTTP API ports", () => {
-  assert.deepEqual(mergeRequestRepository("git@github.com:team/repo.git"), { provider: "github", repository: "https://github.com/team/repo" });
-  assert.deepEqual(mergeRequestRepository("ssh://git@gitlab.test:2222/team/sub/repo.git"), { provider: "gitlab", repository: "https://gitlab.test/team/sub/repo" });
-  assert.equal(mergeRequestRepository("https://gitlab.test:8443/team/repo.git")?.repository, "https://gitlab.test:8443/team/repo");
-  for (const value of ["/tmp/repo.git", "file:///tmp/repo.git", "https://example.com/repo"]) assert.equal(mergeRequestRepository(value), undefined);
+test("remote parsing supports aliases, nested GitLab paths, prefixes, and different API/SSH ports", () => {
+  const alias = parseGitRemote("git@gitlab-alias:team/sub/repo.git")!;
+  assert.equal(alias.host, "gitlab-alias");
+  assert.equal(alias.suggestedProvider, "gitlab");
+  assert.equal(parseGitRemote("git@github.com:team/repo.git")?.suggestedProvider, "github");
+  assert.equal(parseGitRemote("ssh://git@gitlab.test:2222/team/repo.git")?.suggestedBaseUrl, "https://gitlab.test");
+  const http = parseGitRemote("https://gitlab.test:8443/gitlab/team/sub/repo.git")!;
+  assert.equal(http.suggestedBaseUrl, "https://gitlab.test:8443");
+  assert.equal(hostingRepositoryPath(http, "https://gitlab.test:8443/gitlab"), "team/sub/repo");
+  assert.equal(hostingRepositoryPath(alias, "https://gitlab.test/gitlab"), "team/sub/repo");
+  for (const value of ["/tmp/repo.git", "file:///tmp/repo.git", "https://user:password@gitlab.test/team/repo.git", "https://example.com/repo"]) assert.equal(parseGitRemote(value), undefined);
+  assert.equal(normalizeGitHostingUrl("https://gitlab.test:8443/gitlab/"), "https://gitlab.test:8443/gitlab");
+  for (const value of ["http://gitlab.test", "https://user:pass@gitlab.test", "https://gitlab.test?token=secret"]) assert.throws(() => normalizeGitHostingUrl(value));
+  assert.equal(saveGitHostingConnectionSchema.safeParse({ provider: "github", baseUrl: "https://enterprise.test", token: "test" }).success, false);
 });
 
-for (const provider of ["github", "gitlab"] as const) {
-  test(`${provider}: another fork's identically named branch does not hide creation`, async (t) => {
-    const f = await fixture(t, provider);
-    f.state.forkOnly = true;
-    assert.equal((await f.runtime.inspect(f.workspace)).state, "available");
-  });
-
-  test(`${provider}: inspects the actual branch, pushes only committed work, creates once, and hides existing requests`, async (t) => {
-    const f = await fixture(t, provider);
-    assert.deepEqual(await f.runtime.inspect(f.workspace), { state: "available", context: f.context });
-    assert.match(f.state.cli[0]!, provider === "github" ? /--state.*all/ : /--all/);
-    await writeFile(join(f.path, "file"), "uncommitted");
-    await writeFile(join(f.path, "untracked"), "keep");
-    const before = await f.git("status", "--porcelain");
-    const head = await f.git("rev-parse", "HEAD");
-    assert.deepEqual(await f.runtime.create(f.workspace, f.context), { created: true, url: f.url });
-    assert.equal(await f.git("--git-dir", f.remote, "rev-parse", "work/demo"), head);
-    assert.equal(await f.git("status", "--porcelain"), before);
-    assert.equal(await f.git("branch", "--show-current"), "work/demo");
-    assert.deepEqual(await f.runtime.inspect(f.workspace), { state: "existing", url: f.url });
-    assert.deepEqual(await f.runtime.create(f.workspace, f.context), { created: false, url: f.url });
-    assert.equal(f.state.creates, 1);
-    assert.equal(f.state.calls.filter((args) => args[3] === "push").length, 1);
-    assert.match(f.state.cli.find((command) => command.includes("'create'"))!, /--title/);
-  });
-}
-
-test("failed or malformed lookups never push, and stale branch expectations are rejected", async (t) => {
+test("push pins the reviewed branch and commit without staging, force, tags, or other refs", async (t) => {
   const f = await fixture(t);
-  f.state.lookupError = true;
-  await assert.rejects(f.runtime.create(f.workspace, f.context), /authentication failed/);
-  f.state.lookupError = false;
-  f.state.malformed = true;
-  await assert.rejects(f.runtime.create(f.workspace, f.context));
-  f.state.malformed = false;
-  await assert.rejects(f.runtime.create(f.workspace, { ...f.context, branch: "old-branch" }), /changed/);
-  f.state.branchChangedDuringLookup = true;
-  await assert.rejects(f.runtime.create(f.workspace, f.context), /changed/);
-  assert.equal(f.state.calls.some((args) => args[3] === "push"), false);
+  await writeFile(join(f.path, "file"), "uncommitted");
+  await writeFile(join(f.path, "scratch"), "untracked");
+  const prepared = await f.runtime.prepare(f.workspace);
+  assert.ok(!("state" in prepared));
+  assert.equal(prepared.branch, "work/demo");
+  assert.equal(prepared.defaultTitle, f.title);
+  assert.equal(prepared.hasUncommittedChanges, true);
+  const before = await f.git("status", "--porcelain");
+  await f.runtime.push(f.workspace, prepared);
+  assert.equal(await f.git("--git-dir", f.remote, "rev-parse", "work/demo"), prepared.headCommit);
+  assert.equal(await f.git("status", "--porcelain"), before);
+  const push = f.calls.find((args) => args[3] === "push")!;
+  assert.deepEqual(push.slice(4), ["--no-follow-tags", "--recurse-submodules=no", "--", f.state.remoteUrl, `${prepared.headCommit}:refs/heads/work/demo`]);
 });
 
-test("push failures stop MR creation; creation failures preserve the pushed branch and allow retry", async (t) => {
+test("branch, HEAD, and remote changes require fresh confirmation before pushing", async (t) => {
   const f = await fixture(t);
-  f.state.pushError = true;
-  await assert.rejects(f.runtime.create(f.workspace, f.context), /push rejected/);
-  assert.equal(f.state.creates, 0);
-  f.state.pushError = false;
-  f.state.createError = true;
-  await assert.rejects(f.runtime.create(f.workspace, f.context), /Branch pushed, but MR creation failed/);
-  assert.equal(await f.git("--git-dir", f.remote, "rev-parse", "work/demo"), await f.git("rev-parse", "HEAD"));
-  f.state.createError = false;
-  assert.equal((await f.runtime.create(f.workspace, f.context)).created, true);
-});
-
-test("a request created despite a timeout is reconciled without creating a duplicate", async (t) => {
-  const f = await fixture(t);
-  f.state.createError = true;
-  f.state.createdOnFailure = true;
-  assert.deepEqual(await f.runtime.create(f.workspace, f.context), { url: f.url, created: false });
-  await f.runtime.create(f.workspace, f.context);
-  assert.equal(f.state.creates, 1);
-});
-
-test("base branches, detached HEAD, and repositories without origin do not offer creation", async (t) => {
-  const f = await fixture(t);
+  const prepared = await f.runtime.prepare(f.workspace);
+  assert.ok(!("state" in prepared));
+  await writeFile(join(f.path, "file"), "second change");
+  await f.commit("second");
+  await assert.rejects(f.runtime.push(f.workspace, prepared), /changed/);
+  const current = await f.runtime.prepare(f.workspace);
+  assert.ok(!("state" in current));
+  f.state.remoteUrl = "git@another.test:team/repo.git";
+  await assert.rejects(f.runtime.push(f.workspace, current), /changed/);
   await f.git("switch", "main");
-  assert.equal((await f.runtime.inspect(f.workspace)).state, "unavailable");
+  await assert.rejects(f.runtime.push(f.workspace, current), /changed/);
+  assert.equal(f.calls.some((args) => args[3] === "push"), false);
+});
+
+test("push errors are actionable and do not echo credential-bearing process output", async (t) => {
+  const f = await fixture(t);
+  const prepared = await f.runtime.prepare(f.workspace);
+  assert.ok(!("state" in prepared));
+  f.state.pushError = true;
+  await assert.rejects(f.runtime.push(f.workspace, prepared), (error: Error) => {
+    assert.match(error.message, /repair terminal/); assert.doesNotMatch(error.message, /secret-bearing/); return true;
+  });
+});
+
+test("base branch, detached HEAD, no origin, and multiple push URLs do not offer creation", async (t) => {
+  const f = await fixture(t);
+  f.state.remoteUrl += "\ngit@other.test:team/repo.git";
+  assert.ok("state" in await f.runtime.prepare(f.workspace));
+  await f.git("switch", "main");
+  assert.ok("state" in await f.runtime.prepare(f.workspace));
   await f.git("switch", "--detach");
-  assert.equal((await f.runtime.inspect(f.workspace)).state, "unavailable");
+  assert.ok("state" in await f.runtime.prepare(f.workspace));
   await f.git("switch", "work/demo");
   await f.git("remote", "remove", "origin");
-  assert.equal((await f.runtime.inspect(f.workspace)).state, "unavailable");
-  assert.equal(f.state.lookups, 0);
+  assert.ok("state" in await f.runtime.prepare(f.workspace));
 });
 
-test("the typed create input rejects unknown fields and invalid providers", () => {
-  const context = { branch: "work/demo", targetBranch: "main", remoteUrl: "git@github.com:team/repo.git", provider: "github" };
-  assert.equal(createWorkspaceMergeRequestSchema.safeParse({ workspaceId: "workspace", context }).success, true);
-  assert.equal(createWorkspaceMergeRequestSchema.safeParse({ workspaceId: "workspace", context: { ...context, provider: "unknown" } }).success, false);
-  assert.equal(createWorkspaceMergeRequestSchema.safeParse({ workspaceId: "workspace", context, force: true }).success, false);
-});
-
-test("SSH lookups run through the device's configured connection with shell quoting", async () => {
+test("SSH Git commands use the selected device connection with literal arguments", async () => {
   const calls: string[][] = [];
   const runner = new DeviceCommandRunner({ deviceId: "remote", transport: "ssh", config: { host: "gpu.test", user: "builder", port: 2222 } }, {
     async run(program, args) { calls.push([program, ...args]); return { stdout: "work/demo", stderr: "", exitCode: 0 }; }

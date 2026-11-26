@@ -6,7 +6,7 @@ import type { ManagedSessionKind, Workspace, WorkThreadType } from "@/shared/dom
 
 type SidebarSection = "workThreads" | "workspaces";
 
-type DialogName = "deleteWorkspace" | "finishThread" | "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
+type DialogName = "mergeRequest" | "deleteWorkspace" | "finishThread" | "settings" | "project" | "setupProject" | "device" | "workThread" | "workspace" | null;
 
 const memoryStorage: StateStorage = {
   getItem: () => null,
@@ -17,6 +17,10 @@ const memoryStorage: StateStorage = {
 export interface WorkThreadCreationDraft extends WorkThreadCreationInput { step: 0 | 1 | 2; }
 
 interface WorkbenchState {
+  mergeRequestWorkspaceId: string | null;
+  mergeRequestDrafts: Record<string, { title: string; description: string }>;
+  openMergeRequest(workspaceId: string): void;
+  setMergeRequestDraft(workspaceId: string, draft: { title: string; description: string }): void;
   workThreadType: WorkThreadType;
   switchWorkThreadType(type: WorkThreadType): void;
   revealWorkThreadType(type: WorkThreadType): void;
@@ -73,6 +77,10 @@ interface WorkbenchState {
 
 export const useWorkbenchStore = create<WorkbenchState>()(
   persist((set, get) => ({
+    mergeRequestWorkspaceId: null,
+    mergeRequestDrafts: {},
+    openMergeRequest: (mergeRequestWorkspaceId) => set({ dialog: "mergeRequest", mergeRequestWorkspaceId }),
+    setMergeRequestDraft: (workspaceId, draft) => set((state) => ({ mergeRequestDrafts: { ...state.mergeRequestDrafts, [workspaceId]: draft } })),
     workThreadType: "work",
     switchWorkThreadType: (workThreadType) => {
       if (get().workThreadType === workThreadType) return;

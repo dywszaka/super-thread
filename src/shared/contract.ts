@@ -3,7 +3,9 @@ import { MAX_WORK_THREAD_FINISH_NOTE_LENGTH } from "./work-thread-finish";
 import type { WorkspaceChangeRecord } from "./workspace-changes";
 import type { WorkThreadCreation, WorkThreadCreationInput } from "./work-thread-creation";
 import type { WorkspaceShortcut } from "./workspace-shortcuts";
-import type { CreateWorkspaceMergeRequestInput, WorkspaceMergeRequest, WorkspaceMergeRequestResult } from "./merge-request";
+import type { CreateWorkspaceMergeRequestInput, WorkspaceMergeRequest, WorkspaceMergeRequestResult, WorkspaceMergeRequestOperation } from "./merge-request";
+import type { GitHostingConnection, SaveGitHostingConnectionInput, BindGitHostingConnectionInput } from "./git-hosting";
+export { saveGitHostingConnectionSchema, bindGitHostingConnectionSchema } from "./git-hosting";
 import { z } from "zod";
 import { projectCodeSchema } from "./project-code";
 import { MAX_WORK_THREAD_DOCUMENT_LENGTH } from "./app-settings";
@@ -113,6 +115,14 @@ export const channels = {
   openWorkspaceTmuxInIterm: "workspace:open-tmux-in-iterm",
   inspectWorkspaceMergeRequest: "workspace:merge-request-inspect",
   createWorkspaceMergeRequest: "workspace:merge-request-create",
+  workspaceMergeRequestOperation: "workspace:merge-request-operation",
+  workspaceMergeRequestChanged: "workspace:merge-request-changed",
+  gitHostingConnections: "hosting:list",
+  saveGitHostingConnection: "hosting:save",
+  verifyGitHostingConnection: "hosting:verify",
+  removeGitHostingConnection: "hosting:remove",
+  bindGitHostingConnection: "hosting:bind",
+  gitHostingChanged: "hosting:changed",
   createSession: "session:create",
   saveTerminalPreset: "device:save-terminal-preset",
   deleteTerminalPreset: "device:delete-terminal-preset",
@@ -329,8 +339,17 @@ export const createWorkspaceMergeRequestSchema = z.object({
     branch: z.string().min(1).max(255),
     targetBranch: z.string().min(1).max(255),
     remoteUrl: z.string().min(1).max(8192),
-    provider: z.enum(["github", "gitlab"])
-  }).strict()
+    provider: z.enum(["github", "gitlab"]),
+    headCommit: z.string().regex(/^[a-f0-9]{40,64}$/),
+    connectionId: z.string().min(1),
+    connectionVersion: z.string().min(1),
+    repository: z.string().min(1).max(2048),
+    defaultTitle: z.string(),
+    hasUncommittedChanges: z.boolean(),
+    remote: z.object({ host: z.string(), hostname: z.string(), path: z.string(), transport: z.enum(["ssh", "http", "https"]), suggestedBaseUrl: z.string(), suggestedProvider: z.enum(["github", "gitlab"]) }).strict()
+  }).strict(),
+  title: z.string().trim().min(1).max(255),
+  description: z.string().max(60000)
 }).strict();
 
 export const createSessionSchema = z.object({
@@ -451,6 +470,14 @@ export interface DesktopBridge {
   openWorkspaceTmuxInIterm(id: string): Promise<void>;
   inspectWorkspaceMergeRequest(id: string): Promise<WorkspaceMergeRequest>;
   createWorkspaceMergeRequest(input: CreateWorkspaceMergeRequestInput): Promise<WorkspaceMergeRequestResult>;
+  workspaceMergeRequestOperation(id: string): Promise<WorkspaceMergeRequestOperation | null>;
+  onWorkspaceMergeRequestChanged(listener: (operation: WorkspaceMergeRequestOperation) => void): () => void;
+  gitHostingConnections(): Promise<GitHostingConnection[]>;
+  saveGitHostingConnection(input: SaveGitHostingConnectionInput): Promise<GitHostingConnection>;
+  verifyGitHostingConnection(id: string): Promise<void>;
+  removeGitHostingConnection(id: string): Promise<void>;
+  bindGitHostingConnection(input: BindGitHostingConnectionInput): Promise<void>;
+  onGitHostingChanged(listener: () => void): () => void;
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
   saveTerminalPreset(input: SaveTerminalPresetInput): Promise<void>;
   deleteTerminalPreset(input: DeleteTerminalPresetInput): Promise<void>;

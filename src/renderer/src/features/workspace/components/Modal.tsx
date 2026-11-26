@@ -21,7 +21,7 @@ export function Modal({ open, title, description, busy, submitDisabled, submitLa
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
         <Dialog.Content className="dialog-content no-drag" aria-describedby={description ? undefined : undefined}>
-          <form onSubmit={onSubmit}>
+          <form method="post" onSubmit={onSubmit}>
             <div className="dialog-heading">
               <div><Dialog.Title>{title}</Dialog.Title>{description && <Dialog.Description>{description}</Dialog.Description>}</div>
               <Dialog.Close className="icon-button" disabled={busy} aria-label="Close"><X size={16} /></Dialog.Close>

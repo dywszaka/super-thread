@@ -3,6 +3,7 @@ import { FinishWorkThreadDialog } from "./FinishWorkThreadDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, Folder, FolderOpen, GitBranch, HardDrive, Link, Network, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { MergeRequestDialog } from "./MergeRequestDialog";
 import { toast } from "sonner";
 import type { AppSnapshot, DirectoryListing, Project, SshTunnelConfig } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
@@ -237,5 +238,7 @@ function NewWorkspaceDialog({ snapshot }: { snapshot: AppSnapshot }): ReactNode 
 export function WorkspaceDialogs({ snapshot }: { snapshot: AppSnapshot }): ReactNode {
   const dialog = useWorkbenchStore((state) => state.dialog);
   const deleteWorkspaceId = useWorkbenchStore((state) => state.deleteWorkspaceId);
-  return <>{dialog === "deleteWorkspace" && <DeleteWorkspaceDialog key={deleteWorkspaceId} />}{dialog === "finishThread" && <FinishWorkThreadDialog snapshot={snapshot} />}<AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
+  const mergeRequestWorkspaceId = useWorkbenchStore((state) => state.mergeRequestWorkspaceId);
+  const mergeRequestWorkspace = snapshot.workspaces.find((item) => item.id === mergeRequestWorkspaceId);
+  return <>{dialog === "mergeRequest" && mergeRequestWorkspace && <MergeRequestDialog key={mergeRequestWorkspace.id} snapshot={snapshot} workspace={mergeRequestWorkspace} />}{dialog === "deleteWorkspace" && <DeleteWorkspaceDialog key={deleteWorkspaceId} />}{dialog === "finishThread" && <FinishWorkThreadDialog snapshot={snapshot} />}<AddProjectDialog snapshot={snapshot} /><SetupProjectDialog snapshot={snapshot} /><AddDeviceDialog snapshot={snapshot} />{dialog === "workThread" && <NewWorkThreadDialog snapshot={snapshot} />}{dialog === "settings" && <SettingsDialog settings={snapshot.settings} />}{dialog === "workspace" && <NewWorkspaceDialog snapshot={snapshot} />}</>;
 }

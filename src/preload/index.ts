@@ -100,6 +100,22 @@ const bridge: DesktopBridge = {
   openWorkspaceTmuxInIterm: (id) => ipcRenderer.invoke(channels.openWorkspaceTmuxInIterm, id),
   inspectWorkspaceMergeRequest: (id) => ipcRenderer.invoke(channels.inspectWorkspaceMergeRequest, id),
   createWorkspaceMergeRequest: (input) => ipcRenderer.invoke(channels.createWorkspaceMergeRequest, input),
+  workspaceMergeRequestOperation: (id) => ipcRenderer.invoke(channels.workspaceMergeRequestOperation, id),
+  onWorkspaceMergeRequestChanged: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, operation: Parameters<typeof listener>[0]): void => listener(operation);
+    ipcRenderer.on(channels.workspaceMergeRequestChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.workspaceMergeRequestChanged, wrapped);
+  },
+  gitHostingConnections: () => ipcRenderer.invoke(channels.gitHostingConnections),
+  saveGitHostingConnection: (input) => ipcRenderer.invoke(channels.saveGitHostingConnection, input),
+  verifyGitHostingConnection: (id) => ipcRenderer.invoke(channels.verifyGitHostingConnection, id),
+  removeGitHostingConnection: (id) => ipcRenderer.invoke(channels.removeGitHostingConnection, id),
+  bindGitHostingConnection: (input) => ipcRenderer.invoke(channels.bindGitHostingConnection, input),
+  onGitHostingChanged: (listener) => {
+    const wrapped = (): void => listener();
+    ipcRenderer.on(channels.gitHostingChanged, wrapped);
+    return () => ipcRenderer.removeListener(channels.gitHostingChanged, wrapped);
+  },
   createSession: (input) => ipcRenderer.invoke(channels.createSession, input),
   saveTerminalPreset: (input) => ipcRenderer.invoke(channels.saveTerminalPreset, input),
   deleteTerminalPreset: (input) => ipcRenderer.invoke(channels.deleteTerminalPreset, input),

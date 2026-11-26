@@ -6,6 +6,8 @@ import type { AppSnapshot, Workspace } from "@/shared/domain";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { SidebarReopenButton } from "./Sidebar";
 import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
+import { mergeRequestIsRunning } from "@/shared/merge-request";
+import { mergeRequestKey, useGitHostingConnections, useMergeRequestOperation } from "../merge-request-queries";
 
 const cleanError = (error: unknown): string => error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
 
@@ -16,7 +18,6 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const [editing, setEditing] = useState(false);
   const [openingInVSCode, setOpeningInVSCode] = useState(false);
   const [openingTmux, setOpeningTmux] = useState(false);
-  const [creatingMergeRequest, setCreatingMergeRequest] = useState(false);
   const detailsButton = useRef<HTMLButtonElement>(null);
   const detailsPopover = useRef<HTMLDivElement>(null);
   const menuAnchor = useRef<HTMLDivElement>(null);
@@ -26,9 +27,11 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
   const device = snapshot.devices.find((item) => item.id === workspace.deviceId);
   const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
   const canCheckMergeRequest = workspace.status === "ready" && checkout?.isGit !== false && Boolean(checkout);
-  const mergeRequestKey = ["workspace-merge-request", workspace.id, workspace.baseBranch];
+  useGitHostingConnections();
+  const operation = useMergeRequestOperation(workspace.id);
+  const creatingMergeRequest = mergeRequestIsRunning(operation.data);
   const mergeRequest = useQuery({
-    queryKey: mergeRequestKey,
+    queryKey: mergeRequestKey(workspace.id),
     queryFn: () => window.desktop.inspectWorkspaceMergeRequest(workspace.id),
     enabled: menu && canCheckMergeRequest && !creatingMergeRequest,
     staleTime: 0,
@@ -90,29 +93,10 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
     setMenu(false);
     useWorkbenchStore.getState().openDeleteWorkspace(workspace.id);
   };
-  const createMergeRequest = async (): Promise<void> => {
-    if (mergeRequest.data?.state !== "available" || mergeRequest.isFetching || creatingMergeRequest) return;
+  const openMergeRequest = (): void => {
     setMenu(false);
     menuAnchor.current?.querySelector("button")?.focus();
-    setCreatingMergeRequest(true);
-    const notification = toast.loading("Pushing branch and creating merge request…");
-    try {
-      const result = await window.desktop.createWorkspaceMergeRequest({ workspaceId: workspace.id, context: mergeRequest.data.context });
-      client.setQueryData(mergeRequestKey, { state: "existing", url: result.url });
-      toast.success(result.created ? "Merge request created" : "Merge request already exists", {
-        id: notification,
-        action: { label: "Open", onClick: () => void window.desktop.openDocumentLink(result.url).catch((error) => toast.error(cleanError(error))) }
-      });
-    } catch (error) {
-      toast.error(cleanError(error), { id: notification });
-      await client.invalidateQueries({ queryKey: mergeRequestKey });
-    } finally {
-      setCreatingMergeRequest(false);
-    }
-  };
-  const retryMergeRequestCheck = async (): Promise<void> => {
-    const result = await mergeRequest.refetch();
-    if (result.error) toast.error(cleanError(result.error));
+    useWorkbenchStore.getState().openMergeRequest(workspace.id);
   };
   return (
     <header className="workspace-header drag">
@@ -129,14 +113,11 @@ export function WorkspaceHeader({ snapshot, workspace }: { snapshot: AppSnapshot
           <button disabled={workspace.status !== "ready" || openingInVSCode} onClick={() => void openInVSCode()}><Code2 size={14} /> {openingInVSCode ? "Opening…" : "Open in VS Code"}</button>
           <button disabled={workspace.status !== "ready" || openingTmux} onClick={() => void openTmuxInIterm()}><ExternalLink size={14} /> {openingTmux ? "Opening…" : "tmux in iTerm"}</button>
           {canCheckMergeRequest && (creatingMergeRequest
-            ? <button disabled><GitPullRequest size={14} /> Pushing and creating MR…</button>
+            ? <button onClick={openMergeRequest}><GitPullRequest size={14} /> View MR progress…</button>
             : mergeRequest.isFetching || mergeRequest.isPending
               ? <button disabled><GitPullRequest size={14} /> Checking MR…</button>
-              : mergeRequest.isError
-                ? <button title={cleanError(mergeRequest.error)} onClick={() => void retryMergeRequestCheck()}><GitPullRequest size={14} /> MR unavailable · retry</button>
-                : mergeRequest.data?.state === "available"
-                  ? <button title={`${mergeRequest.data.context.branch} → ${mergeRequest.data.context.targetBranch} · origin`} onClick={() => void createMergeRequest()}><GitPullRequest size={14} /> Push &amp; create {mergeRequest.data.context.provider === "github" ? "PR" : "MR"}</button>
-                  : null)}
+              : mergeRequest.data?.state === "existing" || mergeRequest.data?.state === "unavailable" ? null
+                : <button onClick={openMergeRequest}><GitPullRequest size={14} /> {mergeRequest.data?.state === "needs-connection" ? "Connect code hosting…" : mergeRequest.data?.state === "error" || mergeRequest.isError ? "Review MR setup…" : `Push & create ${mergeRequest.data?.state === "available" && mergeRequest.data.context.provider === "github" ? "PR" : "MR"}…`}</button>)}
           <button onClick={() => { setMenu(false); openWorkspaceDialog(scope.type === "work-thread" ? scope.id : undefined); }}><Plus size={14} /> New Workspace</button>
           <button disabled={workspace.status === "creating"} onClick={() => { setMenu(false); setEditing(true); }}><Pencil size={14} /> Rename workspace…</button>
           <div className="context-menu-separator" />

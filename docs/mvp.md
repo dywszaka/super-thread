@@ -626,9 +626,15 @@ interface Workspace {
 
 # 11. Workspace Creation
 
-Workspace 操作菜单提供 **Push & create MR**（GitHub 为 **Push & create PR**）。每次打开菜单查询当前真实分支在 origin 推送仓库中的 MR/PR；任意状态（打开、关闭、已合并）已存在时不显示创建选项，查询失败只提供重试与错误说明，不假定尚未创建。普通目录、无 origin、detached HEAD、当前分支等于基础分支时不提供创建操作。
+Workspace 操作菜单提供 **Push & create MR…**（GitHub 为 PR）。每次打开菜单检查真实 Git 分支并从 Mac 查询 origin 推送仓库的全部 MR/PR；任意状态（打开、关闭、已合并）已有请求时隐藏创建选项，分页并核对源仓库，避免其他 fork 的同名分支误挡。未连接平台时显示 Connect code hosting；查询错误时显示 Review MR setup，进入同一面板恢复，不假定不存在请求。普通目录、无 origin、detached HEAD、当前分支等于基础分支或多个 origin push URL 不提供创建入口。
 
-点击后主进程重新查询并校验菜单展示时的分支、基础分支、远端，推送固定提交到 origin 的同名分支，再创建以 Workspace 基础分支为目标的 MR/PR；标题取最新提交主题，正文为空。不自动提交、强制推送、推送其他分支或递归推送子模块。GitHub.com 使用 `gh`，GitLab（含自托管）使用 `glab`，需在 Workspace 所属设备安装并登录；SSH Workspace 沿用原设备连接和凭据，通过该设备的登录 shell 执行 CLI。仅支持同一 origin 仓库内的分支，不自动创建 fork；origin 配置多个 push URL 时不提供入口。重试会复查远端，创建超时也会再查询，避免重复创建；若仅推送成功，提示分支已推送与创建失败原因。运行中同目录创建请求合并，禁止删除该 Workspace 或 Finish 清理；成功提示可打开请求链接。不在领域快照中保存网络状态。
+首次使用在统一面板配置 GitHub.com、GitLab.com 或自托管 GitLab。Mac 管理 API Token，设备仅负责 Git 操作，均无需 gh/glab。表单提供平台类型、HTTPS 地址、Token 权限说明、系统浏览器创建 Token 链接、可显示/隐藏的密码式输入框；验证账号与当前仓库读取权限后保存并进入确认页，不自动推送。GitHub 引导 Fine-grained Token，指定仓库及 Pull requests 写入、Contents 读取；GitLab 引导 api scope。只读验证不保证创建权限，403/组织审批/SSO 等错误在创建时明确展示。GitLab 支持自定义端口及部署路径前缀；SSH 别名映射按设备与 Git 远端主机保存，可显式选择已有连接。每个平台地址保留一个账号，供本机各 Workspace 复用。
+
+Settings 的 Code hosting connections 支持查看账号与平台地址、重新验证、替换 Token 和移除连接；移除删除本机 Token 及映射，不撤销平台 Token。Token 在主进程使用当前 Electron 的 safeStorage 加密，独立原子保存到应用数据目录 git-hosting.json，文件权限 0600；密文绑定平台类型和地址，加密或解密不可用时阻止保存/使用，不回退明文。Token 仅经受校验 IPC 输入一次，不可回读，不进入领域快照、workbench 持久化、查询缓存、终端、SSH 或日志。API 请求由 Mac 发起，凭据仅发送到确认的平台 API，拒绝重定向。Mac 须能访问 API；网络、代理/VPN、证书错误可修改连接及重试，不自动改用远端 CLI 或跳过证书验证。
+
+确认页只读展示仓库、设备、API 账号、源/目标分支和待推送提交；标题预填最新提交主题，正文默认空，均可编辑。存在未提交文件时说明只推送已提交内容。提交前重新验证分支、HEAD、目标、推送地址及连接版本，变化时要求刷新重审并保留输入；推送固定 URL、提交及明确同名分支 refspec，不自动提交、强制推送、推送其他分支/标签或递归推送子模块。API 创建目标为 Workspace 基础分支，仅支持同仓库请求，不自动创建 fork。
+
+同一面板展示 Checking → Pushing → Creating → Success/Failed；主进程按目录去重并保留进度，运行中可 Hide，重开恢复，禁止删除该目录的 Workspace 或 Finish 清理。Git push 使用设备既有 SSH key/credential helper，失败提供所属设备的新 Git push repair Terminal；不注入命令或复制 API Token，修复后重开面板刷新重试。API 401 可重新连接，权限/仓库/限流/网络错误分类显示并保留草稿；若分支已推送明确标记部分成功。POST 失败或超时先查询是否已有请求，重试同样先查询，避免重复创建。成功显示请求链接。草稿、进度与结果仅在当前应用运行时保留；重启后使用加密连接重新检查，不恢复或自动重放推送。领域数据无需迁移，已有 CLI 登录不自动导入。
 
 侧栏 Workspaces 分组的加号和 All workspaces 的 New Workspace 打开独立创建表单，省略 Work Thread 字段。在线程内创建时默认选中当前活跃线程。⌘⇧N 按当前范围选择创建表单。独立 Workspace 创建成功后直接打开，详情显示 Standalone。
 

@@ -31,6 +31,7 @@ import {
   renameSessionSchema,
   renameWorkspaceSchema,
   createWorkspaceMergeRequestSchema,
+  saveGitHostingConnectionSchema, bindGitHostingConnectionSchema,
   setWorkThreadPinnedSchema,
   setWorkThreadTypeSchema,
   reorderWorkThreadsSchema,
@@ -166,6 +167,12 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.openWorkspaceTmuxInIterm, (_event, workspaceId) => service.openWorkspaceTmuxInIterm(sessionIdSchema.parse(workspaceId)));
   handle(channels.inspectWorkspaceMergeRequest, (_event, workspaceId) => service.inspectWorkspaceMergeRequest(sessionIdSchema.parse(workspaceId)));
   handle(channels.createWorkspaceMergeRequest, (_event, input) => service.createWorkspaceMergeRequest(createWorkspaceMergeRequestSchema.parse(input)));
+  handle(channels.workspaceMergeRequestOperation, (_event, id) => service.workspaceMergeRequestOperation(sessionIdSchema.parse(id)));
+  handle(channels.gitHostingConnections, () => service.gitHostingConnections());
+  handle(channels.saveGitHostingConnection, (_event, input) => service.saveGitHostingConnection(saveGitHostingConnectionSchema.parse(input)));
+  handle(channels.verifyGitHostingConnection, (_event, id) => service.verifyGitHostingConnection(sessionIdSchema.parse(id)));
+  handle(channels.removeGitHostingConnection, (_event, id) => service.removeGitHostingConnection(sessionIdSchema.parse(id)));
+  handle(channels.bindGitHostingConnection, (_event, input) => service.bindGitHostingConnection(bindGitHostingConnectionSchema.parse(input)));
   handle(channels.createSession, (_event, input) => service.createSession(createSessionSchema.parse(input)));
   handle(channels.saveTerminalPreset, (_event, input) => service.saveTerminalPreset(saveTerminalPresetSchema.parse(input)));
   handle(channels.deleteTerminalPreset, (_event, input) => service.deleteTerminalPreset(deleteTerminalPresetSchema.parse(input)));

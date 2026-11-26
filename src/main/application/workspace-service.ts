@@ -2,7 +2,11 @@ import type { FinishWorkThreadInput, WorkThreadFinishInspection, WorkspaceDelete
 import type { WorkspaceGitBaseline, WorkspaceChangeRecord, WorkspaceChangeInspection } from "../../shared/workspace-changes";
 import { finishWorkThreadSchema } from "../../shared/contract";
 import { createWorkspaceMergeRequestSchema } from "../../shared/contract";
-import type { CreateWorkspaceMergeRequestInput, WorkspaceMergeRequest, WorkspaceMergeRequestResult } from "../../shared/merge-request";
+import type { CreateWorkspaceMergeRequestInput, WorkspaceMergeRequest, WorkspaceMergeRequestResult, WorkspaceMergeRequestOperation, GitMergeRequestPreparation } from "../../shared/merge-request";
+import type { SaveGitHostingConnectionInput, BindGitHostingConnectionInput, GitHostingConnection } from "../../shared/git-hosting";
+import { saveGitHostingConnectionSchema } from "../../shared/git-hosting";
+import { GitHostingError, gitHostingFailure } from "../runtime/git-hosting-client";
+import type { GitHostingService } from "./git-hosting-service";
 import { MergeRequestRuntime } from "../runtime/merge-request-runtime";
 import { WorkThreadCreationCoordinator } from "./work-thread-creation";
 import { normalizeBrowserUrl } from "../../shared/browser-url";
@@ -129,6 +133,7 @@ export class WorkspaceService extends EventEmitter {
   private readonly pendingSessionCreations = new Map<string, Promise<CreateSessionResult>>();
   private readonly pendingTmuxOpens = new Map<string, Promise<void>>();
   private readonly pendingMergeRequests = new Map<string, Promise<WorkspaceMergeRequestResult>>();
+  private readonly mergeRequestOperations = new Map<string, WorkspaceMergeRequestOperation>();
   private readonly startingSessionIds = new Set<string>();
   private readonly exitsDuringSessionStart = new Map<string, TerminalExitEvent>();
   private readonly closingSessionIds = new Set<string>();
@@ -143,7 +148,8 @@ export class WorkspaceService extends EventEmitter {
     private readonly tunnels: DeviceTunnelRuntime = new SshTunnelSupervisor(),
     private readonly commandRunnerFactory: CommandRunnerFactory = (connection) => new DeviceCommandRunner(connection),
     private readonly externalTerminal: ExternalTerminalRuntime = new ItermRuntime(),
-    private readonly recordingInstaller?: CodexRecordingInstaller
+    private readonly recordingInstaller?: CodexRecordingInstaller,
+    private readonly gitHosting?: GitHostingService
   ) {
     super();
     tunnels.onChanged?.(() => this.emit("tunnels-changed"));
@@ -1107,7 +1113,47 @@ export class WorkspaceService extends EventEmitter {
     if (workspace.status !== "ready") return { state: "unavailable", reason: "Workspace is not ready." };
     const checkout = snapshot.checkouts.find((item) => item.id === workspace.checkoutId);
     if (!checkout || checkout.isGit === false) return { state: "unavailable", reason: "This workspace is not a Git repository." };
-    return new MergeRequestRuntime(this.commandRunnerFactory(this.connection(snapshot, workspace.deviceId))).inspect(workspace);
+    try {
+      const preparation = await new MergeRequestRuntime(this.commandRunnerFactory(this.connection(snapshot, workspace.deviceId))).prepare(workspace);
+      if ("state" in preparation) return preparation;
+      return this.gitHosting ? await this.gitHosting.inspect(workspace.deviceId, preparation) : { state: "needs-connection", preparation };
+    } catch { return { state: "error", failure: { code: "git", message: "Could not inspect this workspace's Git state. Check its device connection and repository, then refresh." } }; }
+  }
+
+  gitHostingConnections(): Promise<GitHostingConnection[]> { return this.hosting().list(); }
+  async saveGitHostingConnection(raw: SaveGitHostingConnectionInput): Promise<GitHostingConnection> {
+    const input = saveGitHostingConnectionSchema.parse(raw);
+    const workspace = input.workspaceId ? this.workspace(this.snapshot(), input.workspaceId) : undefined;
+    const preparation = workspace ? await this.prepareWorkspaceMergeRequest(workspace) : undefined;
+    const connection = await this.hosting().save(input, workspace && preparation ? { deviceId: workspace.deviceId, preparation } : undefined);
+    this.emit("git-hosting-changed");
+    return connection;
+  }
+  async verifyGitHostingConnection(id: string): Promise<void> { await this.hosting().verify(id); this.emit("git-hosting-changed"); }
+  async removeGitHostingConnection(id: string): Promise<void> { await this.hosting().remove(id); this.emit("git-hosting-changed"); }
+  async bindGitHostingConnection(input: BindGitHostingConnectionInput): Promise<void> {
+    const workspace = this.workspace(this.snapshot(), input.workspaceId);
+    await this.hosting().bind(input, workspace.deviceId, await this.prepareWorkspaceMergeRequest(workspace));
+    this.emit("git-hosting-changed");
+  }
+  private hosting(): GitHostingService {
+    if (!this.gitHosting) throw new Error("Code hosting connections are unavailable. Restart the application and retry.");
+    return this.gitHosting;
+  }
+  private async prepareWorkspaceMergeRequest(workspace: Workspace): Promise<GitMergeRequestPreparation> {
+    if (workspace.status !== "ready") throw new Error("Workspace is not ready.");
+    const result = await new MergeRequestRuntime(this.commandRunnerFactory(this.connection(this.snapshot(), workspace.deviceId))).prepare(workspace);
+    if ("state" in result) throw new Error(result.reason);
+    return result;
+  }
+  workspaceMergeRequestOperation(workspaceId: string): WorkspaceMergeRequestOperation | null {
+    this.workspace(this.snapshot(), workspaceId);
+    const operation = this.mergeRequestOperations.get(workspaceId);
+    return operation ? structuredClone(operation) : null;
+  }
+  private publishMergeRequest(operation: WorkspaceMergeRequestOperation): void {
+    this.mergeRequestOperations.set(operation.workspaceId, structuredClone(operation));
+    this.emit("workspace-merge-request-changed", structuredClone(operation));
   }
 
   createWorkspaceMergeRequest(raw: CreateWorkspaceMergeRequestInput): Promise<WorkspaceMergeRequestResult> {
@@ -1122,10 +1168,48 @@ export class WorkspaceService extends EventEmitter {
     const key = this.workspacePublishKey(workspace);
     const pending = this.pendingMergeRequests.get(key);
     if (pending) return pending;
-    const creating = new MergeRequestRuntime(this.commandRunnerFactory(this.connection(snapshot, workspace.deviceId)))
-      .create(workspace, input.context).finally(() => this.pendingMergeRequests.delete(key));
+    const creating = this.createMergeRequestOnce(workspace, input).finally(() => this.pendingMergeRequests.delete(key));
     this.pendingMergeRequests.set(key, creating);
     return creating;
+  }
+
+  private async createMergeRequestOnce(workspace: Workspace, input: CreateWorkspaceMergeRequestInput): Promise<WorkspaceMergeRequestResult> {
+    const operation: WorkspaceMergeRequestOperation = { workspaceId: workspace.id, context: input.context, stage: "checking", title: input.title, description: input.description, pushed: false };
+    this.publishMergeRequest(operation);
+    try {
+      const inspection = await this.inspectWorkspaceMergeRequest(workspace.id);
+      if (inspection.state === "existing") {
+        const result = { url: inspection.url, created: false };
+        this.publishMergeRequest({ ...operation, stage: "succeeded", result });
+        return result;
+      }
+      if (inspection.state !== "available") {
+        if (inspection.state === "unavailable") throw new GitHostingError("validation", inspection.reason);
+        throw new GitHostingError(inspection.failure?.code ?? "authentication", inspection.failure?.message ?? "Connect this code hosting platform before creating an MR.");
+      }
+      const context = inspection.context;
+      for (const key of ["branch", "targetBranch", "remoteUrl", "headCommit", "connectionId", "connectionVersion", "repository", "provider"] as const) {
+        if (context[key] !== input.context[key]) throw new GitHostingError("validation", "The workspace or connection changed. Refresh and review before creating the MR.");
+      }
+      const client = await this.hosting().client(context.connectionId);
+      const repository = await client.repository(context.repository);
+      operation.stage = "pushing"; this.publishMergeRequest(operation);
+      await new MergeRequestRuntime(this.commandRunnerFactory(this.connection(this.snapshot(), workspace.deviceId))).push(workspace, context);
+      operation.pushed = true; operation.stage = "creating"; this.publishMergeRequest(operation);
+      let result: WorkspaceMergeRequestResult;
+      try { result = { url: await client.create(repository, context.branch, context.targetBranch, input.title, input.description), created: true }; }
+      catch (error) {
+        const existing = await client.existing(repository, context.branch).catch(() => undefined);
+        if (!existing) throw error;
+        result = { url: existing, created: false };
+      }
+      this.publishMergeRequest({ ...operation, stage: "succeeded", result });
+      return result;
+    } catch (error) {
+      const failure = gitHostingFailure(error);
+      this.publishMergeRequest({ ...operation, stage: "failed", failure });
+      throw new Error(`${operation.pushed ? "Branch pushed, but MR creation failed. " : ""}${failure.message}`);
+    }
   }
 
   private workspacePublishKey(workspace: Workspace): string {

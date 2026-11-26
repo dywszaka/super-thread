@@ -1,6 +1,8 @@
 import { BrowserRuntime } from "./runtime/browser-runtime";
 import { FilePreviewRuntime, FILE_PREVIEW_SCHEME } from "./runtime/file-preview-runtime";
-import { app, BrowserWindow, dialog, powerMonitor, protocol, type MessageBoxOptions } from "electron";
+import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, type MessageBoxOptions } from "electron";
+import { GitHostingStore } from "./persistence/git-hosting-store";
+import { GitHostingService } from "./application/git-hosting-service";
 import { join } from "node:path";
 import { applicationUserDataPath } from "./application-paths";
 import { WorkspaceService } from "./application/workspace-service";
@@ -23,7 +25,8 @@ app.whenReady().then(async () => {
     app.dock.setIcon(join(process.resourcesPath, "icon.png"));
   }
 
-  const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")), undefined, undefined, undefined, undefined, undefined, undefined, new DeviceCodexRecordingInstaller());
+  const hosting = new GitHostingService(new GitHostingStore(join(app.getPath("userData"), "git-hosting.json"), safeStorage), (url, init) => net.fetch(url, init));
+  const service = new WorkspaceService(new JsonStore(join(app.getPath("userData"), "workspace-runtime.json")), undefined, undefined, undefined, undefined, undefined, undefined, new DeviceCodexRecordingInstaller(), hosting);
   await service.initialize();
   const browsers = new BrowserRuntime(service);
   const previews = new FilePreviewRuntime(service);
@@ -71,6 +74,8 @@ app.whenReady().then(async () => {
   };
 
   service.on("changed", () => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.dataChanged)));
+  service.on("git-hosting-changed", () => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.gitHostingChanged)));
+  service.on("workspace-merge-request-changed", (operation) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.workspaceMergeRequestChanged, operation)));
   service.on("work-thread-creation-changed", (state) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.workThreadCreationChanged, state)));
   service.on("tunnels-changed", () => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.tunnelsChanged)));
   service.on("terminal-output", (event) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(channels.terminalOutput, event)));

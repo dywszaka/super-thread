@@ -6,6 +6,7 @@ import { defaultAppSettings, MAX_WORK_THREAD_DOCUMENT_LENGTH } from "@/shared/ap
 import { appSettingsSchema } from "@/shared/contract";
 import { useWorkbenchStore } from "../../../state/workbench-store";
 import { Field, Modal } from "./Modal";
+import { GitHostingSettings } from "./GitHostingConnections";
 
 export function SettingsDialog({ settings }: { settings: AppSettings }): React.ReactNode {
   const closeDialog = useWorkbenchStore((state) => state.closeDialog);
@@ -48,5 +49,6 @@ export function SettingsDialog({ settings }: { settings: AppSettings }): React.R
       setStrongReminder(String(defaults.workThreadStrongReminderDays));
     }}>Restore Defaults</button>
     {error && <p className="field-error selectable" role="alert">Could not save settings: {error}. Your changes are kept here; try saving again.</p>}
+    <GitHostingSettings />
   </Modal>;
 }
