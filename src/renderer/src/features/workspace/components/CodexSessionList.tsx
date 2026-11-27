@@ -11,7 +11,7 @@ export function CodexSessionList({ thread, snapshot }: { thread: WorkThread; sna
   return <div className="codex-session-list selectable">
     <p>{sessions.length} Codex {sessions.length === 1 ? "session" : "sessions"} · grouped by project</p>
     <p className="codex-session-hint">Only sessions observed after recording was enabled are listed. Resuming a recorded session does not add another entry. Titles use the first observed prompt summary.</p>
-    {!sessions.length && <p>No Codex sessions recorded. Enable Codex session recording in Devices, trust the hooks in Codex /hooks, then run codex --no-daemon in a new embedded terminal belonging to this Work Thread. This opts into recording without desktop sharing; plain codex keeps desktop sharing.</p>}
+    {!sessions.length && <p>No Codex sessions recorded. Enable Codex session recording in Devices, then run codex in a new embedded terminal belonging to this Work Thread. Recent Codex versions record shared-daemon sessions while keeping desktop sharing. If unavailable, update Codex or explicitly use --no-daemon with trusted SuperThread hooks in Codex /hooks.</p>}
     {[...groups].map(([projectId, records]) => {
       const project = snapshot.projects.find((item) => item.id === projectId);
       const first = records[0]!;

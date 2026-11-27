@@ -816,6 +816,8 @@ Features
 
 ## 15. SuperThread 当前视觉实现规范
 
+Codex 采集说明以普通 `codex` 同时记录与保留桌面共享为默认路径；空列表提示开启设备记录并打开新 Terminal。只有可选的显式 `--no-daemon` 模式需要 `/hooks` 信任提示，不能让用户以为共享模式必须关闭 daemon。
+
 Devices 的新增/编辑表单及设备卡片提供「启用 Codex 会话记录」原生 checkbox，使用完整 label、关联的说明、44px label 点击区域和现有 focus-visible / disabled 样式；卡片勾选后由显式 Save recording setting 保存，正在保存时禁用重复操作。设备卡片展示安装失败文字和重试按钮，安装成功仍保留 Codex `/hooks` 信任提示。Codex 列表复用 WorkThread tablist，包含唯一会话数量，支持左右方向键及 Home/End；按项目分组，标题、ID、设备/Workspace、路径、时间均可换行及选择复制，窄 Doc 内只滚动 tablist 和记录正文，不撑宽窗口。全部交互保留 no-drag；浅深色、1320×840 与 880×560、新增/编辑 Device、首次空列表和归档记录均需检查。
 
 侧栏顶部原应用图标位置改为 Work / Life 文字下拉：不显示应用图标，32px 高的透明触发器显示当前名称与小箭头，hover / 展开时使用语义选中背景；圆角浮层沿侧栏左右各留 12px，使用现有菜单的语义背景、弱边框与阴影，当前项显示勾选。保留 76px 交通灯安全区、独立侧栏收起按钮与显式 no-drag；184px 最窄侧栏中名称完整可见。浮层复用菜单遮挡检测以暂停原生 Browser / File Preview；menuitemradio / aria-checked 表达选中项，支持 Enter / Space、方向键、Home / End、Escape 恢复焦点、Tab 离开、点击外部及窗口失焦关闭。Work Threads 标题下不再显示分段切换。切换同步更新线程树、All work threads / All todos 与计数，空类型给出对应 Work / Life 提示。All 页面标题标明当前类型，侧栏收起后仍能辨认。创建向导 Type 使用原生 select，确认页展示类型；Move to Work / Life 复用侧栏菜单与列表 More 的样式及操作反馈。浅深色、最窄侧栏、键盘与创建草稿恢复需验证。

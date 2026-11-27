@@ -64,7 +64,7 @@ test("collector installation preserves user hooks and handles quoted paths idemp
   assert.equal(await readFile(hooksPath, "utf8"), "invalid JSON");
 });
 
-test("launcher preserves shared-server arguments and records only explicit isolated launches", async () => {
+test("unsupported CLIs keep their original arguments; explicit isolated launches still record", async () => {
   const directory = await mkdtemp(join(tmpdir(), "superthread-codex-launch-"));
   const bin = join(directory, "bin");
   const helper = join(directory, "collector.py");
@@ -97,9 +97,9 @@ print(json.dumps({"args": sys.argv[1:], "context": {key: value for key, value in
     const { stdout, stderr } = await exec("python3", [helper, "launch", ...args], { env });
     const result = JSON.parse(stdout);
     assert.deepEqual(result.args, args);
-    assert.equal(stderr, "");
+    assert.ok(stderr === "" || stderr.startsWith("[SuperThread] Shared-server recording unavailable; running Codex unchanged."));
     assert.deepEqual(result.context, recording ? {
-      SUPERTHREAD_CODEX_TOKEN: token, SUPERTHREAD_CODEX_TTY: "/dev/tty-terminal", SUPERTHREAD_CODEX_RECORDING_VERSION: "2"
+      SUPERTHREAD_CODEX_TOKEN: token, SUPERTHREAD_CODEX_TTY: "/dev/tty-terminal", SUPERTHREAD_CODEX_RECORDING_VERSION: "3"
     } : {}, `Unexpected recording context for ${JSON.stringify(args)}`);
   }
 });
@@ -114,7 +114,7 @@ namespace = runpy.run_path(sys.argv[1])
 def unexpected_open(*args, **kwargs):
     raise AssertionError("Stale hooks must not open a terminal")
 os.open = unexpected_open
-for version in (None, "1"):
+for version in (None, "1", "2"):
     if version is None:
         os.environ.pop("SUPERTHREAD_CODEX_RECORDING_VERSION", None)
     else:

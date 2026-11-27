@@ -1,9 +1,11 @@
+import { codexRecordingRelay } from "./codex-recording-relay";
+
 /** Installed only in the device user's home; never in project repositories. */
 export const codexRecordingScript = String.raw`
 import base64, fcntl, json, os, re, select, shlex, shutil, stat, sys, tempfile
 from pathlib import Path
 
-VERSION = "2"
+VERSION = "3"
 ROOT = Path.home() / ".superthread" / "integrations" / "codex"
 HELPER = ROOT / "collector.py"
 PREFIX = "\x1b]777;superthread-codex;"
@@ -96,13 +98,13 @@ def launch(args):
     environment = os.environ.copy()
     for key in ("SUPERTHREAD_CODEX_TOKEN", "SUPERTHREAD_CODEX_TTY", "SUPERTHREAD_CODEX_RECORDING_VERSION"):
         environment.pop(key, None)
-    # Preserve the CLI's shared server so the desktop app can discover its chats.
-    # Record only an explicitly isolated process; daemon environments are shared.
+    # Default interactive sessions use a per-invocation relay to the same daemon.
     passthrough = {"agents", "app", "app-server", "remote-control", "login", "logout", "mcp", "plugin", "update", "doctor", "completion", "features", "help", "debug", "cloud", "sandbox", "queue", "archive", "delete", "unarchive", "migrate-rollouts", "apply", "exec-server"}
     value_options = {"-c", "--config", "-p", "--profile", "-m", "--model", "-C", "--cd", "-s", "--sandbox", "-a", "--ask-for-approval", "-i", "--image", "--add-dir", "--enable", "--disable", "--local-provider", "--remote-auth-token-env"}
     command = None
     external = False
     isolated = False
+    custom = bool(environment.get("CODEX_EXEC_SERVER_URL"))
     skip = False
     for arg in args:
         if skip:
@@ -114,11 +116,20 @@ def launch(args):
             external = True
         if arg == "--no-daemon":
             isolated = True
+        if arg in ("-h", "--help", "-V", "--version", "--oss", "--strict-config", "--dangerously-bypass-hook-trust", "-c", "--config", "-p", "--profile", "--enable", "--disable", "--search") or arg.startswith(("--config=", "--profile=", "--enable=", "--disable=")) or (arg.startswith(("-c", "-p")) and len(arg) > 2):
+            custom = True
         if arg in value_options:
             skip = True
         elif not arg.startswith("-") and command is None:
             command = arg
     special = command in passthrough
+    token = environment.get("SUPERTHREAD_TERMINAL_TOKEN", "")
+    tty = environment.get("SUPERTHREAD_TERMINAL_TTY", "")
+    if not isolated and not special and command not in ("exec", "e", "review", "a") and not external and not custom and re.fullmatch(r"[a-f0-9]{48}", token) and tty.startswith("/dev/"):
+        result = launch_shared(executable, args, environment, token, tty)
+        if result is not None:
+            return result if result >= 0 else 128 - result
+        print("[SuperThread] Shared-server recording unavailable; running Codex unchanged. Update Codex or explicitly use --no-daemon with trusted hooks to record.", file=sys.stderr)
     if isolated and not special and not external:
         environment["SUPERTHREAD_CODEX_TOKEN"] = environment.get("SUPERTHREAD_TERMINAL_TOKEN", "")
         environment["SUPERTHREAD_CODEX_TTY"] = environment.get("SUPERTHREAD_TERMINAL_TTY", "")
@@ -140,9 +151,12 @@ def hook():
     event = data.get("hook_event_name")
     if event not in ("SessionStart", "UserPromptSubmit"):
         return
-    payload = {"token": token, "id": session_id, "event": event, "cwd": str(data.get("cwd", ""))[:4096]}
-    if event == "UserPromptSubmit":
-        payload["title"] = re.sub(r"\s+", " ", str(data.get("prompt", ""))).strip()[:160]
+    emit_metadata(token, tty, session_id, event, str(data.get("cwd", ""))[:4096], re.sub(r"\s+", " ", str(data.get("prompt", ""))).strip()[:160] if event == "UserPromptSubmit" else None)
+
+def emit_metadata(token, tty, session_id, event, cwd, title):
+    payload = {"token": token, "id": session_id, "event": event, "cwd": cwd}
+    if title is not None:
+        payload["title"] = title
     frame = PREFIX + base64.b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode() + "\x07"
     descriptor = os.open(tty, os.O_WRONLY | os.O_NOCTTY | os.O_NONBLOCK)
     try:
@@ -153,11 +167,13 @@ def hook():
     finally:
         os.close(descriptor)
 
+${codexRecordingRelay}
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode == "install":
         install()
-        print("Installed. Trust the SuperThread hooks in Codex /hooks. In a new Terminal, codex keeps desktop sharing; codex --no-daemon opts into recording without desktop sharing.")
+        print("Installed. Open a new Terminal and run codex to record while keeping desktop sharing. Explicit --no-daemon recording requires trusted SuperThread hooks in Codex /hooks.")
     elif mode == "bootstrap":
         bootstrap(sys.argv[2])
     elif mode == "launch":

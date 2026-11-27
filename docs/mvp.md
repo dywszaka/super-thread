@@ -936,13 +936,19 @@ Device 增加 `codexRecordingEnabled` 配置，界面标签为「启用 Codex �
 
 新增/开启时通过该 Device 已有的执行方式自动部署 Python 3 采集脚本到 `~/.superthread/integrations/codex/`，不需要 root。仅合并 `$CODEX_HOME/hooks.json`（默认 `~/.codex/hooks.json`）中的 SuperThread `SessionStart` / `UserPromptSubmit` 命令，保留其他 Hook，修改前备份。安装幂等、原子写入，格式无效时保留原文件并显示错误。安装失败不阻止保存 Device 或使用普通 Terminal；Devices 提供错误详情及 Reinstall collector 重试。安装成功只表示文件已安装，不宣称 Hook 已受信任；用户需要在 Codex `/hooks` 首次确认信任，SuperThread 不绕过信任检查。
 
-仅覆盖 WorkThread 下的本机/SSH 内嵌 bash、zsh Terminal，不覆盖 iTerm、tmux、其他 shell 或另行连接的 Codex app server。集成通过会话内的 shell 函数调用原 CLI，原样传递参数，不探测或自动添加 `--no-daemon`。直接运行 `codex` 保留共享后台服务及本地 Codex 对远程运行会话的发现/接管能力，不记录到 WorkThread。只有用户显式运行 `codex --no-daemon` 时才启用记录上下文；该模式绕过共享服务，运行会话不能同时在本地 Codex 中共享。共享 daemon 可能保留其他 Terminal 的环境，因此不保存其不确定归属，也不按 cwd 猜测。管理子命令、显式连接 app server、选项值或 `--` 后的同名文本不能误开启记录。保留正常登录 shell 启动文件，不修改用户的 shell 配置；CLI 参数支持情况由原 CLI 校验。升级后在设备上新建 Terminal 或 Reinstall collector 替换已安装脚本；Hook 拒绝旧版本残留的记录上下文，避免共享服务继续使用旧标识。
+仅覆盖 WorkThread 下的本机/SSH 内嵌 bash、zsh Terminal，不覆盖 iTerm、tmux 或其他 shell。直接运行 `codex` 时，集成不添加 `--no-daemon`，而是在设备用户私有的临时目录中为本次启动建立 Unix socket 转发层，通过 Codex 自带的 `app-server proxy` 连接原共享 daemon；CLI 只增加指向该转发层的 `--remote unix://…`，原有参数继续传递。缺少 daemon 时使用其官方 start 命令启动，不另建隔离 daemon，不停止或重启既有 daemon。原 WebSocket 握手、协议字节、请求和通知原样转发，运行会话仍能被连接同一设备服务的本地 Codex 发现与接管。共享模式不依赖 Hook 信任或 daemon 继承的环境，不新建网络监听、SSH 连接或周期查询。
 
-Terminal 启动时生成只用于当前 PTY 的随机标识。Hook 将真实 Codex `session_id`、事件、cwd 和截断至 160 字符的提问摘要，通过原 PTY/SSH 输出通道的私有 OSC 帧回传。主进程增量解析、校验标识/事件/大小，剥离帧后才发送到 renderer 和 replay；无新后台 SSH、HTTP 服务或周期查询。通过 Terminal → Workspace → WorkThread / Project / Device 关联，不能按 cwd 猜测归属。同目录多个 WorkThread 不混记；独立 Workspace 没有 WorkThread，因此不生成此类记录。
+关联只依据该连接发出的 `thread/start` / `thread/resume` / `thread/fork` 请求与相同 request ID 的成功响应；从响应取真实会话 ID 和 cwd，不按目录、进程 PID、时间或其他客户端的广播通知猜测。记录已关联会话的 `turn/start` / `turn/steer` 成功响应对应的首条提问摘要，不从恢复响应中的历史正文提取，也不记录仅由其他客户端提交的提示词。不同 Terminal 即使 cwd 相同、RPC request ID 相同或共享 daemon 早于它们启动，也保持独立关联。未知或超限协议数据仅停止观察，仍原样转发；不确定、失败和重复响应不能新增记录。内存缓冲、待确认请求和关联数量均有上限，不落盘对话正文或请求日志。
+
+转发目录权限 0700，socket 权限 0600；CLI 结束时关闭它自己的连接与 proxy 子进程并移除 socket，不能终止共享 daemon 或其他客户端。转发层随原 shell PTY 运行，关闭窗口或 renderer 断开不影响其运行；关闭 Terminal / 退出应用沿用现有程序确认流程。协议能力探测或初始准备失败时，显示提示并以原参数运行 Codex，不静默强制隔离模式。会话启动后传输失败由原 CLI 报错，不自动重发创建或提问请求。显式 `--remote`、非交互 exec/review、管理子命令以及自定义配置/执行器等可能改变 daemon 选择的启动不接管；其 CLI 行为保持原样。升级后在设备上新建 Terminal 或 Reinstall collector 替换已安装脚本。
+
+用户显式运行 `codex --no-daemon` 时保留 Hook 采集，需通过 `/hooks` 信任已安装的 Hook；该模式绕过共享服务，运行会话不能同时在本地 Codex 中共享。Hook 只使用本次明确隔离进程的标识，并拒绝旧版本残留的记录上下文。所有模式保留正常登录 shell 启动文件，不修改用户的 shell 配置，不绕过 Hook 信任或权限确认。
+
+Terminal 启动时生成只用于当前 PTY 的随机标识。转发层（或明确隔离进程的 Hook）将真实 Codex `session_id`、事件、cwd 和截断至 160 字符的提问摘要，通过原 PTY/SSH 输出通道的私有 OSC 帧回传。主进程增量解析、校验标识/事件/大小，剥离帧后才发送到 renderer 和 replay；无新后台 SSH、HTTP 服务或周期查询。通过 Terminal → Workspace → WorkThread / Project / Device 关联，不能按 cwd 猜测归属。同目录多个 WorkThread 不混记；独立 Workspace 没有 WorkThread，因此不生成此类记录。
 
 记录是 WorkThread 的 `codexSessions` 值记录，不改变代表 shell PTY 的 `Session`，不引入 Agent / Task / Workflow。保存 Codex ID、项目 ID/名称/code、设备 ID/名称、Workspace ID/名称、首次 Terminal ID、cwd、首条观察到的提问摘要（明确标注「提问摘要」，不冒充 Codex 原生标题）、首次/最近观察时间。不保存完整提示词、会话正文或历史日志。按 `(workThreadId, projectId, deviceId, codexSessionId)` 去重；resume / compact 同一 ID 不增加数量；新建、clear 或 fork 产生新 ID 时新增。一个 ID 在不同 WorkThread 中被使用时，各线程记录自己观察到的关联。
 
-WorkThread 的 Document / Todos / Changes 后增加 **Codex (数量)** 页签，支持同样的键盘导航，按 Project 分组、组内按最近观察时间倒序展示记录；数量为唯一会话数，不是进程启动数、提问数或完整历史总数。没有记录时说明开启、信任 Hook、新 Terminal 和显式 `codex --no-daemon` 的步骤，并说明记录模式无法同时共享运行会话，普通 `codex` 保留共享。此阶段只记录与展示，不提供会话恢复、正文查看或删除记录操作。关闭 Terminal、删除 Workspace、Finish、归档、重启均保留记录及项目/设备名称快照；删除整个 WorkThread 才随之删除。
+WorkThread 的 Document / Todos / Changes 后增加 **Codex (数量)** 页签，支持同样的键盘导航，按 Project 分组、组内按最近观察时间倒序展示记录；数量为唯一会话数，不是进程启动数、提问数或完整历史总数。没有记录时说明开启、新 Terminal 和普通 `codex` 即可同时记录与保留桌面共享；版本不兼容时优先升级，显式 `--no-daemon` 配合受信任 Hook 是可选方案。此阶段只记录与展示，不提供会话恢复、正文查看或删除记录操作。关闭 Terminal、删除 Workspace、Finish、归档、重启均保留记录及项目/设备名称快照；删除整个 WorkThread 才随之删除。
 
 创建普通 Session：
 

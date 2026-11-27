@@ -109,7 +109,7 @@ function DeviceCodexRecording({ device }: { device: Device }): React.ReactNode {
   };
   return <form className="device-codex-recording" aria-label={`${device.name} Codex recording`} onSubmit={save}>
     <CodexRecordingField enabled={enabled} onChange={setEnabled} disabled={busy} />
-    {device.codexRecordingEnabled && <p className={device.codexRecordingSetup?.status === "error" ? "field-error" : ""} role="status">{device.codexRecordingSetup?.status === "error" ? `Setup failed: ${device.codexRecordingSetup.message}` : device.codexRecordingSetup?.status === "installed" ? "Collector installed · Trust the hooks in Codex /hooks before recording." : "Collector will be installed when a new terminal opens."}</p>}
+    {device.codexRecordingEnabled && <p className={device.codexRecordingSetup?.status === "error" ? "field-error" : ""} role="status">{device.codexRecordingSetup?.status === "error" ? `Setup failed: ${device.codexRecordingSetup.message}` : device.codexRecordingSetup?.status === "installed" ? "Collector installed · Open a new terminal and run codex to record shared sessions." : "Collector will be installed when a new terminal opens."}</p>}
     <button className="button" type="submit" disabled={busy}>{busy ? "Saving…" : enabled === !!device.codexRecordingEnabled && enabled ? "Reinstall collector" : "Save recording setting"}</button>
   </form>;
 }

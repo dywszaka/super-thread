@@ -4,6 +4,6 @@ export function CodexRecordingField({ enabled, onChange, disabled = false }: { e
   const hintId = useId();
   return <div className="codex-recording-field">
     <label className="codex-recording-toggle"><input type="checkbox" name="codexRecordingEnabled" checked={enabled} disabled={disabled} aria-describedby={hintId} onChange={(event) => onChange(event.target.checked)} /><span>启用 Codex 会话记录</span></label>
-    <p id={hintId}>Requires Python 3, bash or zsh, and a recent Codex CLI. Trust the SuperThread hooks in Codex /hooks, then open a new terminal. Run codex for desktop sharing, or codex --no-daemon to record in this Work Thread without desktop sharing. Disabling keeps existing records.</p>
+    <p id={hintId}>Requires Python 3, bash or zsh, and a recent Codex CLI. Open a new terminal and run codex to record in this Work Thread while keeping desktop sharing. Custom server/configuration launches may not record. Explicit --no-daemon recording requires trusted SuperThread hooks in Codex /hooks. Disabling keeps existing records.</p>
   </div>;
 }
