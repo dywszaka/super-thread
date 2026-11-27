@@ -64,7 +64,71 @@ test("collector installation preserves user hooks and handles quoted paths idemp
   assert.equal(await readFile(hooksPath, "utf8"), "invalid JSON");
 });
 
-test("bash and zsh launchers return Hook metadata through their real PTY and preserve input/output", async () => {
+test("launcher preserves shared-server arguments and records only explicit isolated launches", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-codex-launch-"));
+  const bin = join(directory, "bin");
+  const helper = join(directory, "collector.py");
+  await mkdir(bin);
+  await writeFile(helper, codexRecordingScript);
+  await writeFile(join(bin, "codex"), `#!/usr/bin/env python3
+import json, os, sys
+print(json.dumps({"args": sys.argv[1:], "context": {key: value for key, value in os.environ.items() if key.startswith("SUPERTHREAD_CODEX_")}}))
+`, { mode: 0o755 });
+  const env = { ...process.env, HOME: directory, CODEX_HOME: join(directory, ".codex"), PATH: `${bin}:${process.env.PATH}`,
+    SUPERTHREAD_TERMINAL_TOKEN: token, SUPERTHREAD_TERMINAL_TTY: "/dev/tty-terminal",
+    SUPERTHREAD_CODEX_TOKEN: "stale-token", SUPERTHREAD_CODEX_TTY: "/dev/tty-stale", SUPERTHREAD_CODEX_RECORDING_VERSION: "1" };
+  const cases: Array<{ args: string[]; recording?: boolean }> = [
+    { args: [] },
+    { args: ["resume", "existing-session"] },
+    { args: ["--help"] },
+    { args: ["--remote", "ws://localhost:8080"] },
+    { args: ["--no-daemon", "--remote=ws://localhost:8080"] },
+    { args: ["--no-daemon", "agents"] },
+    { args: ["--no-daemon", "app-server"] },
+    { args: ["remote-control", "--no-daemon"] },
+    { args: ["--", "--no-daemon"] },
+    { args: ["--config", "--no-daemon"] },
+    { args: ["--no-daemon"], recording: true },
+    { args: ["--no-daemon", "resume", "existing-session"], recording: true },
+    { args: ["resume", "existing-session", "--no-daemon"], recording: true },
+    { args: ["--model", "test-model", "--no-daemon", "A prompt with spaces"], recording: true }
+  ];
+  for (const { args, recording } of cases) {
+    const { stdout, stderr } = await exec("python3", [helper, "launch", ...args], { env });
+    const result = JSON.parse(stdout);
+    assert.deepEqual(result.args, args);
+    assert.equal(stderr, "");
+    assert.deepEqual(result.context, recording ? {
+      SUPERTHREAD_CODEX_TOKEN: token, SUPERTHREAD_CODEX_TTY: "/dev/tty-terminal", SUPERTHREAD_CODEX_RECORDING_VERSION: "2"
+    } : {}, `Unexpected recording context for ${JSON.stringify(args)}`);
+  }
+});
+
+test("hooks ignore stale recording environments retained by older shared servers", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-codex-stale-"));
+  const helper = join(directory, "collector.py");
+  await writeFile(helper, codexRecordingScript);
+  const driver = `
+import io, json, os, runpy, sys
+namespace = runpy.run_path(sys.argv[1])
+def unexpected_open(*args, **kwargs):
+    raise AssertionError("Stale hooks must not open a terminal")
+os.open = unexpected_open
+for version in (None, "1"):
+    if version is None:
+        os.environ.pop("SUPERTHREAD_CODEX_RECORDING_VERSION", None)
+    else:
+        os.environ["SUPERTHREAD_CODEX_RECORDING_VERSION"] = version
+    sys.stdin = io.StringIO(json.dumps({"session_id": "stale-session", "hook_event_name": "SessionStart"}))
+    namespace["hook"]()
+print("STALE_HOOK_IGNORED")
+`;
+  const { stdout } = await exec("python3", ["-c", driver, helper], { env: { ...process.env,
+    SUPERTHREAD_CODEX_TOKEN: token, SUPERTHREAD_CODEX_TTY: "/dev/tty-stale" } });
+  assert.match(stdout, /STALE_HOOK_IGNORED/);
+});
+
+test("bash and zsh explicit isolated launchers return Hook metadata through their real PTY and preserve input/output", async () => {
   for (const shell of ["/bin/bash", "/bin/zsh"]) {
     const directory = await mkdtemp(join(tmpdir(), "superthread-codex-pty-"));
     const bin = join(directory, "bin");
@@ -80,7 +144,11 @@ import json, os, subprocess, sys
 if "--help" in sys.argv:
     print("--no-daemon")
     sys.exit(0)
-assert "--no-daemon" in sys.argv
+if "--no-daemon" not in sys.argv:
+    assert "SUPERTHREAD_CODEX_TOKEN" not in os.environ
+    assert "SUPERTHREAD_CODEX_TTY" not in os.environ
+    print("SHARED_SERVER_OK", flush=True)
+    sys.exit(0)
 config=json.load(open(os.path.join(os.environ["CODEX_HOME"], "hooks.json")))
 for event in ("SessionStart", "UserPromptSubmit"):
     payload={"hook_event_name": event, "session_id": "pty-session", "cwd": os.getcwd(), "prompt": "Repair 中文 terminal"}
@@ -98,7 +166,7 @@ if pid == 0:
 output=b""
 try:
     time.sleep(0.2)
-    os.write(master, b"codex; echo INPUT_OUTPUT_OK; exit\\n")
+    os.write(master, b"codex; codex --no-daemon; echo INPUT_OUTPUT_OK; exit\\n")
     end=time.monotonic()+10
     while time.monotonic()<end:
         if select.select([master], [], [], 0.1)[0]:
@@ -118,6 +186,7 @@ finally:
 `;
     const { stdout } = await exec("python3", ["-c", driver, helper, token], { env: { ...process.env, HOME: directory, SHELL: shell, CODEX_HOME: join(directory, ".codex"), ZDOTDIR: directory }, timeout: 15_000 });
     assert.match(stdout, /CLI_DONE/, stdout);
+    assert.match(stdout, /SHARED_SERVER_OK/, stdout);
     assert.match(stdout, /INPUT_OUTPUT_OK/);
     const events: unknown[] = [];
     new CodexRecordingDecoder(token, (data) => events.push(data)).feed(stdout);

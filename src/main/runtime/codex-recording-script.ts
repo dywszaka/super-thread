@@ -1,9 +1,9 @@
 /** Installed only in the device user's home; never in project repositories. */
 export const codexRecordingScript = String.raw`
-import base64, fcntl, json, os, re, select, shlex, shutil, stat, subprocess, sys, tempfile
+import base64, fcntl, json, os, re, select, shlex, shutil, stat, sys, tempfile
 from pathlib import Path
 
-VERSION = "1"
+VERSION = "2"
 ROOT = Path.home() / ".superthread" / "integrations" / "codex"
 HELPER = ROOT / "collector.py"
 PREFIX = "\x1b]777;superthread-codex;"
@@ -94,17 +94,15 @@ def launch(args):
         print("codex: command not found", file=sys.stderr)
         return 127
     environment = os.environ.copy()
-    environment.pop("SUPERTHREAD_CODEX_TOKEN", None)
-    # The shared daemon can have another terminal's environment. Keep the hook
-    # context inside this CLI process rather than attributing by cwd or daemon PID.
-    try:
-        help_text = subprocess.run([executable, "--help"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        help_text = ""
+    for key in ("SUPERTHREAD_CODEX_TOKEN", "SUPERTHREAD_CODEX_TTY", "SUPERTHREAD_CODEX_RECORDING_VERSION"):
+        environment.pop(key, None)
+    # Preserve the CLI's shared server so the desktop app can discover its chats.
+    # Record only an explicitly isolated process; daemon environments are shared.
     passthrough = {"agents", "app", "app-server", "remote-control", "login", "logout", "mcp", "plugin", "update", "doctor", "completion", "features", "help", "debug", "cloud", "sandbox", "queue", "archive", "delete", "unarchive", "migrate-rollouts", "apply", "exec-server"}
     value_options = {"-c", "--config", "-p", "--profile", "-m", "--model", "-C", "--cd", "-s", "--sandbox", "-a", "--ask-for-approval", "-i", "--image", "--add-dir", "--enable", "--disable", "--local-provider", "--remote-auth-token-env"}
     command = None
     external = False
+    isolated = False
     skip = False
     for arg in args:
         if skip:
@@ -114,25 +112,23 @@ def launch(args):
             break
         if arg == "--remote" or arg.startswith("--remote="):
             external = True
+        if arg == "--no-daemon":
+            isolated = True
         if arg in value_options:
             skip = True
         elif not arg.startswith("-") and command is None:
             command = arg
     special = command in passthrough
-    if not special and not external:
-        if "--no-daemon" in help_text:
-            if "--no-daemon" not in args:
-                args = ["--no-daemon"] + args
-            environment["SUPERTHREAD_CODEX_TOKEN"] = environment.get("SUPERTHREAD_TERMINAL_TOKEN", "")
-            environment["SUPERTHREAD_CODEX_TTY"] = environment.get("SUPERTHREAD_TERMINAL_TTY", "")
-        elif "--no-daemon" not in help_text:
-            print("[SuperThread] Update Codex to a version supporting --no-daemon for session recording.", file=sys.stderr)
-            environment.pop("SUPERTHREAD_CODEX_TOKEN", None)
-    else:
-        environment.pop("SUPERTHREAD_CODEX_TOKEN", None)
+    if isolated and not special and not external:
+        environment["SUPERTHREAD_CODEX_TOKEN"] = environment.get("SUPERTHREAD_TERMINAL_TOKEN", "")
+        environment["SUPERTHREAD_CODEX_TTY"] = environment.get("SUPERTHREAD_TERMINAL_TTY", "")
+        environment["SUPERTHREAD_CODEX_RECORDING_VERSION"] = VERSION
     os.execve(executable, [executable] + args, environment)
 
 def hook():
+    # Ignore environments retained by servers started before explicit opt-in.
+    if os.environ.get("SUPERTHREAD_CODEX_RECORDING_VERSION") != VERSION:
+        return
     token = os.environ.get("SUPERTHREAD_CODEX_TOKEN", "")
     tty = os.environ.get("SUPERTHREAD_CODEX_TTY", "")
     if not re.fullmatch(r"[a-f0-9]{48}", token) or not tty.startswith("/dev/"):
@@ -161,7 +157,7 @@ if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode == "install":
         install()
-        print("Installed. In Codex, open /hooks and trust the SuperThread hooks. Open a new Terminal to record sessions.")
+        print("Installed. Trust the SuperThread hooks in Codex /hooks. In a new Terminal, codex keeps desktop sharing; codex --no-daemon opts into recording without desktop sharing.")
     elif mode == "bootstrap":
         bootstrap(sys.argv[2])
     elif mode == "launch":
