@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import type { AppSnapshot, WorkThread, WorkThreadStatus, WorkThreadType } from "@/shared/domain";
 import { threadsOfType, workThreadType } from "@/shared/work-thread-type";
 import { useWorkbenchStore } from "../../../state/workbench-store";
-import { formatDocumentUpdate, workThreadDocumentUpdate } from "../selection";
+import { formatDocumentUpdate, workThreadArchivedDuration, workThreadDocumentUpdate } from "../selection";
 import { WorkThreadSearch, type SearchSegment } from "../work-thread-search";
 import { filterWorkThreads, workThreadTimeCutoff, type WorkThreadTimeUnit } from "../work-thread-filters";
 import { threadDocumentAutosave } from "../document-autosave";
@@ -222,6 +222,7 @@ function WorkThreadListContent({ snapshot, selectedType }: { snapshot: AppSnapsh
               {threads.map(({ thread, name, excerpt }) => {
                 const workspaces = snapshot.workspaces.filter((workspace) => workspace.workThreadId === thread.id);
                 const busy = busyId === thread.id;
+                const duration = workThreadArchivedDuration(thread);
                 return (
                   <article className={`work-thread-card ${drawerOpen && documentId === thread.id ? "document-is-open" : ""}`} key={thread.id} onClick={(event) => {
                     if (event.target instanceof Element && event.target.closest(".work-thread-card-main, .work-thread-card-actions")) return;
@@ -229,7 +230,19 @@ function WorkThreadListContent({ snapshot, selectedType }: { snapshot: AppSnapsh
                   }}>
                     <button type="button" className="work-thread-card-main" aria-label={`Open document for ${thread.name}`} aria-expanded={drawerOpen && documentId === thread.id} aria-controls="work-thread-document-drawer" title="Open document" onClick={(event) => openDocument(event.currentTarget, thread)}>
                       <span className="work-thread-card-icon"><MessagesSquare size={17} /></span>
-                      <span><strong title={thread.name}><HighlightedText segments={name} /></strong><small className="work-thread-card-meta">{status === "all" && <span className="work-thread-status-badge">{thread.status === "active" ? "Active" : "Archived"}</span>}<span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span><WorkThreadAge thread={thread} /><span className="thread-last-update">Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span></small>{excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}</span>
+                      <span>
+                        <strong title={thread.name}><HighlightedText segments={name} /></strong>
+                        <small className="work-thread-card-meta">
+                          {status === "all" && <span className="work-thread-status-badge">{thread.status === "active" ? "Active" : "Archived"}</span>}
+                          <span><FolderGit2 size={12} /> {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}</span>
+                          <WorkThreadAge thread={thread} />
+                          <span className="thread-last-update">Last update <time dateTime={workThreadDocumentUpdate(thread)} title={new Date(workThreadDocumentUpdate(thread)).toLocaleString()}>{formatDocumentUpdate(workThreadDocumentUpdate(thread))}</time></span>
+                          {duration && <span className="thread-duration" title={`Created ${formatDocumentUpdate(thread.createdAt)} · Archived ${formatDocumentUpdate(thread.archivedAt!)} · Elapsed 24-hour days`}>
+                            Duration <span>{duration}</span>
+                          </span>}
+                        </small>
+                        {excerpt && <span className="work-thread-search-excerpt"><HighlightedText segments={excerpt} /></span>}
+                      </span>
                     </button>
                     <div className="work-thread-card-actions">
                       {thread.status === "archived" && <button className="button" disabled={busy} onClick={() => void restore(thread.id, thread.name)}><ArchiveRestore size={14} /> Restore</button>}

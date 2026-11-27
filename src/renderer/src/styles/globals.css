@@ -3829,9 +3829,13 @@ input, textarea, [contenteditable="true"], .selectable {
   gap: 5px;
 }
 
-.work-thread-card-meta time {
+.work-thread-card-meta time, .thread-duration > span {
   color: var(--foreground);
   font-variant-numeric: tabular-nums;
+}
+
+.thread-last-update, .thread-duration {
+  white-space: nowrap;
 }
 
 .work-thread-card.document-is-open {

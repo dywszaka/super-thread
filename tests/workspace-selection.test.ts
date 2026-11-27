@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { workspaceOverview, formatDocumentUpdate, workThreadDocumentUpdate, workThreadsByDocumentUpdate, resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
+import { workspaceOverview, formatDocumentUpdate, workThreadArchivedDuration, workThreadDocumentUpdate, workThreadsByDocumentUpdate, resolveSelectionId, sortedWorkThreads, visibleWorkspaces, workspaceProjectName } from "../src/renderer/src/features/workspace/selection";
 import { emptySnapshot, type Workspace } from "../src/shared/domain";
 
 test("workspace selection adopts the first project added after the dialog mounts", () => {
@@ -89,11 +89,22 @@ test("all work threads sort by document update, falling back to creation rather 
   assert.equal(workThreadsByDocumentUpdate(threads)[0]?.id, "pinned");
 });
 
-test("document update labels use zero-padded local MMDD HH:mm in 24-hour time", () => {
-  assert.equal(formatDocumentUpdate(new Date(2026, 9, 8, 9, 5).toISOString()), "1008 09:05");
-  assert.equal(formatDocumentUpdate(new Date(2026, 0, 2, 0, 7).toISOString()), "0102 00:07");
-  assert.equal(formatDocumentUpdate(new Date(2026, 11, 31, 23, 59).toISOString()), "1231 23:59");
+test("document update labels use zero-padded local yyyy-MM-dd HH:mm in 24-hour time", () => {
+  assert.equal(formatDocumentUpdate(new Date(2026, 9, 8, 9, 5).toISOString()), "2026-10-08 09:05");
+  assert.equal(formatDocumentUpdate(new Date(2026, 0, 2, 0, 7).toISOString()), "2026-01-02 00:07");
+  assert.equal(formatDocumentUpdate(new Date(2025, 11, 31, 23, 59).toISOString()), "2025-12-31 23:59");
   assert.equal(formatDocumentUpdate("invalid"), "—");
+});
+
+test("archived duration stops at archive and counts elapsed 24-hour days across timezone changes", () => {
+  const thread = { status: "archived" as const, createdAt: "2026-10-31T12:00:00-04:00", archivedAt: "2026-11-01T12:00:00-05:00", updatedAt: "2026-12-01T00:00:00Z" };
+  assert.equal(workThreadArchivedDuration(thread), "1d");
+  assert.equal(workThreadArchivedDuration({ ...thread, archivedAt: "2026-10-31T23:59:59-04:00" }), "<1d");
+  assert.equal(workThreadArchivedDuration({ ...thread, archivedAt: "2026-11-03T12:00:00-05:00" }), "3d");
+  assert.equal(workThreadArchivedDuration({ ...thread, status: "active" }), null);
+  for (const patch of [{ archivedAt: undefined }, { archivedAt: "invalid" }, { createdAt: "invalid" }, { archivedAt: "2026-10-30T00:00:00Z" }]) {
+    assert.equal(workThreadArchivedDuration({ ...thread, ...patch }), null);
+  }
 });
 
 test("workspace overview distinguishes local activity from remote connections and sorts active workspaces without mutating them", () => {

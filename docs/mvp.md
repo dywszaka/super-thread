@@ -8,6 +8,8 @@
 
 All work threads 中点击整条记录打开文档，列表不显示 Terminal 或重复的 Doc 按钮；Restore 与 More 保持独立操作。Finish / Archive / Delete 位于 More 菜单，Archived 列表保留 Restore。文档抽屉作为内容区右侧覆盖层打开，宽度为 Work Threads 内容区的 2/3，不挤压或隐藏底层列表；所有窗口宽度均采用相同布局。底层 Work Threads 标题与列表保持尺寸、位置和滚动，打开期间设为 inert / aria-hidden，并由页面内遮罩拦截点击；点击露出的底层页面、关闭按钮或 Escape 均收起抽屉，底层操作不会同时触发；遮罩悬停显示普通箭头，按下时保持原遮罩背景，不继承普通按钮的按下填充或闪白。resize 不重建编辑器。文档抽屉在固定布局宽度下用 220ms 位移动画从右侧滑入、关闭时向右滑出；退出期间保持挂载并设为 inert / aria-hidden，动画完成后清理详情、恢复列表滚动和焦点。关闭立即触发既有自动保存，不等待动画完成；快速关闭/重开沿同一动画进度反向播放，resize 不重播入场。减少动态效果时直接切换。
 
+All work threads 的 Last update 使用本机时区，按 `yyyy-MM-dd HH:mm` 显示文档更新时间（未编辑时使用创建时间）。归档记录额外显示 `Duration Nd`，从原始 `createdAt` 到当前 `archivedAt`，每 24 小时计一天并向下取整，不足一天显示 `<1d`；悬停可查看起止时间。缺失、无效或早于创建时间的归档时间不显示时长。恢复后继续使用现有 active 年龄提醒，再次归档以新的归档时间计算。
+
 Doc 使用40px单行标题栏与32px Document/Todos 切换栏，保存反馈与关闭/返回始终可见。普通年龄并入切换栏；提醒及强提醒仍在标题下显示完整文字和语义色。格式通过 Document 的提示说明，正文仍为16px且保持原自动保存与错误重试行为。
 
 Workspace 概览以名称、项目/设备、线程/分支分层展示，长字段有完整提示。本地计数标为 local active（仅busy活动），远程计数标为 remote connected；不改既有监测与排序。两者均为零时显示 No terminal activity，不将空闲但仍存活的终端误称为不存在。

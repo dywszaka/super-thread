@@ -1,4 +1,5 @@
 import type { AppSnapshot, WorkThread, Workspace } from "@/shared/domain";
+import { DAY_MS } from "@/shared/work-thread-age";
 
 export { compareWorkThreads, sortedWorkThreads } from "@/shared/work-thread-order";
 
@@ -15,7 +16,15 @@ export function formatDocumentUpdate(timestamp: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "—";
   const pad = (value: number): string => String(value).padStart(2, "0");
-  return `${pad(date.getMonth() + 1)}${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${String(date.getFullYear()).padStart(4, "0")}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function workThreadArchivedDuration(thread: Pick<WorkThread, "status" | "createdAt" | "archivedAt">): string | null {
+  if (thread.status !== "archived" || !thread.archivedAt) return null;
+  const elapsed = Date.parse(thread.archivedAt) - Date.parse(thread.createdAt);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return null;
+  const days = Math.floor(elapsed / DAY_MS);
+  return days === 0 ? "<1d" : `${days}d`;
 }
 
 export interface SelectableItem {
