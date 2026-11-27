@@ -9,6 +9,7 @@ VERSION = "3"
 ROOT = Path.home() / ".superthread" / "integrations" / "codex"
 HELPER = ROOT / "collector.py"
 PREFIX = "\x1b]777;superthread-codex;"
+VALUE_OPTIONS = {"-c", "--config", "-p", "--profile", "-m", "--model", "-C", "--cd", "-s", "--sandbox", "-a", "--ask-for-approval", "-i", "--image", "--add-dir", "--enable", "--disable", "--local-provider", "--remote-auth-token-env"}
 
 def atomic(path, text, mode=0o600):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -100,7 +101,6 @@ def launch(args):
         environment.pop(key, None)
     # Default interactive sessions use a per-invocation relay to the same daemon.
     passthrough = {"agents", "app", "app-server", "remote-control", "login", "logout", "mcp", "plugin", "update", "doctor", "completion", "features", "help", "debug", "cloud", "sandbox", "queue", "archive", "delete", "unarchive", "migrate-rollouts", "apply", "exec-server"}
-    value_options = {"-c", "--config", "-p", "--profile", "-m", "--model", "-C", "--cd", "-s", "--sandbox", "-a", "--ask-for-approval", "-i", "--image", "--add-dir", "--enable", "--disable", "--local-provider", "--remote-auth-token-env"}
     command = None
     external = False
     isolated = False
@@ -118,7 +118,7 @@ def launch(args):
             isolated = True
         if arg in ("-h", "--help", "-V", "--version", "--oss", "--strict-config", "--dangerously-bypass-hook-trust", "-c", "--config", "-p", "--profile", "--enable", "--disable", "--search") or arg.startswith(("--config=", "--profile=", "--enable=", "--disable=")) or (arg.startswith(("-c", "-p")) and len(arg) > 2):
             custom = True
-        if arg in value_options:
+        if arg in VALUE_OPTIONS:
             skip = True
         elif not arg.startswith("-") and command is None:
             command = arg

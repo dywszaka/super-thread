@@ -38,6 +38,7 @@ else:
   assert.deepEqual(launches[0], []);
   assert.equal(launches[1]![0], "--remote");
   assert.match(launches[1]![1]!, /^unix:\/\/\/tmp\/st-codex-.*\/rpc.sock$/);
+  assert.deepEqual(launches[1]!.slice(2), ["--cd", process.cwd()]);
   await assert.rejects(access(launches[1]![1]!.slice("unix://".length)), { code: "ENOENT" });
 });
 
@@ -78,6 +79,33 @@ for index in (0, 1):
 print("ATTRIBUTION_OK")
 `, helper]);
   assert.match(stdout, /ATTRIBUTION_OK/);
+});
+
+test("shared launches pin new sessions to the terminal directory and preserve explicit or saved directory choices", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "superthread-relay-cwd-"));
+  const helper = join(directory, "collector.py");
+  await writeFile(helper, codexRecordingScript);
+  const { stdout } = await exec("python3", ["-c", `
+import os, runpy, sys
+arguments = runpy.run_path(sys.argv[1])["shared_client_args"]
+cwd = os.getcwd()
+for args in ([], ["Fix the project"], ["--no-alt-screen"], ["--model", "resume"], ["--", "--cd", "prompt text"]):
+    assert arguments(args) == ["--cd", cwd] + args
+for args in (["resume", "saved-id"], ["fork", "saved-id"], ["resume", "--last"], ["--model", "test", "fork", "--last"]):
+    assert arguments(args) == args
+for flag in ("-C", "--cd"):
+    assert arguments([flag, "../other project", "prompt"]) == [flag, os.path.abspath("../other project"), "prompt"]
+    assert arguments(["resume", "saved-id", flag, "../other project"]) == ["resume", "saved-id", flag, os.path.abspath("../other project")]
+    assert arguments([flag, "/explicit/project"]) == [flag, "/explicit/project"]
+    assert arguments([flag]) == [flag]
+for prefix in ("--cd=", "-C", "-C="):
+    assert arguments([prefix + "../other project"]) == [prefix + os.path.abspath("../other project")]
+    assert arguments([prefix + "/explicit/project"]) == [prefix + "/explicit/project"]
+assert arguments(["--config", "--cd"]) == ["--cd", cwd, "--config", "--cd"]
+assert arguments(["--cd="]) == ["--cd="]
+print("CWD_ARGUMENTS_OK")
+`, helper], { cwd: directory });
+  assert.match(stdout, /CWD_ARGUMENTS_OK/);
 });
 
 test("bash and zsh concurrently record same-directory shared-daemon sessions through private relays", async () => {
@@ -129,6 +157,7 @@ finally:
   const { stdout } = await exec("python3", ["-c", driver, helper, codexRecordingCommand("install")], { env: { ...process.env, HOME: directory,
     RELAY_BIN: bin, RELAY_CWD: directory, RELAY_AUDIT: audit }, timeout: 25_000 });
   const outputs: string[] = JSON.parse(stdout);
+  const expectedCwd = directory.replace(/^\/var\//, "/private/var/");
   for (const [index, output] of outputs.entries()) {
     assert.match(output, /SHARED_RELAY_OK/, output);
     assert.match(output, /SHELL_INPUT_OK/, output);
@@ -136,10 +165,10 @@ finally:
     const token = (index === 0 ? "ab" : "cd").repeat(24);
     new CodexRecordingDecoder(token, (event) => events.push(event)).feed(output);
     assert.deepEqual(events, [
-      { id: `shared-${index}`, event: "SessionStart", cwd: "/same/shared/workspace" },
-      { id: `shared-${index}`, event: "UserPromptSubmit", cwd: "/same/shared/workspace", title: `Prompt ${index}` },
-      { id: `shared-${index}`, event: "SessionStart", cwd: "/same/shared/workspace" },
-      { id: `fork-${index}`, event: "SessionStart", cwd: "/same/shared/workspace" }
+      { id: `shared-${index}`, event: "SessionStart", cwd: expectedCwd },
+      { id: `shared-${index}`, event: "UserPromptSubmit", cwd: expectedCwd, title: `Prompt ${index}` },
+      { id: `shared-${index}`, event: "SessionStart", cwd: expectedCwd },
+      { id: `fork-${index}`, event: "SessionStart", cwd: expectedCwd }
     ]);
     assert.doesNotMatch(output, /private transcript|foreign-thread/);
   }

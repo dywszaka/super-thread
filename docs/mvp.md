@@ -936,7 +936,7 @@ Device 增加 `codexRecordingEnabled` 配置，界面标签为「启用 Codex �
 
 新增/开启时通过该 Device 已有的执行方式自动部署 Python 3 采集脚本到 `~/.superthread/integrations/codex/`，不需要 root。仅合并 `$CODEX_HOME/hooks.json`（默认 `~/.codex/hooks.json`）中的 SuperThread `SessionStart` / `UserPromptSubmit` 命令，保留其他 Hook，修改前备份。安装幂等、原子写入，格式无效时保留原文件并显示错误。安装失败不阻止保存 Device 或使用普通 Terminal；Devices 提供错误详情及 Reinstall collector 重试。安装成功只表示文件已安装，不宣称 Hook 已受信任；用户需要在 Codex `/hooks` 首次确认信任，SuperThread 不绕过信任检查。
 
-仅覆盖 WorkThread 下的本机/SSH 内嵌 bash、zsh Terminal，不覆盖 iTerm、tmux 或其他 shell。直接运行 `codex` 时，集成不添加 `--no-daemon`，而是在设备用户私有的临时目录中为本次启动建立 Unix socket 转发层，通过 Codex 自带的 `app-server proxy` 连接原共享 daemon；CLI 只增加指向该转发层的 `--remote unix://…`，原有参数继续传递。缺少 daemon 时使用其官方 start 命令启动，不另建隔离 daemon，不停止或重启既有 daemon。原 WebSocket 握手、协议字节、请求和通知原样转发，运行会话仍能被连接同一设备服务的本地 Codex 发现与接管。共享模式不依赖 Hook 信任或 daemon 继承的环境，不新建网络监听、SSH 连接或周期查询。
+仅覆盖 WorkThread 下的本机/SSH 内嵌 bash、zsh Terminal，不覆盖 iTerm、tmux 或其他 shell。直接运行 `codex` 时，集成不添加 `--no-daemon`，而是在设备用户私有的临时目录中为本次启动建立 Unix socket 转发层，通过 Codex 自带的 `app-server proxy` 连接原共享 daemon；CLI 增加指向该转发层的 `--remote unix://…`，原有参数继续传递。新会话必须显式通过 `--cd` 传入本次终端实际 cwd，不能使用 daemon 的默认目录；用户明确指定的 `-C` / `--cd` 优先，其中相对路径按终端 cwd 转为绝对路径。resume/fork 未明确指定目录时不注入默认 `--cd`，保留已有会话的目录选择。缺少 daemon 时使用其官方 start 命令启动，不另建隔离 daemon，不停止或重启既有 daemon。原 WebSocket 握手、协议字节、请求和通知原样转发，运行会话仍能被连接同一设备服务的本地 Codex 发现与接管。共享模式不依赖 Hook 信任或 daemon 继承的环境，不新建网络监听、SSH 连接或周期查询。
 
 关联只依据该连接发出的 `thread/start` / `thread/resume` / `thread/fork` 请求与相同 request ID 的成功响应；从响应取真实会话 ID 和 cwd，不按目录、进程 PID、时间或其他客户端的广播通知猜测。记录已关联会话的 `turn/start` / `turn/steer` 成功响应对应的首条提问摘要，不从恢复响应中的历史正文提取，也不记录仅由其他客户端提交的提示词。不同 Terminal 即使 cwd 相同、RPC request ID 相同或共享 daemon 早于它们启动，也保持独立关联。未知或超限协议数据仅停止观察，仍原样转发；不确定、失败和重复响应不能新增记录。内存缓冲、待确认请求和关联数量均有上限，不落盘对话正文或请求日志。
 

@@ -231,6 +231,38 @@ class RecordingRelayConnection(socketserver.BaseRequestHandler):
             with self.server.active_lock:
                 self.server.active.discard(self)
 
+def shared_client_args(args):
+    # --remote omits implicit cwd from thread/start, so the daemon would use its
+    # own directory. This relay is on the same device as the invoking terminal.
+    result = list(args)
+    has_cwd, command, index = False, None, 0
+    while index < len(result):
+        arg = result[index]
+        if arg == "--":
+            break
+        if arg in ("-C", "--cd"):
+            has_cwd = True
+            if index + 1 < len(result) and result[index + 1] and not result[index + 1].startswith("-"):
+                result[index + 1] = os.path.abspath(result[index + 1])
+            index += 2
+            continue
+        if arg.startswith("--cd=") or (arg.startswith("-C") and len(arg) > 2):
+            has_cwd = True
+            prefix = "--cd=" if arg.startswith("--cd=") else "-C=" if arg.startswith("-C=") else "-C"
+            path = arg[len(prefix):]
+            if path:
+                result[index] = prefix + os.path.abspath(path)
+        elif arg in VALUE_OPTIONS:
+            index += 2
+            continue
+        elif not arg.startswith("-") and command is None:
+            command = arg
+        index += 1
+    # An implicit directory must not replace a saved resume/fork directory.
+    if not has_cwd and command not in ("resume", "fork"):
+        result = ["--cd", os.getcwd()] + result
+    return result
+
 def launch_shared(executable, args, environment, token, tty):
     # Probe before starting any CLI session. Unsupported versions run unchanged.
     try:
@@ -261,7 +293,7 @@ def launch_shared(executable, args, environment, token, tty):
         previous = {}
         try:
             try:
-                child = subprocess.Popen([executable, "--remote", "unix://" + path] + args, env=environment)
+                child = subprocess.Popen([executable, "--remote", "unix://" + path] + shared_client_args(args), env=environment)
             except OSError:
                 return None
             # Both processes remain in the terminal's foreground group. Let the TUI

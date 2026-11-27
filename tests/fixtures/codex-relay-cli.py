@@ -67,7 +67,7 @@ elif args == ["app-server", "proxy"]:
         method, params = request["method"], request.get("params", {})
         if method in ("thread/start", "thread/resume", "thread/fork"):
             thread_id = params["fixtureId"]
-            result = {"thread": {"id": thread_id, "cwd": "/same/shared/workspace", "turns": [{"text": "private transcript"}]}}
+            result = {"thread": {"id": thread_id, "cwd": params.get("cwd", "/mock/daemon/home"), "turns": [{"text": "private transcript"}]}}
             sys.stdout.buffer.write(frame(json.dumps({"method": "thread/started", "params": {"thread": {"id": "foreign-thread", "cwd": "/same/shared/workspace"}}}).encode()))
         else:
             result = {"turn": {"id": "turn"}}
@@ -122,10 +122,12 @@ else:
                     return response
 
         label = os.environ["RELAY_LABEL"]
-        rpc({"id": 1, "method": "thread/start", "params": {"fixtureId": "shared-" + label}}, fragmented=True)
+        # Like the real remote TUI, omit cwd unless the invocation specifies it.
+        cwd_params = {"cwd": args[args.index("--cd") + 1]} if "--cd" in args else {}
+        rpc({"id": 1, "method": "thread/start", "params": {"fixtureId": "shared-" + label, **cwd_params}}, fragmented=True)
         rpc({"id": 2, "method": "turn/start", "params": {"threadId": "shared-" + label, "input": [{"type": "text", "text": "Prompt " + label}]}})
-        rpc({"id": 3, "method": "thread/resume", "params": {"fixtureId": "shared-" + label}})
-        rpc({"id": 4, "method": "thread/fork", "params": {"fixtureId": "fork-" + label}})
+        rpc({"id": 3, "method": "thread/resume", "params": {"fixtureId": "shared-" + label, **cwd_params}})
+        rpc({"id": 4, "method": "thread/fork", "params": {"fixtureId": "fork-" + label, **cwd_params}})
         if os.environ.get("RELAY_HOLD") == "1":
             print("SHARED_RELAY_READY", flush=True)
             time.sleep(60)
