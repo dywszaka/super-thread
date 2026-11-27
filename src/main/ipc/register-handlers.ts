@@ -42,6 +42,7 @@ import {
 } from "../../shared/contract";
 import type { WorkspaceService } from "../application/workspace-service";
 import { vscodeWorkspaceUrl } from "../runtime/vscode-workspace";
+import { terminalCloseOptions } from "../application/terminal-close-confirmation";
 
 const sessionIdSchema = z.string().min(1);
 
@@ -195,6 +196,22 @@ export function registerIpcHandlers(service: WorkspaceService, finishDocumentClo
   handle(channels.attachSession, (_event, id) => service.attachSession(sessionIdSchema.parse(id)));
   on(channels.writeSession, (_event, id, data) => service.writeSession(sessionIdSchema.parse(id), z.string().parse(data)));
   on(channels.resizeSession, (_event, id, cols, rows) => service.resizeSession(sessionIdSchema.parse(id), z.number().int().min(2).parse(cols), z.number().int().min(1).parse(rows)));
-  handle(channels.killSession, (_event, id, force) => service.killSession(sessionIdSchema.parse(id), Boolean(force)));
+  const closingTerminals = new Set<string>();
+  handle(channels.killSession, async (event, input) => {
+    const id = sessionIdSchema.parse(input);
+    if (closingTerminals.has(id)) return;
+    closingTerminals.add(id);
+    try {
+      const options = terminalCloseOptions(await service.inspectTerminalPrograms([id]), "close");
+      if (options) {
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        if (!owner || owner.isDestroyed()) return;
+        if ((await dialog.showMessageBox(owner, options)).response !== 0) return;
+      }
+      await service.killSession(id);
+    } finally {
+      closingTerminals.delete(id);
+    }
+  });
   handle(channels.renameSession, (_event, input) => service.renameSession(renameSessionSchema.parse(input)));
 }

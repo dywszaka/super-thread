@@ -1356,14 +1356,19 @@ export class WorkspaceService extends EventEmitter {
   reconnectTunnels(): void {
     if (this.windowOpen) this.tunnels.reconnectAll();
   }
-  runningSessionSummaries(): string[] {
+  async inspectTerminalPrograms(ids?: string[]): Promise<{ running: string[]; unchecked: string[] }> {
+    const inspections = await this.terminals.inspectPrograms(ids);
     const snapshot = this.snapshot();
-    return snapshot.sessions
-      .filter((session) => session.status === "running" && (session.activityStatus === "busy" || session.activityStatus === "unknown"))
-      .map((session) => {
-        const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
-        return `${workspace?.name ?? "Unknown workspace"} / ${session.name} (${session.kind ?? "shell"})`;
-      });
+    const result = { running: [] as string[], unchecked: [] as string[] };
+    for (const inspection of inspections) {
+      const session = snapshot.sessions.find((item) => item.id === inspection.sessionId);
+      if (!session || !this.terminals.has(session.id)) continue;
+      const workspace = snapshot.workspaces.find((item) => item.id === session.workspaceId);
+      const label = `${workspace?.name ?? "Unknown workspace"} / ${session.name}`;
+      if (inspection.programs.length) result.running.push(`${label} — ${inspection.programs.join(", ")}`);
+      if (inspection.error) result.unchecked.push(`${label} — ${inspection.error}`);
+    }
+    return result;
   }
   shutdown(): void { this.tunnels.stop(); }
   async killSession(id: string, _force = false): Promise<void> {

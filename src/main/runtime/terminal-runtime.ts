@@ -3,10 +3,11 @@ import os from "node:os";
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
 import type { Device, DeviceConnection, Session, SessionActivityStatus, TerminalOutput, TerminalReplay, Workspace } from "../../shared/domain";
-import { ProcessCommandRunner } from "./command-runner";
+import { DeviceCommandRunner, ProcessCommandRunner } from "./command-runner";
 import { quoteShellArgument } from "./login-shell";
 import { randomBytes } from "node:crypto";
 import { CodexRecordingDecoder, codexRecordingCommand } from "./codex-recording";
+import { TerminalPidDecoder, terminalProcessArgs, terminalPrograms } from "./terminal-processes";
 
 interface LiveSession {
   pty: IPty;
@@ -15,7 +16,12 @@ interface LiveSession {
   activityStatus: SessionActivityStatus;
   activityTimer?: NodeJS.Timeout;
   probing: boolean;
+  deviceId: string;
+  connection: DeviceConnection;
+  remote: boolean;
+  shellPid?: number;
 }
+export interface TerminalProcessInspection { sessionId: string; programs: string[]; error?: string; }
 export interface TerminalExitEvent { sessionId: string; exitCode?: number; }
 export interface TerminalActivityEvent { sessionId: string; activityStatus: SessionActivityStatus; resultReady: boolean; }
 
@@ -42,13 +48,16 @@ export function sshTerminalArgs(connection: DeviceConnection, command: string): 
 
 const runLocalProbe = async (program: string, args: string[]): Promise<string> =>
   (await new ProcessCommandRunner().run(program, args, { timeoutMs: 1_500 })).stdout;
+const runRemoteProbe = async (connection: DeviceConnection): Promise<string> =>
+  (await new DeviceCommandRunner(connection).run("ps", terminalProcessArgs, { timeoutMs: 6_000 })).stdout;
 
 export class TerminalRuntime extends EventEmitter {
   private readonly sessions = new Map<string, LiveSession>();
 
   constructor(
     private readonly runProbe = runLocalProbe,
-    private readonly spawnPty: typeof pty.spawn = pty.spawn
+    private readonly spawnPty: typeof pty.spawn = pty.spawn,
+    private readonly inspectRemote = runRemoteProbe
   ) { super(); }
 
   create(session: Session, workspace: Workspace, device: Device, connection: DeviceConnection): number {
@@ -58,9 +67,11 @@ export class TerminalRuntime extends EventEmitter {
     const cwd = session.cwd || workspace.path;
     const token = device.codexRecordingEnabled ? randomBytes(24).toString("hex") : undefined;
     const bootstrap = token ? codexRecordingCommand("bootstrap", token) : undefined;
+    const pidToken = remote ? randomBytes(24).toString("hex") : undefined;
+    const announcePid = `printf '\\033]777;superthread-terminal;${pidToken};%s\\007' "$$"; `;
     const program = remote ? "ssh" : bootstrap ? "/bin/sh" : process.env.SHELL || "/bin/zsh";
     const args = remote
-      ? sshTerminalArgs(connection, `cd ${quoteShellArgument(cwd)} && ${bootstrap || 'exec "${SHELL:-/bin/sh}" -l'}`)
+      ? sshTerminalArgs(connection, `cd ${quoteShellArgument(cwd)} && { ${announcePid}${bootstrap || 'exec "${SHELL:-/bin/sh}" -l'}; }`)
       : bootstrap ? ["-c", bootstrap] : ["-l"];
     const instance = this.spawnPty(program, args, {
       name: "xterm-256color", cols: 100, rows: 30,
@@ -69,11 +80,14 @@ export class TerminalRuntime extends EventEmitter {
     });
     const live: LiveSession = {
       pty: instance, buffer: "", sequence: 0,
-      activityStatus: remote ? "unknown" : "idle", probing: false
+      activityStatus: remote ? "unknown" : "idle", probing: false,
+      deviceId: device.id, connection, remote, shellPid: remote ? undefined : instance.pid
     };
     this.sessions.set(session.id, live);
     const decoder = token ? new CodexRecordingDecoder(token, (event) => this.emit("codex-recording", { ...event, terminalId: session.id })) : undefined;
+    const pidDecoder = pidToken ? new TerminalPidDecoder(pidToken, (pid) => { live.shellPid ??= pid; }) : undefined;
     instance.onData((data) => {
+      data = pidDecoder ? pidDecoder.feed(data) : data;
       data = decoder ? decoder.feed(data) : data;
       if (!data) return;
       live.buffer = (live.buffer + data).slice(-64_000);
@@ -87,7 +101,7 @@ export class TerminalRuntime extends EventEmitter {
       this.emit("exit", { sessionId: session.id, exitCode } satisfies TerminalExitEvent);
     });
     // A remote terminal owns just its interactive SSH connection. Do not open
-    // additional SSH sessions to infer activity, including while windows close.
+    // additional SSH sessions for periodic activity checks. Close/quit inspection is on demand.
     if (!remote) {
       const probe = (): void => { void this.probeActivity(session.id, live); };
       live.activityTimer = setInterval(probe, 1_000);
@@ -95,6 +109,28 @@ export class TerminalRuntime extends EventEmitter {
       probe();
     }
     return instance.pid;
+  }
+
+  async inspectPrograms(ids?: string[]): Promise<TerminalProcessInspection[]> {
+    const selected = new Set(ids ?? this.sessions.keys());
+    const snapshots = new Map<string, Promise<string>>();
+    return (await Promise.all([...this.sessions].filter(([id]) => selected.has(id)).map(async ([sessionId, live]) => {
+      let programs: string[] = [];
+      let error: string | undefined;
+      try {
+        if (!live.shellPid) throw new Error("Terminal is still connecting; shell PID is not available");
+        const key = live.remote ? `remote:${live.deviceId}` : "local";
+        let snapshot = snapshots.get(key);
+        if (!snapshot) {
+          snapshot = live.remote ? this.inspectRemote(live.connection) : this.runProbe("ps", terminalProcessArgs);
+          snapshots.set(key, snapshot);
+        }
+        programs = terminalPrograms(await snapshot, live.shellPid);
+      } catch (cause) {
+        error = cause instanceof Error ? cause.message : String(cause);
+      }
+      return this.sessions.get(sessionId) === live ? { sessionId, programs, error } : undefined;
+    }))).filter((item) => item !== undefined);
   }
 
   private async probeActivity(sessionId: string, live: LiveSession): Promise<void> {

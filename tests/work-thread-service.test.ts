@@ -693,18 +693,33 @@ test("terminal close cannot be resurrected by its PTY exit event", async () => {
   assert.deepEqual(service.snapshot().sessions, []);
 });
 
-test("running session summaries warn about busy local terminals and remote connections with unknown activity", async () => {
-  const { service, store } = await setup();
+test("close summaries use live programs instead of stored activity and omit idle or exited terminals", async () => {
+  const terminals = fakeTerminals();
+  terminals.has = (id) => id !== "exited-shell";
+  terminals.inspectPrograms = async () => [
+    { sessionId: "busy-shell", programs: ["node", "sleep"] },
+    { sessionId: "idle-shell", programs: [] },
+    { sessionId: "remote-shell", programs: [] },
+    { sessionId: "waiting-shell", programs: [] },
+    { sessionId: "exited-shell", programs: ["vim"] },
+    { sessionId: "unchecked-shell", programs: [], error: "SSH unavailable" }
+  ];
+  const { service, store } = await setup(undefined, terminals);
   await store.update((draft) => {
     draft.sessions.push(
       { id: "busy-shell", workspaceId: "workspace-1", name: "build", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "busy", createdAt: "now" },
       { id: "idle-shell", workspaceId: "workspace-1", name: "prompt", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "idle", createdAt: "now" },
       { id: "remote-shell", workspaceId: "workspace-1", name: "remote", status: "running", kind: "shell", shell: "ssh", activityStatus: "unknown", createdAt: "now" },
-      { id: "waiting-shell", workspaceId: "workspace-1", name: "agent", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "waiting-input", createdAt: "now" }
+      { id: "waiting-shell", workspaceId: "workspace-1", name: "agent", status: "running", kind: "shell", shell: "/bin/zsh", activityStatus: "waiting-input", createdAt: "now" },
+      { id: "exited-shell", workspaceId: "workspace-1", name: "exited", status: "exited", kind: "shell", shell: "/bin/zsh", createdAt: "now" },
+      { id: "unchecked-shell", workspaceId: "workspace-1", name: "disconnected", status: "running", kind: "shell", shell: "ssh", createdAt: "now" }
     );
   });
 
-  assert.deepEqual(service.runningSessionSummaries(), ["Unknown workspace / build (shell)", "Unknown workspace / remote (shell)"]);
+  assert.deepEqual(await service.inspectTerminalPrograms(), {
+    running: ["Unknown workspace / build — node, sleep"],
+    unchecked: ["Unknown workspace / disconnected — SSH unavailable"]
+  });
 });
 
 test("shell command completion also waits until the result is viewed", async () => {

@@ -918,7 +918,15 @@ Terminal 输入保留 xterm 的原生 IME composition 处理，并补齐输入�
 继续交给 xterm，不将候选确认误编码为 CLI 换行。
 
 普通本地 Session 的周期性活动检查只运行本地 `ps`，不得启动登录 shell。远程 Session 不进行后台
-SSH 活动查询，不创建 PID 探测标记，不读取 Codex index，也不为工具查找或会话恢复建立周期查询。
+SSH 活动查询，不创建 PID 探测文件，不读取 Codex index，也不为工具查找或会话恢复建立周期查询。
+关闭 Terminal tab 或退出应用时即时检查真实进程树，只把仍有前台、后台或暂停任务的 Terminal
+列入运行程序确认，显示 Workspace、Terminal 名称和程序名；只有空闲登录 shell 时直接关闭或退出。
+不使用持久化 PID、`status=running`、历史活动状态或远程 `unknown` 推断正在运行程序。
+远程 shell 启动时通过原交互 PTY 的带随机标识 OSC 帧一次性报告 shell PID，主进程剥离帧并仅在
+当前 runtime 内保存；不落盘、不增加后台 SSH。显式关闭/退出时按设备合并一次有超时的 SSH `ps`
+查询；无法检查（如连接建立中、SSH 不通、权限或命令不支持）单独列为「无法确认」，不冒充运行程序。
+取消确认保留 Terminal；重复退出或关闭同一 Terminal 不叠加弹窗。已退出任务和 zombie 不算运行，
+已脱离终端且不再属于 shell 进程树的服务不在此检查范围。macOS 仅关闭窗口仍保留 PTY，不做终止确认。
 创建 Session 的 UI、IPC 和 runtime 只接受 shell；移除内嵌 Codex 与 tmux 的启动、探测、恢复和控制分支。
 用户仍可自行在普通 shell 或 iTerm 中运行任何 CLI。
 

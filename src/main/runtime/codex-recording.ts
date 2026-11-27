@@ -19,7 +19,7 @@ export function codexRecordingCommand(mode: "install" | "bootstrap", token?: str
   const loader = `import base64; _source=base64.b64decode('${source}'); exec(compile(_source, '<superthread-codex>', 'exec'))`;
   const command = `python3 -c ${quoteShellArgument(loader)} ${mode}${token ? ` ${quoteShellArgument(token)}` : ""}`;
   // Missing Python must leave a normal usable shell, including on remote devices.
-  return mode === "install" ? command : `if command -v python3 >/dev/null 2>&1; then ${command}; else echo '[SuperThread] Codex recording requires Python 3.' >&2; exec "\${SHELL:-/bin/sh}" -l; fi`;
+  return mode === "install" ? command : `if command -v python3 >/dev/null 2>&1; then exec ${command}; else echo '[SuperThread] Codex recording requires Python 3.' >&2; exec "\${SHELL:-/bin/sh}" -l; fi`;
 }
 
 export interface CodexRecordingInstaller { install(connection: DeviceConnection): Promise<string>; }

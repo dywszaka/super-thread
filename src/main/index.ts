@@ -1,6 +1,6 @@
 import { BrowserRuntime } from "./runtime/browser-runtime";
 import { FilePreviewRuntime, FILE_PREVIEW_SCHEME } from "./runtime/file-preview-runtime";
-import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, type MessageBoxOptions } from "electron";
+import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage } from "electron";
 import { GitHostingStore } from "./persistence/git-hosting-store";
 import { GitHostingService } from "./application/git-hosting-service";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ import { JsonStore } from "./persistence/json-store";
 import { createMainWindow } from "./windows/create-main-window";
 import { channels } from "../shared/contract";
 import { DeviceCodexRecordingInstaller } from "./runtime/codex-recording";
+import { terminalCloseOptions } from "./application/terminal-close-confirmation";
 
 let mainWindow: BrowserWindow | null = null;
 protocol.registerSchemesAsPrivileged([{ scheme: FILE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -38,26 +39,26 @@ app.whenReady().then(async () => {
   powerMonitor.on("resume", () => service.reconnectTunnels());
   app.once("will-quit", () => service.shutdown());
   let quitConfirmed = false;
+  let quitChecking = false;
   app.on("before-quit", (event) => {
     if (quitConfirmed) { quitRequested = true; return; }
-    const running = service.runningSessionSummaries();
-    if (running.length === 0) { quitRequested = true; return; }
-    quitRequested = false;
     event.preventDefault();
-    const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
-    const options: MessageBoxOptions = {
-      type: "warning",
-      buttons: ["Quit Super Thread", "Cancel"],
-      cancelId: 1,
-      defaultId: 1,
-      message: "Terminal sessions are still running",
-      detail: running.slice(0, 8).join("\n") + (running.length > 8 ? `\n…and ${running.length - 8} more` : "")
-    };
-    const prompt = owner ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options);
-    void prompt.then((result) => {
-      if (result.response !== 0) return;
+    if (quitChecking) return;
+    quitRequested = false;
+    quitChecking = true;
+    void (async () => {
+      const options = terminalCloseOptions(await service.inspectTerminalPrograms(), "quit");
+      if (options) {
+        const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
+        const result = await (owner && !owner.isDestroyed() ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options));
+        if (result.response !== 0) return;
+      }
       quitConfirmed = true;
       app.quit();
+    })().catch((error) => {
+      dialog.showErrorBox("Could not check terminal activity", String(error));
+    }).finally(() => {
+      quitChecking = false;
     });
   });
 
